@@ -12,6 +12,10 @@ dependencies = [
     "ipywidgets>=8.1.7",
     "jupyterlab>=4.4.10",
     "scipy>=1.16.3",
+    "line-profiler>=5.0.0",
+    "tqdm>=4.67.1",
+    "pvlib>=0.13.1",
+    "refractiveindex>=0.0.7",
 ]
 
 [tool.uv.sources]
