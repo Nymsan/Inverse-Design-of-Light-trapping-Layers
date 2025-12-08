@@ -44,7 +44,7 @@ si = RefractiveIndexMaterial(shelf='main', book='Si', page='Green-2008')
 si_eps = lambda x: torch.tensor(si.get_refractive_index(x) +
                       1j * si.get_extinction_coefficient(x))**2
 
-def get_absorptance(params,wavelength,inc_ang,azi_ang,grating_period,h,order_N,L,nx):
+def get_absorptance(params,wavelength=torch.tensor(700,dtype=geo_dtype),inc_ang=0,azi_ang=0,grating_period=1000,h=1000,order_N=40,L=[1000,1],nx=5000):
     torcwa.rcwa_geo.dtype = geo_dtype
     torcwa.rcwa_geo.device = device
     torcwa.rcwa_geo.Lx = L[0]
