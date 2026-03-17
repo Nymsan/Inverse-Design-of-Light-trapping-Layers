@@ -16,7 +16,7 @@ dependencies = [
     "tqdm>=4.67.1",
     "pvlib>=0.13.1",
     "refractiveindex>=0.0.7",
-    "fdtdx[cuda12]>=0.6.0",
+    "marimo>=0.21.0",
 ]
 
 [tool.uv.sources]
