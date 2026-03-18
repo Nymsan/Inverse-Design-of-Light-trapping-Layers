@@ -158,14 +158,15 @@ def get_absorptance(params,wavelength=torch.tensor(700,dtype=geo_dtype),inc_ang=
     return  A_film, A_grating, Reflectance, Transmittance, P_absorbed_film, P_absorbed_grating, P_slices
 
 def get_weighted_absorptance(params,wavelengths=torch.linspace(300,1100,100,dtype=int),
-                             inc_ang=0,azi_ang=0,grating_period=1000,h=1000,order_N=40, nx=5000, add_reflector=False, reflector_type='pec'):
+                             inc_ang=0,azi_ang=0,grating_period=1000,n_layers=100,h=1000,order_N=40, nx=5000, add_reflector=False, reflector_type='pec'):
     L = [grating_period,1.] #nm
     sum_am15g = torch.sum(torch.tensor([sun_weights(wavelength) for wavelength in wavelengths], device=device))
     sum_photons = torch.sum(torch.tensor([sun_weights(wavelength)*wavelength for wavelength in wavelengths], device=device))
     running_sun_weight = 0.0
     running_photon_weight = 0.0
     for wavelength in wavelengths:
-        A_film, _, _, _, _, _, _ = get_absorptance(params,wavelength,inc_ang,azi_ang,grating_period,h,order_N,L,nx,add_reflector,reflector_type)
+        A_film, _, _, _, _, _, _ = get_absorptance(params=params,wavelength=wavelength,inc_ang=inc_ang,azi_ang=azi_ang,
+            grating_period=grating_period,n_layers=n_layers,h=h,order_N=order_N,nx=nx,add_reflector=add_reflector,reflector_type='pec')
         running_sun_weight += sun_weights(wavelength) * torch.mean(A_film)
         running_photon_weight += sun_weights(wavelength) * torch.mean(A_film) * wavelength
     weighted_A_sun = running_sun_weight / sum_am15g
