@@ -2,10 +2,8 @@ import numpy as np
 import torch
 from matplotlib import pyplot as plt
 import torcwa
-from tqdm.notebook import tqdm
 from pvlib import spectrum
 from refractiveindex import RefractiveIndexMaterial
-import os
 
 # Hardware
 # If GPU support TF32 tensor core, the matmul operation is faster than FP32 but with less precision.
@@ -34,6 +32,31 @@ def get_sine_eps(x,params,grating_period,eps):
     eps = 1 + (eps-1)*(0.5*(A+torch.sum(cosines, dim=0))/A)
     return eps.unsqueeze(1)   # make shape (nx,1) so add_layer accepts it
 
+
+def get_staircase_sine_eps(x,params,grating_period,num_layers,eps_high,eps_low=1.):
+    """"Generate sine grating in stepwise approximation.
+
+    Args:
+        x (torch.tensor): 1D tensor of x positions.
+        params (torch.Tensor): list of amplitude and phase shift. shape (n,2), where n is n*2*np.pi/grating_period'th frequency.
+        num_layers (int): number of layers for stepwise approximation.
+        eps_high (float): Permittivity of high-index material.
+        eps_low (float, optional): Permittivity of low-index material. Defaults to air, so 1.
+
+    Returns:
+        torch.tensor: 2D tensor of permittivity profile with shape (nx,num_layers).
+    """
+    A = torch.sum(params[:,0]) + 1e-9
+    cosines = torch.cos(2.*np.pi*torch.arange(1, params.shape[0]+1, dtype=geo_dtype,device=device).unsqueeze(1)*(x.unsqueeze(0)/grating_period)
+                                               - params[:,1].unsqueeze(1))
+    cosines = cosines * params[:,0].unsqueeze(1)
+    eps_profile = 0.5*(A+torch.sum(cosines, dim=0))
+    eps = torch.ones(x.shape[0], num_layers, dtype=geo_dtype, device=device) * eps_low
+    for i in range(num_layers):
+        eps[:,i] = torch.where(eps_profile > (i+1)*A/num_layers, eps_high, eps_low)
+
+    return eps #Shape is (nx,num_layers) for add_layer
+
 # light
 spectra = spectrum.get_reference_spectra()
 am15g = spectra['global']
@@ -43,8 +66,12 @@ sun_weights = lambda x: torch.tensor(am15g[x.cpu().numpy()])
 si = RefractiveIndexMaterial(shelf='main', book='Si', page='Green-2008')
 si_eps = lambda x: torch.tensor(si.get_refractive_index(x) +
                       1j * si.get_extinction_coefficient(x))**2
+ag = RefractiveIndexMaterial(shelf='main', book='Ag', page='McPeak-2015')
+ag_eps = lambda x: torch.tensor(ag.get_refractive_index(x) +
+                      1j * ag.get_extinction_coefficient(x))**2
 
-def get_absorptance(params,wavelength=torch.tensor(700,dtype=geo_dtype),inc_ang=0,azi_ang=0,grating_period=1000,h=1000,order_N=40,L=[1000,1],nx=5000,add_reflector=False):
+def get_absorptance(params,wavelength=torch.tensor(700,dtype=geo_dtype),inc_ang=0,azi_ang=0,grating_period=1000,h=1000,
+        order_N=40,L=[1000,1],nx=5000,n_layers=100,add_reflector=False,reflector_type='pec'):
     torcwa.rcwa_geo.dtype = geo_dtype
     torcwa.rcwa_geo.device = device
     torcwa.rcwa_geo.Lx = L[0]
@@ -60,23 +87,32 @@ def get_absorptance(params,wavelength=torch.tensor(700,dtype=geo_dtype),inc_ang=
     torcwa.rcwa_geo.nx = nx #set sine grating grid
     torcwa.rcwa_geo.grid()
     A = torch.sum(params[:,0])
-    sine_eps = get_sine_eps(torcwa.rcwa_geo.x,params=params,grating_period=grating_period,eps=si_eps(wavelength))
+    if n_layers > 1:
+        sine_eps = get_staircase_sine_eps(x=torcwa.rcwa_geo.x,params=params,grating_period=grating_period,
+            num_layers=n_layers,eps_high=si_eps(wavelength))
+    if n_layers == 1:
+        sine_eps = get_sine_eps(x=torcwa.rcwa_geo.x,params=params,grating_period=grating_period,eps=si_eps(x=wavelength))
     sim = torcwa.rcwa(freq=1/wavelength,order=order,L=L,dtype=sim_dtype,device=device)
     sim.add_input_layer()
     sim.add_output_layer()
     sim.set_incident_angle(inc_ang=inc_ang,azi_ang=azi_ang)
-    sim.add_layer(thickness=A,eps=sine_eps)
+    for i in range(sine_eps.shape[1]):
+        sim.add_layer(thickness=A/sine_eps.shape[1],eps=sine_eps[:,-1-i,None])
     sim.add_layer(thickness=h,eps=si_eps(wavelength))
     if add_reflector:
-        # Lossless ideal mirror (Perfect Electric Conductor approximation)
-        reflector_eps = torch.tensor(-10000.0 + 0.0j, dtype=sim_dtype, device=device)
-        sim.add_layer(thickness=200, eps=reflector_eps)
+        if reflector_type == 'pec':
+            # Lossless ideal mirror (Perfect Electric Conductor approximation)
+            reflector_eps = torch.tensor(-10000.0 + 0.0j, dtype=sim_dtype, device=device)
+        if reflector_type == 'Ag':
+            reflector_eps = ag_eps(x=wavelength)
+        sim.add_layer(thickness=h/5, eps=reflector_eps)
+
     sim.solve_global_smatrix()
 
     # choose probe planes (just above / below film). use same device dtype as sim
     z_top = torch.clone(A)  # e.g. top of film
     z_bot = torch.clone(A+h)  # e.g. bottom of film 
-    z_air = torch.tensor(-3*h,device=sim._device, dtype=geo_dtype) #Ensure evanescent modes are gone
+    z_air = torch.tensor(-5*h,device=sim._device, dtype=geo_dtype) #Ensure evanescent modes are gone
     torcwa.rcwa_geo.nx = nx #set sampling grid for fields
     torcwa.rcwa_geo.grid()
     P_absorbed_film = torch.zeros(2,device=sim._device, dtype=geo_dtype) # to store absorbed power in film, first item is x polarization, second y polarization
@@ -122,14 +158,14 @@ def get_absorptance(params,wavelength=torch.tensor(700,dtype=geo_dtype),inc_ang=
     return  A_film, A_grating, Reflectance, Transmittance, P_absorbed_film, P_absorbed_grating, P_slices
 
 def get_weighted_absorptance(params,wavelengths=torch.linspace(300,1100,100,dtype=int),
-                             inc_ang=0,azi_ang=0,grating_period=1000,h=1000,order_N=40, nx=5000, add_reflector=False):
+                             inc_ang=0,azi_ang=0,grating_period=1000,h=1000,order_N=40, nx=5000, add_reflector=False, reflector_type='pec'):
     L = [grating_period,1.] #nm
     sum_am15g = torch.sum(torch.tensor([sun_weights(wavelength) for wavelength in wavelengths], device=device))
     sum_photons = torch.sum(torch.tensor([sun_weights(wavelength)*wavelength for wavelength in wavelengths], device=device))
     running_sun_weight = 0.0
     running_photon_weight = 0.0
     for wavelength in wavelengths:
-        A_film, _, _, _, _, _, _ = get_absorptance(params,wavelength,inc_ang,azi_ang,grating_period,h,order_N,L,nx,add_reflector)
+        A_film, _, _, _, _, _, _ = get_absorptance(params,wavelength,inc_ang,azi_ang,grating_period,h,order_N,L,nx,add_reflector,reflector_type)
         running_sun_weight += sun_weights(wavelength) * torch.mean(A_film)
         running_photon_weight += sun_weights(wavelength) * torch.mean(A_film) * wavelength
     weighted_A_sun = running_sun_weight / sum_am15g
