@@ -44,7 +44,7 @@ si = RefractiveIndexMaterial(shelf='main', book='Si', page='Green-2008')
 si_eps = lambda x: torch.tensor(si.get_refractive_index(x) +
                       1j * si.get_extinction_coefficient(x))**2
 
-def get_absorptance(params,wavelength=torch.tensor(700,dtype=geo_dtype),inc_ang=0,azi_ang=0,grating_period=1000,h=1000,order_N=40,L=[1000,1],nx=5000):
+def get_absorptance(params,wavelength=torch.tensor(700,dtype=geo_dtype),inc_ang=0,azi_ang=0,grating_period=1000,h=1000,order_N=40,L=[1000,1],nx=5000,add_reflector=False):
     torcwa.rcwa_geo.dtype = geo_dtype
     torcwa.rcwa_geo.device = device
     torcwa.rcwa_geo.Lx = L[0]
@@ -67,6 +67,10 @@ def get_absorptance(params,wavelength=torch.tensor(700,dtype=geo_dtype),inc_ang=
     sim.set_incident_angle(inc_ang=inc_ang,azi_ang=azi_ang)
     sim.add_layer(thickness=A,eps=sine_eps)
     sim.add_layer(thickness=h,eps=si_eps(wavelength))
+    if add_reflector:
+        # Lossless ideal mirror (Perfect Electric Conductor approximation)
+        reflector_eps = torch.tensor(-10000.0 + 0.0j, dtype=sim_dtype, device=device)
+        sim.add_layer(thickness=200, eps=reflector_eps)
     sim.solve_global_smatrix()
 
     # choose probe planes (just above / below film). use same device dtype as sim
@@ -118,14 +122,14 @@ def get_absorptance(params,wavelength=torch.tensor(700,dtype=geo_dtype),inc_ang=
     return  A_film, A_grating, Reflectance, Transmittance, P_absorbed_film, P_absorbed_grating, P_slices
 
 def get_weighted_absorptance(params,wavelengths=torch.linspace(300,1100,100,dtype=int),
-                             inc_ang=0,azi_ang=0,grating_period=1000,h=1000,order_N=40, nx=5000):
+                             inc_ang=0,azi_ang=0,grating_period=1000,h=1000,order_N=40, nx=5000, add_reflector=False):
     L = [grating_period,1.] #nm
     sum_am15g = torch.sum(torch.tensor([sun_weights(wavelength) for wavelength in wavelengths], device=device))
     sum_photons = torch.sum(torch.tensor([sun_weights(wavelength)*wavelength for wavelength in wavelengths], device=device))
     running_sun_weight = 0.0
     running_photon_weight = 0.0
     for wavelength in wavelengths:
-        A_film, _, _, _, _, _, _ = get_absorptance(params,wavelength,inc_ang,azi_ang,grating_period,h,order_N,L,nx)
+        A_film, _, _, _, _, _, _ = get_absorptance(params,wavelength,inc_ang,azi_ang,grating_period,h,order_N,L,nx,add_reflector)
         running_sun_weight += sun_weights(wavelength) * torch.mean(A_film)
         running_photon_weight += sun_weights(wavelength) * torch.mean(A_film) * wavelength
     weighted_A_sun = running_sun_weight / sum_am15g
