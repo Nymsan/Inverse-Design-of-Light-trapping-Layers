@@ -4,6 +4,8 @@ from matplotlib import pyplot as plt
 import torcwa
 from pvlib import spectrum
 from refractiveindex import RefractiveIndexMaterial
+from tqdm import tqdm
+from torchaudio.transforms import Convolve
 
 # Hardware
 # If GPU support TF32 tensor core, the matmul operation is faster than FP32 but with less precision.
@@ -26,14 +28,14 @@ def get_sine_eps(x, params, grating_period, eps,):
         torch.tensor: 1D tensor of permittivity profile.
     """
     A = torch.sum(params[:, 0]) + 1e-9
-    freqs = torch.arange(1, params.shape[0] + 1, dtype=x.dtype, device=x.device).unsqueeze(1)
+    freqs = torch.arange(0, params.shape[0], dtype=x.dtype, device=x.device).unsqueeze(1)
     cosines = torch.cos(2. * np.pi * freqs * (x.unsqueeze(0) / grating_period) - params[:, 1].unsqueeze(1))
     cosines = cosines * params[:, 0].unsqueeze(1)
     eps_profile = 1 + (eps - 1) * (0.5 * (A + torch.sum(cosines, dim=0)) / A)
     return eps_profile.unsqueeze(1)   # make shape (nx,1) so add_layer accepts it
 
 
-def get_staircase_sine_eps(x, params, grating_period, num_layers, eps_high, eps_low=1.):
+def get_staircase_sine_eps(x, params, grating_period, num_layers, eps_high, eps_low=1.,Hann_window_length=0):
     """Generate sine grating in stepwise approximation.
 
     Args:
@@ -48,7 +50,7 @@ def get_staircase_sine_eps(x, params, grating_period, num_layers, eps_high, eps_
         torch.tensor: 2D tensor of permittivity profile with shape (nx,num_layers).
     """
     A = torch.sum(params[:, 0]) + 1e-9
-    freqs = torch.arange(1, params.shape[0] + 1, dtype=x.dtype, device=x.device).unsqueeze(1)
+    freqs = torch.arange(0, params.shape[0], dtype=x.dtype, device=x.device).unsqueeze(1)
     cosines = torch.cos(2. * np.pi * freqs * (x.unsqueeze(0) / grating_period) - params[:, 1].unsqueeze(1))
     cosines = cosines * params[:, 0].unsqueeze(1)
     eps_profile = 0.5 * (A + torch.sum(cosines, dim=0))
@@ -57,8 +59,10 @@ def get_staircase_sine_eps(x, params, grating_period, num_layers, eps_high, eps_
     thresholds = torch.arange(1, num_layers + 1, device=x.device) * (A / num_layers)
     
     for i in range(num_layers):
-        eps[:, i] = torch.where(eps_profile > thresholds[i], eps_high, eps_low)
-
+        eps[:, i] = torch.where(eps_profile > thresholds[i], 1.0, 0.0)
+        if Hann_window_length > 0:
+            hann = torch.hann_window(Hann_window_length)
+            eps[:,i] = Convolve(mode='same')(hann,eps[:,i])
     return eps 
 
 # light
@@ -79,7 +83,7 @@ def ag_eps(w):
                         dtype=sim_dtype, device=device)**2
 
 def get_absorptance(params, wavelength=torch.tensor(700, dtype=geo_dtype), inc_ang=0, azi_ang=0, grating_period=1000, h=1000,
-                    order_N=40, nx=5000,ny=1, n_layers=100, add_reflector=False, reflector_type='pec'):
+                    order_N=40, nx=5000, ny=1, n_layers=100, add_reflector=False, reflector_type='pec'):
     torcwa.rcwa_geo.dtype = geo_dtype
     torcwa.rcwa_geo.device = device
     torcwa.rcwa_geo.Lx = grating_period
@@ -123,39 +127,46 @@ def get_absorptance(params, wavelength=torch.tensor(700, dtype=geo_dtype), inc_a
     z_top = A
     z_bot = A + h
     z_air = torch.tensor(-5 * h, device=device, dtype=geo_dtype)
+    z_reflector = A+h+h/5
     
     results = {}
     for pol_idx, pol in enumerate([[1., 0.], [0., 1.]]):
         sim.source_planewave(amplitude=pol, direction='forward', notation='xy')
-        [Ex, Ey, Ez], [Hx, Hy, Hz] = sim.field_xz(torcwa.rcwa_geo.x, torch.stack((z_top, z_bot, z_air)), y=0.0)
+        [Ex, Ey, Ez], [Hx, Hy, Hz] = sim.field_xz(torcwa.rcwa_geo.x, torch.stack((z_top, z_bot, z_air,z_reflector)), y=0.0)
         S_z = 0.5 * torch.real(Ex * torch.conj(Hy) - Ey * torch.conj(Hx))
         
         P_top = torch.trapezoid(S_z[:, 0], torcwa.rcwa_geo.x)
         P_bot = torch.trapezoid(S_z[:, 1], torcwa.rcwa_geo.x)
         P_air = torch.trapezoid(S_z[:, 2], torcwa.rcwa_geo.x)
+        #Add a sanity check using a volume integral for the power.
+        P_reflector = torch.trapezoid(S_z[:,3],torcwa.rcwa_geo.x)
         
         results[pol_idx] = {
             'A_film': (P_top - P_bot) / P_inc,
             'A_grating': (P_air - P_top) / P_inc,
+            'A_reflector': (P_bot - P_reflector) / P_inc,
             'R': (P_inc - P_air) / P_inc,
             'T': P_bot / P_inc,
             'P_abs_film': P_top - P_bot,
             'P_abs_grating': P_air - P_top,
-            'P_slices': torch.tensor([P_top, P_bot, P_air], device=device)
+            'P_abs_reflector': P_top - P_reflector,
+            'P_slices': torch.tensor([P_inc,P_top, P_bot, P_air, P_reflector], device=device)
         }
 
     A_film = torch.tensor([results[0]['A_film'], results[1]['A_film']], device=device)
     A_grating = torch.tensor([results[0]['A_grating'], results[1]['A_grating']], device=device)
+    A_reflector = torch.tensor([results[0]['A_reflector'],results[1]['A_reflector']],device=device)
     Reflectance = torch.tensor([results[0]['R'], results[1]['R']], device=device)
     Transmittance = torch.tensor([results[0]['T'], results[1]['T']], device=device)
     P_abs_film = torch.tensor([results[0]['P_abs_film'], results[1]['P_abs_film']], device=device)
     P_abs_grating = torch.tensor([results[0]['P_abs_grating'], results[1]['P_abs_grating']], device=device)
+    P_abs_reflector = torch.tensor([results[0]['P_abs_reflector'], results[1]['P_abs_reflector']], device=device)
     P_slices = torch.stack([results[0]['P_slices'], results[1]['P_slices']])
 
-    return sim, sine_eps, A_film, A_grating, Reflectance, Transmittance, P_abs_film, P_abs_grating, P_slices
+    return sim, sine_eps, A_film, A_grating, A_reflector, Reflectance, Transmittance, P_abs_film, P_abs_grating, P_abs_reflector, P_slices
 
 def get_weighted_absorptance(params, wavelengths=torch.linspace(300, 1100, 100, dtype=int),
-                             inc_ang=0, azi_ang=0, grating_period=1000, n_layers=100, h=1000, order_N=40, nx=5000, 
+                             inc_ang=0, azi_ang=0, grating_period=1000, h=1000, order_N=40, nx=5000, ny=1,  n_layers=100, 
                              add_reflector=False, reflector_type='pec'):
     L = [float(grating_period), 1.0]
     weights = sun_weights(wavelengths)
@@ -166,9 +177,9 @@ def get_weighted_absorptance(params, wavelengths=torch.linspace(300, 1100, 100, 
     running_photon_weight = 0.0
     
     for i, wavelength in enumerate(wavelengths):
-        A_film, _, _, _, _, _, _, _ = get_absorptance(params=params, wavelength=wavelength, inc_ang=inc_ang, azi_ang=azi_ang,
+        A_film = get_absorptance(params=params, wavelength=wavelength, inc_ang=inc_ang, azi_ang=azi_ang,
                                                   grating_period=grating_period, n_layers=n_layers, h=h, 
-                                                  order_N=order_N, nx=nx, add_reflector=add_reflector, reflector_type=reflector_type)
+                                                  order_N=order_N, nx=nx, add_reflector=add_reflector, reflector_type=reflector_type)[2]
         mean_A = torch.mean(A_film)
         running_sun_weight += weights[i] * mean_A
         running_photon_weight += weights[i] * mean_A * wavelength.to(device)
@@ -177,8 +188,18 @@ def get_weighted_absorptance(params, wavelengths=torch.linspace(300, 1100, 100, 
     weighted_A_photon = running_photon_weight / sum_photons
     return weighted_A_sun, weighted_A_photon
 
-def get_absorptance_curve(params,):
-    return
+def get_absorptance_curve(params, wavelengths=torch.linspace(300, 1100, 100, dtype=int),
+                             inc_ang=0, azi_ang=0, grating_period=1000, h=1000, order_N=40, nx=5000, ny=1,  n_layers=100, 
+                             add_reflector=False, reflector_type='pec'):
+    Absorptances = torch.zeros_like(wavelengths,dtype=torch.float32)
+    for i,wavelength in enumerate(tqdm(wavelengths)):
+        A_film = get_absorptance(params=params, wavelength=wavelength, inc_ang=inc_ang, azi_ang=azi_ang,
+                                                  grating_period=grating_period, n_layers=n_layers, h=h, 
+                                                  order_N=order_N, nx=nx, add_reflector=add_reflector, reflector_type=reflector_type)[2]
+        Absorptances[i] = torch.mean(A_film).cpu()
+    return Absorptances, wavelengths
+
+    
 
 def plot_fields(sim, x_plot, z_plot, wavelength, polarization, inc_ang, azi_ang, global_max=None):
     """
