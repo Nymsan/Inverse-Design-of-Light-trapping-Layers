@@ -29,7 +29,7 @@ def get_sine_eps(x, params, grating_period, eps,):
         torch.tensor: 1D tensor of permittivity profile.
     """
     A = torch.sum(params[:, 0]) + 1e-9
-    freqs = torch.arange(0, params.shape[0], dtype=x.dtype, device=x.device).unsqueeze(1)
+    freqs = torch.arange(1, params.shape[0]+1, dtype=x.dtype, device=x.device).unsqueeze(1)
     cosines = torch.cos(2. * np.pi * freqs * (x.unsqueeze(0) / grating_period) - params[:, 1].unsqueeze(1))
     cosines = cosines * params[:, 0].unsqueeze(1)
     eps_profile = 1 + (eps - 1) * (0.5 * (A + torch.sum(cosines, dim=0)) / A)
@@ -51,7 +51,7 @@ def get_staircase_sine_eps(x, params, grating_period, num_layers, eps_high, eps_
         torch.tensor: 2D tensor of permittivity profile with shape (nx,num_layers).
     """
     A = torch.sum(params[:, 0]) + 1e-9
-    freqs = torch.arange(0, params.shape[0], dtype=x.dtype, device=x.device).unsqueeze(1)
+    freqs = torch.arange(1, params.shape[0]+1, dtype=x.dtype, device=x.device).unsqueeze(1)
     cosines = torch.cos(2. * np.pi * freqs * (x.unsqueeze(0) / grating_period) - params[:, 1].unsqueeze(1))
     cosines = cosines * params[:, 0].unsqueeze(1)
     eps_profile = 0.5 * (A + torch.sum(cosines, dim=0))
