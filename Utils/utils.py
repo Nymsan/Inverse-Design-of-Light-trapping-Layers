@@ -83,6 +83,19 @@ def ag_eps(w):
     return torch.tensor(ag.get_refractive_index(w) + 1j * ag.get_extinction_coefficient(w), 
                         dtype=sim_dtype, device=device)**2
 
+def get_incident_power(pol,wavelength,inc_ang,azi_ang,grating_period,order):
+    L = [grating_period,grating_period]
+    sim = torcwa.rcwa(freq=1/wavelength, order=order, L=L, dtype=sim_dtype, device=device)
+    sim.add_input_layer()
+    sim.add_output_layer()
+    sim.set_incident_angle(inc_ang=inc_ang, azi_ang=azi_ang)
+    sim.solve_global_smatrix()
+    sim.source_planewave(amplitude=pol, direction='forward', notation='ps')
+    [Ex, Ey, Ez], [Hx, Hy, Hz] = sim.field_xz(torch.tensor([0],device=device), torch.tensor([0]), y=0.0)
+    P_inc = 0.5 * torch.real(Ex * torch.conj(Hy) - Ey * torch.conj(Hx))
+
+    return P_inc.item()*grating_period
+
 def get_absorptance(params, wavelength=torch.tensor(700, dtype=geo_dtype), inc_ang=0, azi_ang=0, grating_period=1000, h=1000,
                     order_N=40, nx=5000, ny=1, n_layers=100, add_reflector=False, reflector_type='pec'):
     torcwa.rcwa_geo.dtype = geo_dtype
@@ -95,9 +108,6 @@ def get_absorptance(params, wavelength=torch.tensor(700, dtype=geo_dtype), inc_a
     L = [grating_period,grating_period]
     
     order = [order_N, 0]
-    # calculate incidence power from inc_ang, azi_ang
-    P_inc = 0.5 / np.cos(inc_ang) * (np.cos(azi_ang)**2 + np.sin(azi_ang)**2 * np.cos(inc_ang)**2)
-    P_inc = P_inc * torcwa.rcwa_geo.Lx
 
     A = torch.sum(params[:, 0])
     if n_layers > 1:
@@ -131,8 +141,9 @@ def get_absorptance(params, wavelength=torch.tensor(700, dtype=geo_dtype), inc_a
     z_reflector = A+h+h/5
     
     results = {}
-    for pol_idx, pol in enumerate([[1., 0.], [0., 1.]]):
-        sim.source_planewave(amplitude=pol, direction='forward', notation='xy')
+    for pol_idx, pol in enumerate([[1., 0.], [0., 1.]]): #first result is p-pol, second s-pol
+        P_inc = get_incident_power(pol=pol,wavelength=wavelength,inc_ang=inc_ang,azi_ang=azi_ang,grating_period=grating_period,order=order)
+        sim.source_planewave(amplitude=pol, direction='forward', notation='ps')
         [Ex, Ey, Ez], [Hx, Hy, Hz] = sim.field_xz(torcwa.rcwa_geo.x, torch.stack((z_top, z_bot, z_air,z_reflector)), y=0.0)
         S_z = 0.5 * torch.real(Ex * torch.conj(Hy) - Ey * torch.conj(Hx))
         
@@ -193,7 +204,7 @@ def get_weighted_absorptance(params, wavelengths=torch.linspace(300, 1100, 100, 
 def get_absorptance_curve(params, wavelengths=torch.linspace(300, 1100, 100, dtype=int),
                              inc_ang=0, azi_ang=0, grating_period=1000, h=1000, order_N=40, nx=5000, ny=1,  n_layers=100, 
                              add_reflector=False, reflector_type='pec'):
-    Absorptances = torch.zeros_like(wavelengths,dtype=torch.float32).unsqueeze(1).expand(-1,2)
+    Absorptances = torch.zeros_like(wavelengths,dtype=torch.float32).unsqueeze(1).repeat(1,2)
     for i,wavelength in enumerate(tqdm(wavelengths)):
         A_film = get_absorptance(params=params, wavelength=wavelength, inc_ang=inc_ang, azi_ang=azi_ang,
                                                   grating_period=grating_period, n_layers=n_layers, h=h, 
@@ -211,7 +222,7 @@ def plot_fields(sim, x_plot, z_plot, wavelength, polarization, inc_ang, azi_ang,
     Row 1: |H|, |Hx|, |Hy|, |Hz|
     Row 2: |S|, Sx, Sy, Sz
     """
-    sim.source_planewave(amplitude=polarization, direction='forward', notation='xy')
+    sim.source_planewave(amplitude=polarization, direction='forward', notation='ps')
     
     # Ensure inputs are on the same device as the simulation
     dev = sim._device
@@ -288,7 +299,7 @@ def plot_fields(sim, x_plot, z_plot, wavelength, polarization, inc_ang, azi_ang,
     cbar1.set_label('H (A.U.)')
     cbar2 = fig.colorbar(im8, ax=axes[2, :], location='right', shrink=0.9, pad=0.02)
     cbar2.set_label('S (A.U.)')
-    title = f'xz-plane field distribution at $\\lambda$ = {wavelength} nm and y = 0 nm \n polarization = $E_x$ = {polarization[0]:.3f}, $E_y$ = {polarization[1]:.3f} \n incident angle = {inc_ang*180/np.pi:.1f}°, azimuthal angle = {azi_ang*180/np.pi:.1f}°'
+    title = f'xz-plane field distribution at $\\lambda$ = {wavelength} nm and y = 0 nm \n polarization ->{'p' if polarization[0] else 's'}\n incident angle = {inc_ang*180/np.pi:.1f}°, azimuthal angle = {azi_ang*180/np.pi:.1f}°'
     fig.suptitle(title, fontsize=16)
     
     return
