@@ -6,37 +6,16 @@ import torcwa
 from pvlib import spectrum
 from refractiveindex import RefractiveIndexMaterial
 from tqdm import tqdm
-import torch.nn.functional as tfunc
 
 # Hardware
 # If GPU support TF32 tensor core, the matmul operation is faster than FP32 but with less precision.
 # If you need accurate operation, you have to disable the flag below.
 torch.backends.cuda.matmul.allow_tf32 = False
 sim_dtype = torch.complex64
-geo_dtype = torch.float32
+geo_dtype = torch.float64
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-def get_sine_eps(x, params, grating_period, eps,):
-    """Generate sine grating permittivity profile.
-
-    Args:
-        x (torch.tensor): 1D tensor of x positions.
-        params (torch.Tensor): list of amplitude and phase shift. shape (n,2), where n is n*2*np.pi/grating_period'th frequency.
-        grating_period (float): Period of the grating.
-        eps (complex): Permittivity of high-index material.
-
-    Returns:
-        torch.tensor: 1D tensor of permittivity profile.
-    """
-    A = torch.sum(params[:, 0]) + 1e-9
-    freqs = torch.arange(1, params.shape[0]+1, dtype=x.dtype, device=x.device).unsqueeze(1)
-    cosines = torch.cos(2. * np.pi * freqs * (x.unsqueeze(0) / grating_period) - params[:, 1].unsqueeze(1))
-    cosines = cosines * params[:, 0].unsqueeze(1)
-    eps_profile = 1 + (eps - 1) * (0.5 * (A + torch.sum(cosines, dim=0)) / A)
-    return eps_profile.unsqueeze(1)   # make shape (nx,1) so add_layer accepts it
-
-
-def get_staircase_sine_eps(x, params, grating_period, num_layers, eps_high, eps_low=1.):
+def get_staircase_sine_eps(x, params, grating_period, num_layers, eps_high, eps_low=1.,subpixel=True):
     """Generate sine grating in stepwise approximation.
 
     Args:
@@ -64,6 +43,8 @@ def get_staircase_sine_eps(x, params, grating_period, num_layers, eps_high, eps_
     eps_profile = eps_profile.unsqueeze(1).expand(-1,num_layers)
 
     eps = torch.clamp((eps_profile - thresholds) / cell_height,min=0,max=1)
+    if subpixel == False:
+        eps = torch.floor(eps)
     return eps_low + (eps_high-eps_low)*eps
 
 # light
@@ -85,7 +66,7 @@ def ag_eps(w):
 
 def get_incident_power(pol,wavelength,inc_ang,azi_ang,grating_period,order):
     L = [grating_period,grating_period]
-    sim = torcwa.rcwa(freq=1/wavelength, order=order, L=L, dtype=sim_dtype, device=device)
+    sim = torcwa.rcwa(freq=1/wavelength, order=order, L=L, dtype=sim_dtype, device=device, avoid_Pinv_instability=True)
     sim.add_input_layer()
     sim.add_output_layer()
     sim.set_incident_angle(inc_ang=inc_ang, azi_ang=azi_ang)
@@ -97,7 +78,7 @@ def get_incident_power(pol,wavelength,inc_ang,azi_ang,grating_period,order):
     return P_inc.item()*grating_period
 
 def get_absorptance(params, wavelength=torch.tensor(700, dtype=geo_dtype), inc_ang=0, azi_ang=0, grating_period=1000, h=1000,
-                    order_N=40, nx=5000, ny=1, n_layers=100, add_reflector=False, reflector_type='pec'):
+                    order_N=40, nx=5000, ny=1, n_layers=100, add_reflector=False, reflector_type='pec',subpixel=True):
     torcwa.rcwa_geo.dtype = geo_dtype
     torcwa.rcwa_geo.device = device
     torcwa.rcwa_geo.Lx = grating_period
@@ -112,11 +93,12 @@ def get_absorptance(params, wavelength=torch.tensor(700, dtype=geo_dtype), inc_a
     A = torch.sum(params[:, 0])
     if n_layers > 1:
         sine_eps = get_staircase_sine_eps(x=torcwa.rcwa_geo.x, params=params, grating_period=grating_period,
-                                         num_layers=n_layers, eps_high=si_eps(wavelength))
-    else:
-        sine_eps = get_sine_eps(x=torcwa.rcwa_geo.x, params=params, grating_period=grating_period, eps=si_eps(wavelength))
+                                         num_layers=n_layers, eps_high=si_eps(wavelength),subpixel=subpixel)
+    elif n_layers == 1:
+        sine_eps = get_staircase_sine_eps(x=torcwa.rcwa_geo.x, params=params, grating_period=grating_period,
+                                         num_layers=n_layers, eps_high=si_eps(wavelength),subpixel=True)
         
-    sim = torcwa.rcwa(freq=1/wavelength, order=order, L=L, dtype=sim_dtype, device=device)
+    sim = torcwa.rcwa(freq=1/wavelength, order=order, L=L, dtype=sim_dtype, device=device, avoid_Pinv_instability=True)
     sim.add_input_layer()
     sim.add_output_layer()
     sim.set_incident_angle(inc_ang=inc_ang, azi_ang=azi_ang)
@@ -177,9 +159,9 @@ def get_absorptance(params, wavelength=torch.tensor(700, dtype=geo_dtype), inc_a
 
     return sim, sine_eps, A_film, A_grating, A_reflector, Reflectance, Transmittance, P_abs_film, P_abs_grating, P_abs_reflector, P_slices
 
-def get_weighted_absorptance(params, wavelengths=torch.linspace(300, 1100, 100, dtype=int),
+def get_weighted_absorptance(params, wavelengths,
                              inc_ang=0, azi_ang=0, grating_period=1000, h=1000, order_N=40, nx=5000, ny=1,  n_layers=100, 
-                             add_reflector=False, reflector_type='pec'):
+                             add_reflector=False, reflector_type='pec',subpixel=True):
     L = [float(grating_period), 1.0]
     weights = sun_weights(wavelengths)
     sum_am15g = torch.sum(weights)
@@ -192,7 +174,7 @@ def get_weighted_absorptance(params, wavelengths=torch.linspace(300, 1100, 100, 
         A_film = get_absorptance(params=params, wavelength=wavelength, inc_ang=inc_ang, azi_ang=azi_ang,
                                                   grating_period=grating_period, n_layers=n_layers, h=h, 
                                                   order_N=order_N, nx=nx, add_reflector=add_reflector,
-                                                  reflector_type=reflector_type)[2]
+                                                  reflector_type=reflector_type,subpixel=subpixel)[2]
         mean_A = torch.mean(A_film)
         running_sun_weight += weights[i] * mean_A
         running_photon_weight += weights[i] * mean_A * wavelength.to(device)
@@ -201,15 +183,15 @@ def get_weighted_absorptance(params, wavelengths=torch.linspace(300, 1100, 100, 
     weighted_A_photon = running_photon_weight / sum_photons
     return weighted_A_sun, weighted_A_photon
 
-def get_absorptance_curve(params, wavelengths=torch.linspace(300, 1100, 100, dtype=int),
+def get_absorptance_curve(params, wavelengths,
                              inc_ang=0, azi_ang=0, grating_period=1000, h=1000, order_N=40, nx=5000, ny=1,  n_layers=100, 
-                             add_reflector=False, reflector_type='pec'):
+                             add_reflector=False, reflector_type='pec',subpixel=True):
     Absorptances = torch.zeros_like(wavelengths,dtype=torch.float32).unsqueeze(1).repeat(1,2)
     for i,wavelength in enumerate(tqdm(wavelengths)):
         A_film = get_absorptance(params=params, wavelength=wavelength, inc_ang=inc_ang, azi_ang=azi_ang,
                                                   grating_period=grating_period, n_layers=n_layers, h=h, 
                                                   order_N=order_N, nx=nx, add_reflector=add_reflector,
-                                                  reflector_type=reflector_type)[2]
+                                                  reflector_type=reflector_type,subpixel=subpixel)[2]
         Absorptances[i,:] = A_film.cpu()
     return Absorptances
 
@@ -299,7 +281,7 @@ def plot_fields(sim, x_plot, z_plot, wavelength, polarization, inc_ang, azi_ang,
     cbar1.set_label('H (A.U.)')
     cbar2 = fig.colorbar(im8, ax=axes[2, :], location='right', shrink=0.9, pad=0.02)
     cbar2.set_label('S (A.U.)')
-    title = f'xz-plane field distribution at $\\lambda$ = {wavelength} nm and y = 0 nm \n polarization ->{'p' if polarization[0] else 's'}\n incident angle = {inc_ang*180/np.pi:.1f}°, azimuthal angle = {azi_ang*180/np.pi:.1f}°'
+    title = f'xz-plane field distribution at $\\lambda$ = {wavelength} nm and y = 0 nm \n polarization -> {'p' if polarization[0] else 's'}\n incident angle = {inc_ang*180/np.pi:.1f}°, azimuthal angle = {azi_ang*180/np.pi:.1f}°'
     fig.suptitle(title, fontsize=16)
     
     return
