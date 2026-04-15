@@ -12,7 +12,7 @@ from tqdm import tqdm
 # If you need accurate operation, you have to disable the flag below.
 torch.backends.cuda.matmul.allow_tf32 = False
 sim_dtype = torch.complex64
-geo_dtype = torch.float64
+geo_dtype = torch.float32
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def get_staircase_sine_eps(x, params, grating_period, num_layers, eps_high, eps_low=1.,subpixel=True):
@@ -186,14 +186,17 @@ def get_weighted_absorptance(params, wavelengths,
 def get_absorptance_curve(params, wavelengths,
                              inc_ang=0, azi_ang=0, grating_period=1000, h=1000, order_N=40, nx=5000, ny=1,  n_layers=100, 
                              add_reflector=False, reflector_type='pec',subpixel=True):
-    Absorptances = torch.zeros_like(wavelengths,dtype=torch.float32).unsqueeze(1).repeat(1,2)
+    Absorptances_film = torch.zeros_like(wavelengths,dtype=geo_dtype).unsqueeze(1).repeat(1,2)
+    Absorptances_grating = torch.zeros_like(wavelengths,dtype=geo_dtype).unsqueeze(1).repeat(1,2)
     for i,wavelength in enumerate(tqdm(wavelengths)):
-        A_film = get_absorptance(params=params, wavelength=wavelength, inc_ang=inc_ang, azi_ang=azi_ang,
+        A_film,A_grating = get_absorptance(params=params, wavelength=wavelength, inc_ang=inc_ang, azi_ang=azi_ang,
                                                   grating_period=grating_period, n_layers=n_layers, h=h, 
                                                   order_N=order_N, nx=nx, add_reflector=add_reflector,
-                                                  reflector_type=reflector_type,subpixel=subpixel)[2]
-        Absorptances[i,:] = A_film.cpu()
-    return Absorptances
+                                                  reflector_type=reflector_type,subpixel=subpixel)[2,3]
+
+        Absorptances_film[i,:] = A_film.cpu()
+        Absorptances_grating[i,:] = A_grating.cpu()
+    return Absorptances_film, Absorptances_grating
 
     
 
