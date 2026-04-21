@@ -196,7 +196,7 @@ def get_absorptance_curve(params, wavelengths,
 
     
 
-def plot_fields(sim, x_plot, z_plot, wavelength, polarization, inc_ang, azi_ang, global_max=None):
+def plot_fields(sim, x_plot, z_plot, wavelength, polarization, inc_ang, azi_ang):
     """
     Plots a 4x3 grid of fields:
     Row 0: |E|, |Ex|, |Ey|, |Ez|
@@ -283,4 +283,4 @@ def plot_fields(sim, x_plot, z_plot, wavelength, polarization, inc_ang, azi_ang,
     title = f'xz-plane field distribution at $\\lambda$ = {wavelength} nm and y = 0 nm \n polarization -> {'p' if polarization[0] else 's'}\n incident angle = {inc_ang*180/np.pi:.1f}°, azimuthal angle = {azi_ang*180/np.pi:.1f}°'
     fig.suptitle(title, fontsize=16)
     
-    return
+    return fig, axes
