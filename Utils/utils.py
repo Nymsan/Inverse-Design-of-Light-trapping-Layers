@@ -91,12 +91,8 @@ def get_absorptance(params, wavelength=torch.tensor(700, dtype=geo_dtype), inc_a
     order = [order_N, 0]
 
     A = torch.sum(params[:, 0])
-    if n_layers > 1:
-        sine_eps = get_staircase_sine_eps(x=torcwa.rcwa_geo.x, params=params, grating_period=grating_period,
-                                         num_layers=n_layers, eps_high=si_eps(wavelength),subpixel=subpixel)
-    elif n_layers == 1:
-        sine_eps = get_staircase_sine_eps(x=torcwa.rcwa_geo.x, params=params, grating_period=grating_period,
-                                         num_layers=n_layers, eps_high=si_eps(wavelength),subpixel=True)
+    sine_eps = get_staircase_sine_eps(x=torcwa.rcwa_geo.x, params=params, grating_period=grating_period,
+                                         num_layers=n_layers, eps_high=si_eps(wavelength),subpixel=subpixel if n_layers>1 else True)
         
     sim = torcwa.rcwa(freq=1/wavelength, order=order, L=L, dtype=sim_dtype, device=device, avoid_Pinv_instability=True)
     sim.add_input_layer()
