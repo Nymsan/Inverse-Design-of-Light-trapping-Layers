@@ -17,6 +17,8 @@ dependencies = [
     "pvlib>=0.13.1",
     "refractiveindex>=0.0.7",
     "marimo>=0.21.0",
+    "causal-conv1d>=1.4.0",
+    "mamba-ssm[causal-conv1d]>=2.3.1",
 ]
 
 [tool.uv.sources]

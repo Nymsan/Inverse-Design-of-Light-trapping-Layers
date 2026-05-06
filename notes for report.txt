@@ -1,0 +1,9 @@
+remember to write about all convergence considerations.
+
+small j added to wavelength for stability
+
+fails at half the wavelength of the grating period (gemini calls this rayleighs anomaly/a type of woods anomaly)
+
+argue for smoothing/no smoothing
+
+
