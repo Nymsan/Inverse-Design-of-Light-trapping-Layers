@@ -50,7 +50,7 @@ def combine_staircases_to_3D(staircase_x,staircase_y):
     nx, ny = staircase_x.shape[0], staircase_y.shape[0]
     staircase_x = staircase_x.unsqueeze(1).expand(-1,ny,-1)
     staircase_y = staircase_y.unsqueeze(0).expand(nx,-1,-1)
-    return stai
+    return staircase_x + staircase_y
 
 # light
 spectra = spectrum.get_reference_spectra()
