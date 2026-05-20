@@ -43,7 +43,9 @@ def get_staircase_sine_eps(x, params, grating_period, num_layers, eps_high, eps_
 
     eps = torch.clamp((eps_profile - thresholds) / cell_height,min=0,max=1)
     if not subpixel:
-        eps = torch.round(eps)
+            # The Straight-Through Estimator (STE) trick
+            # This avoids killing gradients
+            eps = (torch.round(eps) - eps).detach() + eps
     return eps_low + (eps_high-eps_low)*eps
 
 def combine_staircases_to_3D(staircase_x,staircase_y):
