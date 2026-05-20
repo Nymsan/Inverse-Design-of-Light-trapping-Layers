@@ -7,3 +7,4 @@ fails at half the wavelength of the grating period (gemini calls this rayleighs 
 argue for smoothing/no smoothing
 
 
+Argue that RCWA and other frequency methods are STEADY STATE - ie it automatically captures the infinite geometric series of infinite light passes and so on. This is in contrast to FDTD and so on.

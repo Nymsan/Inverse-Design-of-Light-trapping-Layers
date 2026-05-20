@@ -15,7 +15,7 @@ geo_dtype = torch.float32
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def get_staircase_sine_eps(x, params, grating_period, num_layers, eps_high, eps_low=1.,subpixel=True):
-    """Generate sine grating in stepwise approximation.
+    """Generate sine grating in staircase approximation.
 
     Args:
         x (torch.tensor): 1D tensor of x positions.
@@ -45,6 +45,12 @@ def get_staircase_sine_eps(x, params, grating_period, num_layers, eps_high, eps_
     if not subpixel:
         eps = torch.round(eps)
     return eps_low + (eps_high-eps_low)*eps
+
+def combine_staircases_to_3D(staircase_x,staircase_y):
+    nx, ny = staircase_x.shape[0], staircase_y.shape[0]
+    staircase_x = staircase_x.unsqueeze(1).expand(-1,ny,-1)
+    staircase_y = staircase_y.unsqueeze(0).expand(nx,-1,-1)
+    return stai
 
 # light
 spectra = spectrum.get_reference_spectra()
@@ -154,18 +160,18 @@ def get_absorptance(params, wavelength=torch.tensor(700, dtype=geo_dtype), inc_a
             'T': P_bot / P_inc,
             'P_abs_film': P_top - P_bot,
             'P_abs_grating': P_air - P_top,
-            'P_slices': torch.tensor([P_inc,P_top, P_bot, P_air], device=device)
+            #'P_slices': torch.stack([P_inc,P_top, P_bot, P_air])
         }
 
-    A_film = torch.tensor([results[0]['A_film'], results[1]['A_film']], device=device)
-    A_grating = torch.tensor([results[0]['A_grating'], results[1]['A_grating']], device=device)
-    Reflectance = torch.tensor([results[0]['R'], results[1]['R']], device=device)
-    Transmittance = torch.tensor([results[0]['T'], results[1]['T']], device=device)
-    P_abs_film = torch.tensor([results[0]['P_abs_film'], results[1]['P_abs_film']], device=device)
-    P_abs_grating = torch.tensor([results[0]['P_abs_grating'], results[1]['P_abs_grating']], device=device)
-    P_slices = torch.stack([results[0]['P_slices'], results[1]['P_slices']])
+    A_film = torch.stack([results[0]['A_film'], results[1]['A_film']])
+    A_grating = torch.stack([results[0]['A_grating'], results[1]['A_grating']])
+    Reflectance = torch.stack([results[0]['R'], results[1]['R']])
+    Transmittance = torch.stack([results[0]['T'], results[1]['T']])
+    P_abs_film = torch.stack([results[0]['P_abs_film'], results[1]['P_abs_film']])
+    P_abs_grating = torch.stack([results[0]['P_abs_grating'], results[1]['P_abs_grating']])
+    #P_slices = torch.stack([results[0]['P_slices'], results[1]['P_slices']])
 
-    return sim, sine_eps, A_film, A_grating, Reflectance, Transmittance, P_abs_film, P_abs_grating, P_slices
+    return sim, sine_eps, A_film, A_grating, Reflectance, Transmittance, P_abs_film, P_abs_grating#, P_slices
 
 def get_weighted_absorptance(params, wavelengths,
                              inc_ang=0, azi_ang=0, grating_period=1000, h=1000, order_N=40, nx=5000, ny=1,  n_layers=100, 
@@ -208,12 +214,10 @@ def get_absorptance_curve(params, wavelengths,
 
     
 
-def plot_fields(sim, x_plot, z_plot, wavelength, polarization, inc_ang, azi_ang, params, grating_period, h):
+def plot_fields(sim, x_plot, z_plot, wavelength, polarization, inc_ang, azi_ang, params, grating_period, h, field=None):
     """
-    Plots a 4x3 grid of fields:
-    Row 0: |E|, |Ex|, |Ey|, |Ez|
-    Row 1: |H|, |Hx|, |Hy|, |Hz|
-    Row 2: |S|, Sx, Sy, Sz
+    Plots fields. If `field` is None, plots a 4x3 grid.
+    If `field` is a string (e.g., 'Ex', 'Snorm'), plots only that field.
     """
     sim.source_planewave(amplitude=polarization, direction='forward', notation='ps')
     
@@ -238,9 +242,53 @@ def plot_fields(sim, x_plot, z_plot, wavelength, polarization, inc_ang, azi_ang,
     z_cpu = z_plot.cpu().numpy()
     extent = [x_cpu[0], x_cpu[-1], z_cpu[0], z_cpu[-1]]
 
+    # Calculate the boundaries once
+    z_wavy, grating_height = get_continuous_boundary(x_plot, params, grating_period)
+    z_wavy_np = z_wavy.cpu().numpy()
+    z_top = grating_height + h
+    
+    title_base = f"xz-plane field distribution at $\\lambda$ = {wavelength} nm and y = 0 nm \n polarization -> {polarization} in ps basis\n incident angle = {inc_ang*180/np.pi:.1f}°, azimuthal angle = {azi_ang*180/np.pi:.1f}°"
+
+    if field is not None:
+        # Dictionary for single-plot selection
+        field_dict = {
+            'Enorm': Enorm, 'Ex': torch.real(Ex).abs(), 'Ey': torch.real(Ey).abs(), 'Ez': torch.real(Ez).abs(),
+            'Hnorm': Hnorm, 'Hx': torch.real(Hx).abs(), 'Hy': torch.real(Hy).abs(), 'Hz': torch.real(Hz).abs(),
+            'Snorm': Snorm, 'Sx': Sx.abs(), 'Sy': Sy.abs(), 'Sz': Sz.abs()
+        }
+        
+        if field not in field_dict:
+            raise ValueError(f"Field '{field}' not recognized. Choose from: {list(field_dict.keys())}")
+
+        fig, ax = plt.subplots(figsize=(5, 8))
+        plot_tensor = field_dict[field]
+        
+        im = ax.imshow(plot_tensor.T.cpu(), cmap='jet', origin='lower', extent=extent)
+        
+        # Geometry outline
+        ax.plot(x_cpu, z_wavy_np, color='black', linewidth=5, linestyle='-')
+        ax.plot([x_cpu[0], x_cpu[-1]], [z_top, z_top], color='black', linewidth=5, linestyle='-')
+        ax.plot(x_cpu, z_wavy_np, color='white', linewidth=3, linestyle='-')
+        ax.plot([x_cpu[0], x_cpu[-1]], [z_top, z_top], color='white', linewidth=3, linestyle='-')
+        ax.set_ylim([z_cpu[0], z_cpu[-1]])
+        ax.set_xlim([x_cpu[0], x_cpu[-1]])
+        
+        # Formatting
+        ax.set(title=f'{field} (real abs)' if 'norm' not in field else field, xlabel='x (nm)', ylabel='z (nm)')
+        
+        # Dynamic colorbar label
+        cbar_label = 'S (A.U.)' if 'S' in field else ('H (A.U.)' if 'H' in field else 'E (A.U.)')
+        cbar = fig.colorbar(im, ax=ax, shrink=0.7)
+        cbar.set_label(cbar_label)
+        
+        #fig.suptitle(title_base, fontsize=12)
+        fig.tight_layout()
+        
+        return fig, ax
+
+    # --- 3x4 Grid Plotting Logic ---
     fig, axes = plt.subplots(figsize=(15, 12), nrows=3, ncols=4)
     
-    # compute per-row vmin/vmax so each row shares a common color scale
     row0_imgs = [Enorm, torch.real(Ex).abs(), torch.real(Ey).abs(), torch.real(Ez).abs()]
     row1_imgs = [Hnorm, torch.real(Hx).abs(), torch.real(Hy).abs(), torch.real(Hz).abs()]
     row2_imgs = [Snorm, Sx.abs(), Sy.abs(), Sz.abs()]
@@ -281,33 +329,21 @@ def plot_fields(sim, x_plot, z_plot, wavelength, polarization, inc_ang, azi_ang,
     axes[2,2].set(title='Sy abs', xlabel='x (nm)', ylabel='z (nm)')
     axes[2,3].imshow(Sz.abs().T.cpu(), cmap='jet', origin='lower', extent=extent, vmin=row2_vmin, vmax=row2_vmax)
     axes[2,3].set(title='Sz abs', xlabel='x (nm)', ylabel='z (nm)')
-
-    # Calculate the boundaries once
-    z_wavy, grating_height = get_continuous_boundary(x_plot, params, grating_period)
-    z_wavy_np = z_wavy.cpu().numpy()
-    z_top = grating_height + h
     
-    # Loop over every subplot in the 4x3 grid and draw the lines
     for ax in axes.flat:
-        # 1. Wavy bottom interface
         ax.plot(x_cpu, z_wavy_np, color='white', linewidth=1, linestyle='-')
-        
-        # 2. Flat top wall
         ax.plot([x_cpu[0], x_cpu[-1]], [z_top, z_top], color='white', linewidth=1, linestyle='-')
         ax.set_ylim([z_cpu[0], z_cpu[-1]])
         ax.set_xlim([x_cpu[0], x_cpu[-1]])
 
-    # adjust layout to leave room on the right for three colorbars
     fig.subplots_adjust(right=0.92, hspace=0.35, wspace=0.3)
 
-    # one colorbar per row
     cbar0 = fig.colorbar(im0, ax=axes[0, :], location='right', shrink=0.9, pad=0.02)
     cbar0.set_label('E (A.U.)')
     cbar1 = fig.colorbar(im4, ax=axes[1, :], location='right', shrink=0.9, pad=0.02)
     cbar1.set_label('H (A.U.)')
     cbar2 = fig.colorbar(im8, ax=axes[2, :], location='right', shrink=0.9, pad=0.02)
     cbar2.set_label('S (A.U.)')
-    title = f"xz-plane field distribution at $\\lambda$ = {wavelength} nm and y = 0 nm \n polarization -> {polarization} in ps basis\n incident angle = {inc_ang*180/np.pi:.1f}°, azimuthal angle = {azi_ang*180/np.pi:.1f}°"
-    fig.suptitle(title, fontsize=16)
+    fig.suptitle(title_base, fontsize=16)
     
     return fig, axes
