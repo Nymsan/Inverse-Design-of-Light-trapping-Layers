@@ -11,4 +11,4 @@ Argue that RCWA and other frequency methods are STEADY STATE - ie it automatical
 
 Remember to do the convergence check for num layers with a sinc like function. Right now it is for a grating of height 40 (both comsol and rcwa), but perhaps for a higher grating, it will require more steps. It might be that the convergence criteria is not a number of layers but a max layer height.
 
-Instead of doing convergence for entire curves, also do a check where both order_n and num_layers is checked. Instead of doing it for absorptance curves, just do it for a single structure at a single wavelength, and choose a hard example, for example a sinc function
+Instead of doing convergence for entire curves, also do a check where both order_n and num_layers is checked. Instead of doing it for absorptance curves, just do it for a single structure at a single wavelength, and choose a hard example, for example a sinc function.
