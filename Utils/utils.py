@@ -214,7 +214,7 @@ def get_absorptance_curve(params, wavelengths,
 
     
 
-def plot_fields(sim, x_plot, z_plot, wavelength, polarization, inc_ang, azi_ang, params, grating_period, h, field=None):
+def plot_fields(sim, x_plot, z_plot, wavelength, polarization, inc_ang, azi_ang, params, grating_period, h, field=None,thickness=2):
     """
     Plots fields. If `field` is None, plots a 4x3 grid.
     If `field` is a string (e.g., 'Ex', 'Snorm'), plots only that field.
@@ -252,9 +252,9 @@ def plot_fields(sim, x_plot, z_plot, wavelength, polarization, inc_ang, azi_ang,
     if field is not None:
         # Dictionary for single-plot selection
         field_dict = {
-            'Enorm': Enorm, 'Ex': torch.real(Ex).abs(), 'Ey': torch.real(Ey).abs(), 'Ez': torch.real(Ez).abs(),
-            'Hnorm': Hnorm, 'Hx': torch.real(Hx).abs(), 'Hy': torch.real(Hy).abs(), 'Hz': torch.real(Hz).abs(),
-            'Snorm': Snorm, 'Sx': Sx.abs(), 'Sy': Sy.abs(), 'Sz': Sz.abs()
+            'E norm': Enorm, 'Ex': torch.real(Ex).abs(), 'Ey': torch.real(Ey).abs(), 'Ez': torch.real(Ez).abs(),
+            'H norm': Hnorm, 'Hx': torch.real(Hx).abs(), 'Hy': torch.real(Hy).abs(), 'Hz': torch.real(Hz).abs(),
+            'S norm': Snorm, 'Sx': Sx.abs(), 'Sy': Sy.abs(), 'Sz': Sz.abs()
         }
         
         if field not in field_dict:
@@ -266,10 +266,10 @@ def plot_fields(sim, x_plot, z_plot, wavelength, polarization, inc_ang, azi_ang,
         im = ax.imshow(plot_tensor.T.cpu(), cmap='jet', origin='lower', extent=extent)
         
         # Geometry outline
-        ax.plot(x_cpu, z_wavy_np, color='black', linewidth=5, linestyle='-')
-        ax.plot([x_cpu[0], x_cpu[-1]], [z_top, z_top], color='black', linewidth=5, linestyle='-')
-        ax.plot(x_cpu, z_wavy_np, color='white', linewidth=3, linestyle='-')
-        ax.plot([x_cpu[0], x_cpu[-1]], [z_top, z_top], color='white', linewidth=3, linestyle='-')
+        ax.plot(x_cpu, z_wavy_np, color='black', linewidth=thickness+2, linestyle='-')
+        ax.plot([x_cpu[0], x_cpu[-1]], [z_top, z_top], color='black', linewidth=thickness+2, linestyle='-')
+        ax.plot(x_cpu, z_wavy_np, color='white', linewidth=thickness, linestyle='-')
+        ax.plot([x_cpu[0], x_cpu[-1]], [z_top, z_top], color='white', linewidth=thickness, linestyle='-')
         ax.set_ylim([z_cpu[0], z_cpu[-1]])
         ax.set_xlim([x_cpu[0], x_cpu[-1]])
         

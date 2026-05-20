@@ -2157,7 +2157,7 @@ requires-dist = [
     { name = "matplotlib", specifier = ">=3.10.7" },
     { name = "numpy", specifier = ">=2.3.5" },
     { name = "pvlib", specifier = ">=0.13.1" },
-    { name = "refractiveindex", specifier = ">=0.0.7" },
+    { name = "refractiveindex", specifier = ">=1.0.2" },
     { name = "scipy", specifier = ">=1.16.3" },
     { name = "torch", specifier = ">=2.9.1", index = "https://download.pytorch.org/whl/cu130" },
     { name = "torcwa", specifier = ">=0.1.4.2" },

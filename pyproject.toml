@@ -15,10 +15,10 @@ dependencies = [
     "line-profiler>=5.0.0",
     "tqdm>=4.67.1",
     "pvlib>=0.13.1",
-    "refractiveindex>=0.0.7",
     "marimo>=0.21.0",
     "causal-conv1d>=1.4.0",
     "mamba-ssm[causal-conv1d]>=2.3.1",
+    "refractiveindex>=1.0.2",
 ]
 
 [tool.uv.sources]
