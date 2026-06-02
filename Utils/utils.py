@@ -14,45 +14,75 @@ sim_dtype = torch.complex64
 geo_dtype = torch.float32
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-def get_staircase_sine_eps(x, params, grating_period, num_layers, eps_high, eps_low=1.,subpixel=True):
-    """Generate sine grating in staircase approximation.
+from typing import Optional
+from dataclasses import dataclass
 
-    Args:
-        x (torch.tensor): 1D tensor of x positions.
-        params (torch.Tensor): list of amplitude and phase shift. shape (n,2).
-        grating_period (float): Period of the grating.
-        num_layers (int): number of layers for stepwise approximation.
-        eps_high (complex): Permittivity of high-index material.
-        eps_low (complex, optional): Permittivity of low-index material. Defaults to 1.
+@dataclass
+class RCWAConfig:
+    grating_period: float = 1000.0
+    grating_period_y: Optional[float] = None
+    h: float = 1000.0
+    order_N: int = 15
+    order_N_y: Optional[int] = None
+    nx: int = 1000
+    ny: int = 1
+    n_layers: int = 10
+    subpixel: bool = True
+    add_reflector: bool = True
+    reflector_type: str = 'pec'
+    inc_ang: float = 0.0
+    azi_ang: float = 0.0
 
-    Returns:
-        torch.tensor: 2D tensor of permittivity profile with shape (nx,num_layers).
-    """
-    grating_height = 2*torch.sum(params[:, 0]) + 1e-9
-    freqs = torch.arange(1, params.shape[0]+1, dtype=x.dtype, device=x.device).unsqueeze(1)
-    cosines = torch.cos(2. * np.pi * freqs * (x.unsqueeze(0) / grating_period) - params[:, 1].unsqueeze(1))
+def split_params_3d(params):
+    """Split a combined params tensor of shape (2, n, 2) or a tuple into params_x and params_y."""
+    if isinstance(params, (list, tuple)) and len(params) == 2:
+        return params[0], params[1]
+    if isinstance(params, torch.Tensor) and params.dim() == 3 and params.shape[0] == 2:
+        return params[0], params[1]
+    return params, None
+
+def _compute_1d_profile(r, params, grating_period):
+    """Compute 1D grating profile. Returns height_profile, peak_to_peak_height."""
+    grating_height = 2 * torch.sum(params[:, 0]) + 1e-9
+    freqs = torch.arange(1, params.shape[0]+1, dtype=r.dtype, device=r.device).unsqueeze(1)
+    cosines = torch.cos(2. * np.pi * freqs * (r.unsqueeze(0) / grating_period) - params[:, 1].unsqueeze(1))
     cosines = cosines * params[:, 0].unsqueeze(1)
-    eps_profile = grating_height/2 + torch.sum(cosines, dim=0)
+    profile = grating_height / 2 + torch.sum(cosines, dim=0)
+    return profile, grating_height
 
-    nx = x.shape[0]
-    cell_height = grating_height / num_layers
+def get_staircase_sine_eps(x, params_x, grating_period, num_layers, eps_high, eps_low=1., subpixel=True, y=None, params_y=None, grating_period_y=None):
+    """Generate sine grating in staircase approximation. Supports 1D and 2D gratings."""
+    params_x, params_y_split = split_params_3d(params_x)
+    params_y = params_y if params_y is not None else params_y_split
+    grating_period_y = grating_period_y or grating_period
     
-    thresholds = torch.arange(0, num_layers, device=x.device) * cell_height
-    thresholds = thresholds.unsqueeze(0).expand(nx,-1)
-    eps_profile = eps_profile.unsqueeze(1).expand(-1,num_layers)
+    profile_x, height_x = _compute_1d_profile(x, params_x, grating_period)
+    
+    if params_y is not None and y is not None:
+        profile_y, height_y = _compute_1d_profile(y, params_y, grating_period_y)
+        eps_profile = profile_x.unsqueeze(1) + profile_y.unsqueeze(0)
+        grating_height = height_x + height_y
+        nx, ny = x.shape[0], y.shape[0]
+        thresholds = torch.arange(0, num_layers, device=x.device) * (grating_height / num_layers)
+        thresholds = thresholds.unsqueeze(0).unsqueeze(0).expand(nx, ny, -1)
+        eps_profile = eps_profile.unsqueeze(-1).expand(-1, -1, num_layers)
+    else:
+        eps_profile = profile_x
+        grating_height = height_x
+        nx = x.shape[0]
+        thresholds = torch.arange(0, num_layers, device=x.device) * (grating_height / num_layers)
+        thresholds = thresholds.unsqueeze(0).expand(nx, -1)
+        eps_profile = eps_profile.unsqueeze(1).expand(-1, num_layers)
 
-    eps = torch.clamp((eps_profile - thresholds) / cell_height,min=0,max=1)
+    cell_height = grating_height / num_layers
+    eps = torch.clamp((eps_profile - thresholds) / cell_height, min=0, max=1)
+    
     if not subpixel:
-            # The Straight-Through Estimator (STE) trick
-            # This avoids killing gradients
-            eps = (torch.round(eps) - eps).detach() + eps
-    return eps_low + (eps_high-eps_low)*eps
-
-def combine_staircases_to_3D(staircase_x,staircase_y):
-    nx, ny = staircase_x.shape[0], staircase_y.shape[0]
-    staircase_x = staircase_x.unsqueeze(1).expand(-1,ny,-1)
-    staircase_y = staircase_y.unsqueeze(0).expand(nx,-1,-1)
-    return staircase_x + staircase_y
+        # The Straight-Through Estimator (STE) trick
+        # This avoids killing gradients        eps = (torch.round(eps) - eps).detach() + eps
+        eps = (torch.round(eps) - eps).detach() + eps
+        
+    return eps_low + (eps_high - eps_low) * eps
 
 # light
 spectra = spectrum.get_reference_spectra()
@@ -71,23 +101,30 @@ def ag_eps(w):
     return torch.tensor(ag.get_refractive_index(w) + 1j * ag.get_extinction_coefficient(w), 
                         dtype=sim_dtype, device=device)**2
 
-def get_continuous_boundary(x, params, grating_period):
-    """Extracts the continuous 1D wavy boundary, corrected for peak-to-peak height."""
-    grating_height = 2*torch.sum(params[:, 0]) + 1e-9
-    freqs = torch.arange(1, params.shape[0]+1, dtype=x.dtype, device=x.device).unsqueeze(1)
-    cosines = torch.cos(2. * np.pi * freqs * (x.unsqueeze(0) / grating_period) - params[:, 1].unsqueeze(1))
-    cosines = cosines * params[:, 0].unsqueeze(1)
+def get_continuous_boundary(x, params_x, grating_period, y=None, params_y=None, grating_period_y=None):
+    """Extracts the continuous wavy boundary. Returns the boundary and the grating height."""
+    params_x, params_y_split = split_params_3d(params_x)
+    params_y = params_y if params_y is not None else params_y_split
+    grating_period_y = grating_period_y or grating_period
     
-    # Original profile
-    original_profile = grating_height/2 + torch.sum(cosines, dim=0)
+    profile_x, height_x = _compute_1d_profile(x, params_x, grating_period)
     
-    # Invert it because torcwa layers were added in reverse (-1-i)
+    if params_y is not None and y is not None:
+        profile_y, height_y = _compute_1d_profile(y, params_y, grating_period_y)
+        original_profile = profile_x.unsqueeze(1) + profile_y.unsqueeze(0)
+        grating_height = height_x + height_y
+    else:
+        original_profile = profile_x
+        grating_height = height_x
+        
     z_boundary = grating_height - original_profile
 
     return z_boundary, grating_height.item()
     
-def get_incident_power(pol,wavelength,inc_ang,azi_ang,grating_period,order):
-    L = [grating_period,grating_period]
+def get_incident_power(pol,wavelength,inc_ang,azi_ang,grating_period,order,grating_period_y=None):
+    is_3d = order[1] > 0
+    grating_period_y = grating_period_y or grating_period
+    L = [grating_period, grating_period_y]
     sim = torcwa.rcwa(freq=1/wavelength, order=order, L=L, dtype=sim_dtype, device=device, avoid_Pinv_instability=True)
     sim.add_input_layer()
     sim.add_output_layer()
@@ -97,24 +134,53 @@ def get_incident_power(pol,wavelength,inc_ang,azi_ang,grating_period,order):
     [Ex, Ey, Ez], [Hx, Hy, Hz] = sim.field_xz(torch.tensor([0],device=device), torch.tensor([0]), y=0.0)
     P_inc = 0.5 * torch.real(Ex * torch.conj(Hy) - Ey * torch.conj(Hx))
 
-    return P_inc.item()*grating_period
+    if is_3d:
+        return P_inc.item() * grating_period * grating_period_y
+    return P_inc.item() * grating_period
 
-def get_absorptance(params, wavelength=torch.tensor(700, dtype=geo_dtype), inc_ang=0, azi_ang=0, grating_period=1000, h=1000,
-                    order_N=40, nx=5000, ny=1, n_layers=100, add_reflector=False, reflector_type='pec',subpixel=True):
+def get_absorptance(params_x, params_y, wavelength, config: RCWAConfig):
+    inc_ang, azi_ang = config.inc_ang, config.azi_ang
+    grating_period, grating_period_y, h = config.grating_period, config.grating_period_y, config.h
+    order_N, order_N_y = config.order_N, config.order_N_y
+    nx, ny, n_layers, subpixel = config.nx, config.ny, config.n_layers, config.subpixel
+    add_reflector, reflector_type = config.add_reflector, config.reflector_type
+    if not isinstance(wavelength, torch.Tensor):
+        wavelength = torch.tensor(wavelength, dtype=geo_dtype)
+    params_x, params_y_split = split_params_3d(params_x)
+    params_y = params_y if params_y is not None else params_y_split
+    is_3d = params_y is not None
+    
+    grating_period_y = grating_period_y or grating_period
+    order_N_y = order_N_y if order_N_y is not None else (order_N if is_3d else 0)
+    
+    if not is_3d:
+        order_N_y = 0
+        ny = 1
+    elif is_3d and ny == 1:
+        ny = nx  # scale ny if not explicitly provided
+        
     torcwa.rcwa_geo.dtype = geo_dtype
     torcwa.rcwa_geo.device = device
     torcwa.rcwa_geo.Lx = grating_period
-    torcwa.rcwa_geo.Ly = grating_period
+    torcwa.rcwa_geo.Ly = grating_period_y
     torcwa.rcwa_geo.nx = nx
     torcwa.rcwa_geo.ny = ny
     torcwa.rcwa_geo.grid()
-    L = [grating_period,grating_period]
+    L = [grating_period, grating_period_y]
     
-    order = [order_N, 0]
+    order = [order_N, order_N_y]
 
-    grating_height = 2*torch.sum(params[:, 0])
-    sine_eps = get_staircase_sine_eps(x=torcwa.rcwa_geo.x, params=params, grating_period=grating_period,
-                                         num_layers=n_layers, eps_high=si_eps(wavelength),subpixel=subpixel if n_layers>1 else True)
+    _, grating_height = get_continuous_boundary(
+        torcwa.rcwa_geo.x, params_x, grating_period,
+        y=torcwa.rcwa_geo.y if is_3d else None,
+        params_y=params_y, grating_period_y=grating_period_y
+    )
+
+    sine_eps = get_staircase_sine_eps(
+        x=torcwa.rcwa_geo.x, params_x=params_x, grating_period=grating_period,
+        num_layers=n_layers, eps_high=si_eps(wavelength), subpixel=subpixel if n_layers>1 else True,
+        y=torcwa.rcwa_geo.y if is_3d else None, params_y=params_y, grating_period_y=grating_period_y
+    )
         
     sim = torcwa.rcwa(freq=1/wavelength, order=order, L=L, dtype=sim_dtype, device=device, avoid_Pinv_instability=True)
     sim.add_input_layer()
@@ -127,32 +193,56 @@ def get_absorptance(params, wavelength=torch.tensor(700, dtype=geo_dtype), inc_a
 
         sim.add_output_layer(eps=reflector_eps)
     else:
-        sim.add_output_layer
+        sim.add_output_layer()
 
     sim.set_incident_angle(inc_ang=inc_ang, azi_ang=azi_ang)
     
-    for i in range(sine_eps.shape[1]):
-        sim.add_layer(thickness=grating_height/sine_eps.shape[1], eps=sine_eps[:, -1-i, None])
+    for i in range(sine_eps.shape[-1]):
+        eps_slice = sine_eps[..., -1-i]
+        if not is_3d:
+            eps_slice = eps_slice.unsqueeze(-1)
+        sim.add_layer(thickness=grating_height/sine_eps.shape[-1], eps=eps_slice)
         
     sim.add_layer(thickness=h, eps=si_eps(wavelength))
     
 
     sim.solve_global_smatrix()
 
-    z_top = grating_height # top of bulk layer, bottom of grating
-    z_bot = grating_height + h #bottom of bulk
+    z_top = torch.tensor(grating_height, device=device, dtype=geo_dtype) # top of bulk layer, bottom of grating
+    z_bot = torch.tensor(grating_height + h, device=device, dtype=geo_dtype) #bottom of bulk
     z_air = torch.tensor(-5 * h, device=device, dtype=geo_dtype)
     
     results = {}
     for pol_idx, pol in enumerate([[1., 0.], [0., 1.]]): #first result is p-pol, second s-pol
-        P_inc = get_incident_power(pol=pol,wavelength=wavelength,inc_ang=inc_ang,azi_ang=azi_ang,grating_period=grating_period,order=order)
+        P_inc = get_incident_power(pol=pol,wavelength=wavelength,inc_ang=inc_ang,azi_ang=azi_ang,grating_period=grating_period,order=order,grating_period_y=grating_period_y)
         sim.source_planewave(amplitude=pol, direction='forward', notation='ps')
-        [Ex, Ey, Ez], [Hx, Hy, Hz] = sim.field_xz(torcwa.rcwa_geo.x, torch.stack((z_top, z_bot, z_air)), y=0.0)
-        S_z = 0.5 * torch.real(Ex * torch.conj(Hy) - Ey * torch.conj(Hx))
         
-        P_top = torch.trapezoid(S_z[:, 0], torcwa.rcwa_geo.x)
-        P_bot = torch.trapezoid(S_z[:, 1], torcwa.rcwa_geo.x)
-        P_air = torch.trapezoid(S_z[:, 2], torcwa.rcwa_geo.x)
+        if is_3d:
+            area = grating_period * grating_period_y
+            
+            # z_air (incident space, layer_num=-1)
+            [Ex, Ey, Ez], [Hx, Hy, Hz] = sim.field_xy(-1, torcwa.rcwa_geo.x, torcwa.rcwa_geo.y, z_prop=-5*h)
+            S_z_air = 0.5 * torch.real(Ex * torch.conj(Hy) - Ey * torch.conj(Hx))
+            P_air = torch.mean(S_z_air) * area
+            
+            # z_top (top of bulk layer = layer num_layers, z_prop=0)
+            [Ex, Ey, Ez], [Hx, Hy, Hz] = sim.field_xy(n_layers, torcwa.rcwa_geo.x, torcwa.rcwa_geo.y, z_prop=0.0)
+            S_z_top = 0.5 * torch.real(Ex * torch.conj(Hy) - Ey * torch.conj(Hx))
+            P_top = torch.mean(S_z_top) * area
+            
+            # z_bot (top of output space = layer num_layers+1, z_prop=0)
+            [Ex, Ey, Ez], [Hx, Hy, Hz] = sim.field_xy(n_layers+1, torcwa.rcwa_geo.x, torcwa.rcwa_geo.y, z_prop=0.0)
+            S_z_bot = 0.5 * torch.real(Ex * torch.conj(Hy) - Ey * torch.conj(Hx))
+            P_bot = torch.mean(S_z_bot) * area
+        else:
+            [Ex, Ey, Ez], [Hx, Hy, Hz] = sim.field_xz(torcwa.rcwa_geo.x, torch.stack((z_top, z_bot, z_air)), y=0.0)
+            S_z = 0.5 * torch.real(Ex * torch.conj(Hy) - Ey * torch.conj(Hx))
+            
+            length = grating_period
+            P_top = torch.mean(S_z[:, 0]) * length
+            P_bot = torch.mean(S_z[:, 1]) * length
+            P_air = torch.mean(S_z[:, 2]) * length
+            
         #TODO Add a sanity check using a volume integral for the power.
         
         results[pol_idx] = {
@@ -175,10 +265,14 @@ def get_absorptance(params, wavelength=torch.tensor(700, dtype=geo_dtype), inc_a
 
     return sim, sine_eps, A_film, A_grating, Reflectance, Transmittance, P_abs_film, P_abs_grating#, P_slices
 
-def get_weighted_absorptance(params, wavelengths,
-                             inc_ang=0, azi_ang=0, grating_period=1000, h=1000, order_N=40, nx=5000, ny=1,  n_layers=100, 
-                             add_reflector=False, reflector_type='pec',subpixel=True):
-    L = [float(grating_period), 1.0]
+def get_weighted_absorptance(params_x, params_y, wavelengths, config: RCWAConfig):
+    inc_ang, azi_ang = config.inc_ang, config.azi_ang
+    grating_period, grating_period_y, h = config.grating_period, config.grating_period_y, config.h
+    order_N, order_N_y = config.order_N, config.order_N_y
+    nx, ny, n_layers, subpixel = config.nx, config.ny, config.n_layers, config.subpixel
+    add_reflector, reflector_type = config.add_reflector, config.reflector_type
+    grating_period_y = grating_period_y or grating_period
+    L = [float(grating_period), float(grating_period_y)]
     weights = sun_weights(wavelengths)
     sum_am15g = torch.sum(weights)
     sum_photons = torch.sum(weights * wavelengths.to(device))
@@ -187,10 +281,13 @@ def get_weighted_absorptance(params, wavelengths,
     running_photon_weight = 0.0
     
     for i, wavelength in enumerate(wavelengths):
-        A_film = get_absorptance(params=params, wavelength=wavelength, inc_ang=inc_ang, azi_ang=azi_ang,
-                                                  grating_period=grating_period, n_layers=n_layers, h=h, 
-                                                  order_N=order_N, nx=nx, add_reflector=add_reflector,
-                                                  reflector_type=reflector_type,subpixel=subpixel)[2]
+        temp_config = RCWAConfig(
+            grating_period=grating_period, grating_period_y=grating_period_y, h=h,
+            order_N=order_N, order_N_y=order_N_y, nx=nx, ny=ny, n_layers=n_layers, subpixel=subpixel,
+            add_reflector=add_reflector, reflector_type=reflector_type,
+            inc_ang=inc_ang, azi_ang=azi_ang
+        )
+        A_film = get_absorptance(params_x=params_x, params_y=params_y, wavelength=wavelength, config=temp_config)[2]
         mean_A = torch.mean(A_film)
         running_sun_weight += weights[i] * mean_A
         running_photon_weight += weights[i] * mean_A * wavelength.to(device)
@@ -199,16 +296,22 @@ def get_weighted_absorptance(params, wavelengths,
     weighted_A_photon = running_photon_weight / sum_photons
     return weighted_A_sun, weighted_A_photon
 
-def get_absorptance_curve(params, wavelengths,
-                             inc_ang=0, azi_ang=0, grating_period=1000, h=1000, order_N=40, nx=5000, ny=1,  n_layers=100, 
-                             add_reflector=False, reflector_type='pec',subpixel=True):
+def get_absorptance_curve(params_x, params_y, wavelengths, config: RCWAConfig):
+    inc_ang, azi_ang = config.inc_ang, config.azi_ang
+    grating_period, grating_period_y, h = config.grating_period, config.grating_period_y, config.h
+    order_N, order_N_y = config.order_N, config.order_N_y
+    nx, ny, n_layers, subpixel = config.nx, config.ny, config.n_layers, config.subpixel
+    add_reflector, reflector_type = config.add_reflector, config.reflector_type
     Absorptances_film = torch.zeros_like(wavelengths,dtype=geo_dtype).unsqueeze(1).repeat(1,2)
     Absorptances_grating = torch.zeros_like(wavelengths,dtype=geo_dtype).unsqueeze(1).repeat(1,2)
     for i,wavelength in enumerate(tqdm(wavelengths)):
-        A_film,A_grating = get_absorptance(params=params, wavelength=wavelength, inc_ang=inc_ang, azi_ang=azi_ang,
-                                                  grating_period=grating_period, n_layers=n_layers, h=h, 
-                                                  order_N=order_N, nx=nx, add_reflector=add_reflector,
-                                                  reflector_type=reflector_type,subpixel=subpixel)[2:4]
+        temp_config = RCWAConfig(
+            grating_period=grating_period, grating_period_y=grating_period_y, h=h,
+            order_N=order_N, order_N_y=order_N_y, nx=nx, ny=ny, n_layers=n_layers, subpixel=subpixel,
+            add_reflector=add_reflector, reflector_type=reflector_type,
+            inc_ang=inc_ang, azi_ang=azi_ang
+        )
+        A_film,A_grating = get_absorptance(params_x=params_x, params_y=params_y, wavelength=wavelength, config=temp_config)[2:4]
 
         Absorptances_film[i,:] = A_film.cpu()
         Absorptances_grating[i,:] = A_grating.cpu()
@@ -216,40 +319,190 @@ def get_absorptance_curve(params, wavelengths,
 
     
 
-def plot_fields(sim, x_plot, z_plot, wavelength, polarization, inc_ang, azi_ang, params, grating_period, h, field=None,thickness=2):
+def plot_fields(sim, x_plot, z_plot, wavelength, polarization, params_x, params_y, config: RCWAConfig, field=None, thickness=2, y_plot=None, slice_plane='xz', slice_val=0.0):
+    inc_ang, azi_ang = config.inc_ang, config.azi_ang
+    grating_period, grating_period_y, h = config.grating_period, config.grating_period_y, config.h
     """
-    Plots fields. If `field` is None, plots a 4x3 grid.
+    Plots fields for a chosen 2D slice plane ('xz', 'yz', or 'xy').
+    If `field` is None, plots a 4x3 grid.
     If `field` is a string (e.g., 'Ex', 'Snorm'), plots only that field.
     """
     sim.source_planewave(amplitude=polarization, direction='forward', notation='ps')
-    
-    # Ensure inputs are on the same device as the simulation
     dev = sim._device
-    x_plot = x_plot.to(dev)
-    z_plot = z_plot.to(dev)
-    
-    [Ex, Ey, Ez], [Hx, Hy, Hz] = sim.field_xz(x_plot, z_plot, torch.tensor(0.0, device=dev))
-    
-    # Field magnitudes
+    x_plot = x_plot.to(dev) if x_plot is not None else None
+    z_plot = z_plot.to(dev) if z_plot is not None else None
+    if y_plot is not None:
+        y_plot = y_plot.to(dev)
+
+    # Determine slice fields and extents
+    if slice_plane == 'xz':
+        if x_plot is None or z_plot is None:
+            raise ValueError("x_plot and z_plot must be provided for xz slice.")
+        [Ex, Ey, Ez], [Hx, Hy, Hz] = sim.field_xz(x_plot, z_plot, y=torch.tensor(slice_val, device=dev))
+        v1_cpu, v2_cpu = x_plot.cpu().numpy(), z_plot.cpu().numpy()
+        xlabel, ylabel = 'x (nm)', 'z (nm)'
+        title_base = f"xz-plane field distribution at y = {slice_val} nm"
+        
+    elif slice_plane == 'yz' or slice_plane == 'zy':
+        if y_plot is None or z_plot is None:
+            raise ValueError("y_plot and z_plot must be provided for yz slice.")
+        [Ex, Ey, Ez], [Hx, Hy, Hz] = sim.field_yz(y_plot, z_plot, x=torch.tensor(slice_val, device=dev))
+        v1_cpu, v2_cpu = y_plot.cpu().numpy(), z_plot.cpu().numpy()
+        xlabel, ylabel = 'y (nm)', 'z (nm)'
+        title_base = f"yz-plane field distribution at x = {slice_val} nm"
+        
+    elif slice_plane == 'xy':
+        if x_plot is None or y_plot is None:
+            raise ValueError("x_plot and y_plot must be provided for xy slice.")
+        
+        # Map absolute z (slice_val) to torcwa layer_num and z_prop
+        zm = [0.0]
+        for L in sim.thickness:
+            zm.append(zm[-1] + L)
+            
+        z = slice_val
+        if z < 0:
+            layer_num = -1
+            z_prop = z
+        elif z >= zm[-1]:
+            layer_num = sim.layer_N
+            z_prop = z - zm[-1]
+        else:
+            for l in range(len(zm)-1):
+                if zm[l] <= z < zm[l+1]:
+                    layer_num = l
+                    z_prop = z - zm[l]
+                    break
+                    
+        [Ex, Ey, Ez], [Hx, Hy, Hz] = sim.field_xy(layer_num, x_plot, y_plot, z_prop=z_prop)
+        v1_cpu, v2_cpu = x_plot.cpu().numpy(), y_plot.cpu().numpy()
+        xlabel, ylabel = 'x (nm)', 'y (nm)'
+        title_base = f"xy-plane field distribution at z = {slice_val} nm"
+        
+    else:
+        raise ValueError(f"Unknown slice_plane: {slice_plane}")
+
+    extent = [v1_cpu[0], v1_cpu[-1], v2_cpu[0], v2_cpu[-1]]
+    title_base += f"\n$\\lambda$ = {wavelength} nm, pol = {polarization} in ps-basis \ninc = {inc_ang*180/np.pi:.1f}°, azi = {azi_ang*180/np.pi:.1f}°"
+
+    # Field magnitudes and Poynting vector
     Enorm = torch.sqrt(torch.abs(Ex)**2 + torch.abs(Ey)**2 + torch.abs(Ez)**2)
     Hnorm = torch.sqrt(torch.abs(Hx)**2 + torch.abs(Hy)**2 + torch.abs(Hz)**2)
-    
-    # Poynting vector components
     Sx = 0.5 * torch.real(Ey * torch.conj(Hz) - Ez * torch.conj(Hy))
     Sy = 0.5 * torch.real(Ez * torch.conj(Hx) - Ex * torch.conj(Hz))
     Sz = 0.5 * torch.real(Ex * torch.conj(Hy) - Ey * torch.conj(Hx))
     Snorm = torch.sqrt(Sx**2 + Sy**2 + Sz**2)
 
-    x_cpu = x_plot.cpu().numpy()
-    z_cpu = z_plot.cpu().numpy()
-    extent = [x_cpu[0], x_cpu[-1], z_cpu[0], z_cpu[-1]]
+    # Calculate 2D boundary if it's an xz or yz cross section, or contours for xy
+    if slice_plane == 'xz':
+        if params_y is not None:
+            y_eval = torch.tensor([slice_val], device=dev, dtype=geo_dtype)
+            z_wavy, grating_height = get_continuous_boundary(x_plot, params_x, grating_period, y=y_eval, params_y=params_y, grating_period_y=grating_period_y)
+            z_wavy_np = z_wavy.squeeze(1).cpu().numpy()
+        else:
+            z_wavy, grating_height = get_continuous_boundary(x_plot, params_x, grating_period)
+            z_wavy_np = z_wavy.cpu().numpy()
+        z_top = grating_height + h
+        
+    elif slice_plane in ['yz', 'zy']:
+        if params_y is not None:
+            x_eval = torch.tensor([slice_val], device=dev, dtype=geo_dtype)
+            z_wavy, grating_height = get_continuous_boundary(x=x_eval, params_x=params_x, grating_period=grating_period, y=y_plot, params_y=params_y, grating_period_y=grating_period_y)
+            z_wavy_np = z_wavy.squeeze(0).cpu().numpy()
+            z_top = grating_height + h
+        else:
+            # If there's no Y grating, the profile is constant along Y
+            z_wavy, grating_height = get_continuous_boundary(torch.tensor([slice_val], device=dev, dtype=geo_dtype), params_x, grating_period)
+            z_wavy_np = np.full_like(v1_cpu, z_wavy.item())
+            z_top = grating_height + h
+            
+    elif slice_plane == 'xy':
+        if params_y is not None:
+            z_wavy, grating_height = get_continuous_boundary(x_plot, params_x, grating_period, y=y_plot, params_y=params_y, grating_period_y=grating_period_y)
+        else:
+            z_wavy, grating_height = get_continuous_boundary(x_plot, params_x, grating_period)
+            z_wavy = z_wavy.unsqueeze(1).expand(-1, len(y_plot))
+        z_wavy_np = z_wavy.cpu().numpy()
 
-    # Calculate the boundaries once
-    z_wavy, grating_height = get_continuous_boundary(x_plot, params, grating_period)
-    z_wavy_np = z_wavy.cpu().numpy()
-    z_top = grating_height + h
-    
-    title_base = f"xz-plane field distribution at $\\lambda$ = {wavelength} nm and y = 0 nm \n polarization -> {polarization} in ps basis\n incident angle = {inc_ang*180/np.pi:.1f}°, azimuthal angle = {azi_ang*180/np.pi:.1f}°"
+    def format_ax(ax_to_format):
+        if slice_plane in ['xz', 'yz', 'zy']:
+            ax_to_format.plot(v1_cpu, z_wavy_np, color='black', linewidth=thickness+2, linestyle='-')
+            ax_to_format.plot([v1_cpu[0], v1_cpu[-1]], [z_top, z_top], color='black', linewidth=thickness+2, linestyle='-')
+            ax_to_format.plot(v1_cpu, z_wavy_np, color='white', linewidth=thickness, linestyle='-')
+            ax_to_format.plot([v1_cpu[0], v1_cpu[-1]], [z_top, z_top], color='white', linewidth=thickness, linestyle='-')
+        elif slice_plane == 'xy':
+            if 0 <= slice_val <= grating_height:
+                try:
+                    ax_to_format.contour(v1_cpu, v2_cpu, z_wavy_np.T, levels=[slice_val], colors='white', linewidths=thickness, alpha=0.8)
+                except ValueError:
+                    pass # Fails if slice_val is exactly out of bounds of the surface
+        ax_to_format.set_ylim([v2_cpu[0], v2_cpu[-1]])
+        ax_to_format.set_xlim([v1_cpu[0], v1_cpu[-1]])
+
+    if field == 'sine_eps':
+        eps_high = si_eps(wavelength)
+        sine_eps = get_staircase_sine_eps(x_plot, params_x, grating_period, config.n_layers, eps_high, subpixel=config.subpixel, y=y_plot, params_y=params_y, grating_period_y=grating_period_y)
+        
+        fig, ax = plt.subplots(figsize=(8, 4))
+        
+        if params_y is not None:
+            _, grating_height_val = get_continuous_boundary(x_plot, params_x, grating_period, y=y_plot, params_y=params_y, grating_period_y=grating_period_y)
+        else:
+            _, grating_height_val = get_continuous_boundary(x_plot, params_x, grating_period)
+            
+        grating_height_val = float(grating_height_val)
+
+        if slice_plane == 'xz':
+            h_min, h_max = x_plot.min().item(), x_plot.max().item()
+            v_min, v_max = 0.0, grating_height_val
+            xlabel, ylabel = 'x (nm)', 'z (nm)'
+            if params_y is not None:
+                if y_plot is None: raise ValueError("y_plot required for xz slice of 3D profile")
+                y_idx = torch.argmin(torch.abs(y_plot - slice_val)).item()
+                plot_eps = sine_eps[:, y_idx, :]
+            else:
+                plot_eps = sine_eps
+        elif slice_plane in ['yz', 'zy']:
+            if params_y is None:
+                raise ValueError("yz slice requires 3D params_y")
+            if y_plot is None: raise ValueError("y_plot required for yz slice")
+            h_min, h_max = y_plot.min().item(), y_plot.max().item()
+            v_min, v_max = 0.0, grating_height_val
+            xlabel, ylabel = 'y (nm)', 'z (nm)'
+            x_idx = torch.argmin(torch.abs(x_plot - slice_val)).item()
+            plot_eps = sine_eps[x_idx, :, :]
+        elif slice_plane == 'xy':
+            h_min, h_max = x_plot.min().item(), x_plot.max().item()
+            if params_y is not None and y_plot is not None:
+                v_min, v_max = y_plot.min().item(), y_plot.max().item()
+            else:
+                v_min, v_max = -grating_period/2, grating_period/2
+            xlabel, ylabel = 'x (nm)', 'y (nm)'
+            cell_height = grating_height_val / config.n_layers
+            z_idx = int(slice_val / cell_height)
+            z_idx = min(max(z_idx, 0), config.n_layers - 1)
+            if params_y is not None:
+                plot_eps = sine_eps[:, :, z_idx]
+            else:
+                plot_eps = sine_eps[:, z_idx].unsqueeze(1).expand(-1, 2)
+
+        im = ax.imshow(
+            plot_eps.cpu().abs().T,
+            aspect='auto',
+            origin='lower',
+            cmap='viridis',
+            interpolation='none',
+            extent=[h_min, h_max, v_min, v_max],
+        )
+
+        ax.set_xticks(np.linspace(h_min, h_max, 6))
+        ax.set_yticks(np.linspace(v_min, v_max, 6))
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        ax.set_title(f'Staircase Permittivity Profile ({slice_plane} at {slice_val:.1f}nm)')
+        fig.colorbar(im, ax=ax, label='permittivity')
+        fig.tight_layout()
+        return fig, ax
 
     if field is not None:
         # Dictionary for single-plot selection
@@ -258,39 +511,23 @@ def plot_fields(sim, x_plot, z_plot, wavelength, polarization, inc_ang, azi_ang,
             'H norm': Hnorm, 'Hx': torch.real(Hx).abs(), 'Hy': torch.real(Hy).abs(), 'Hz': torch.real(Hz).abs(),
             'S norm': Snorm, 'Sx': Sx.abs(), 'Sy': Sy.abs(), 'Sz': Sz.abs()
         }
-        
         if field not in field_dict:
             raise ValueError(f"Field '{field}' not recognized. Choose from: {list(field_dict.keys())}")
 
         fig, ax = plt.subplots(figsize=(5, 8))
         plot_tensor = field_dict[field]
-        
         im = ax.imshow(plot_tensor.T.cpu(), cmap='jet', origin='lower', extent=extent)
+        format_ax(ax)
+        ax.set(title=f'{field} (real abs)' if 'norm' not in field else field, xlabel=xlabel, ylabel=ylabel)
         
-        # Geometry outline
-        ax.plot(x_cpu, z_wavy_np, color='black', linewidth=thickness+2, linestyle='-')
-        ax.plot([x_cpu[0], x_cpu[-1]], [z_top, z_top], color='black', linewidth=thickness+2, linestyle='-')
-        ax.plot(x_cpu, z_wavy_np, color='white', linewidth=thickness, linestyle='-')
-        ax.plot([x_cpu[0], x_cpu[-1]], [z_top, z_top], color='white', linewidth=thickness, linestyle='-')
-        ax.set_ylim([z_cpu[0], z_cpu[-1]])
-        ax.set_xlim([x_cpu[0], x_cpu[-1]])
-        
-        # Formatting
-        ax.set(title=f'{field} (real abs)' if 'norm' not in field else field, xlabel='x (nm)', ylabel='z (nm)')
-        
-        # Dynamic colorbar label
         cbar_label = 'S (A.U.)' if 'S' in field else ('H (A.U.)' if 'H' in field else 'E (A.U.)')
         cbar = fig.colorbar(im, ax=ax, shrink=0.7)
         cbar.set_label(cbar_label)
-        
-        #fig.suptitle(title_base, fontsize=12)
         fig.tight_layout()
-        
         return fig, ax
 
-    # --- 3x4 Grid Plotting Logic ---
+    # 3x4 Grid Plotting
     fig, axes = plt.subplots(figsize=(15, 12), nrows=3, ncols=4)
-    
     row0_imgs = [Enorm, torch.real(Ex).abs(), torch.real(Ey).abs(), torch.real(Ez).abs()]
     row1_imgs = [Hnorm, torch.real(Hx).abs(), torch.real(Hy).abs(), torch.real(Hz).abs()]
     row2_imgs = [Snorm, Sx.abs(), Sy.abs(), Sz.abs()]
@@ -302,50 +539,34 @@ def plot_fields(sim, x_plot, z_plot, wavelength, polarization, inc_ang, azi_ang,
     row2_vmin = min([x.min().item() for x in row2_imgs])
     row2_vmax = max([x.max().item() for x in row2_imgs])
 
-    # Row 0: E fields
-    im0 = axes[0,0].imshow(Enorm.T.cpu(), cmap='jet', origin='lower', extent=extent, vmin=row0_vmin, vmax=row0_vmax)
-    axes[0,0].set(title='E norm', xlabel='x (nm)', ylabel='z (nm)')
-    axes[0,1].imshow(torch.real(Ex).abs().T.cpu(), cmap='jet', origin='lower', extent=extent, vmin=row0_vmin, vmax=row0_vmax)
-    axes[0,1].set(title='Ex real abs', xlabel='x (nm)', ylabel='z (nm)')
-    axes[0,2].imshow(torch.real(Ey).abs().T.cpu(), cmap='jet', origin='lower', extent=extent, vmin=row0_vmin, vmax=row0_vmax)
-    axes[0,2].set(title='Ey real abs', xlabel='x (nm)', ylabel='z (nm)')
-    axes[0,3].imshow(torch.real(Ez).abs().T.cpu(), cmap='jet', origin='lower', extent=extent, vmin=row0_vmin, vmax=row0_vmax)
-    axes[0,3].set(title='Ez real abs', xlabel='x (nm)', ylabel='z (nm)')
-
-    # Row 1: H fields
-    im4 = axes[1,0].imshow(Hnorm.T.cpu(), cmap='jet', origin='lower', extent=extent, vmin=row1_vmin, vmax=row1_vmax)
-    axes[1,0].set(title='H norm', xlabel='x (nm)', ylabel='z (nm)')
-    axes[1,1].imshow(torch.real(Hx).abs().T.cpu(), cmap='jet', origin='lower', extent=extent, vmin=row1_vmin, vmax=row1_vmax)
-    axes[1,1].set(title='Hx real abs', xlabel='x (nm)', ylabel='z (nm)')
-    axes[1,2].imshow(torch.real(Hy).abs().T.cpu(), cmap='jet', origin='lower', extent=extent, vmin=row1_vmin, vmax=row1_vmax)
-    axes[1,2].set(title='Hy real abs', xlabel='x (nm)', ylabel='z (nm)')
-    axes[1,3].imshow(torch.real(Hz).abs().T.cpu(), cmap='jet', origin='lower', extent=extent, vmin=row1_vmin, vmax=row1_vmax)
-    axes[1,3].set(title='Hz real abs', xlabel='x (nm)', ylabel='z (nm)')
-
-    # Row 2: Poynting
-    im8 = axes[2,0].imshow(Snorm.T.cpu(), cmap='jet', origin='lower', extent=extent, vmin=row2_vmin, vmax=row2_vmax)
-    axes[2,0].set(title='S norm', xlabel='x (nm)', ylabel='z (nm)')
-    axes[2,1].imshow(Sx.abs().T.cpu(), cmap='jet', origin='lower', extent=extent, vmin=row2_vmin, vmax=row2_vmax)
-    axes[2,1].set(title='Sx abs', xlabel='x (nm)', ylabel='z (nm)')
-    axes[2,2].imshow(Sy.abs().T.cpu(), cmap='jet', origin='lower', extent=extent, vmin=row2_vmin, vmax=row2_vmax)
-    axes[2,2].set(title='Sy abs', xlabel='x (nm)', ylabel='z (nm)')
-    axes[2,3].imshow(Sz.abs().T.cpu(), cmap='jet', origin='lower', extent=extent, vmin=row2_vmin, vmax=row2_vmax)
-    axes[2,3].set(title='Sz abs', xlabel='x (nm)', ylabel='z (nm)')
+    titles = [
+        ['E norm', 'Ex real abs', 'Ey real abs', 'Ez real abs'],
+        ['H norm', 'Hx real abs', 'Hy real abs', 'Hz real abs'],
+        ['S norm', 'Sx abs', 'Sy abs', 'Sz abs']
+    ]
+    imgs = [row0_imgs, row1_imgs, row2_imgs]
+    vmins = [row0_vmin, row1_vmin, row2_vmin]
+    vmaxs = [row0_vmax, row1_vmax, row2_vmax]
     
-    for ax in axes.flat:
-        ax.plot(x_cpu, z_wavy_np, color='white', linewidth=1, linestyle='-')
-        ax.plot([x_cpu[0], x_cpu[-1]], [z_top, z_top], color='white', linewidth=1, linestyle='-')
-        ax.set_ylim([z_cpu[0], z_cpu[-1]])
-        ax.set_xlim([x_cpu[0], x_cpu[-1]])
-
-    fig.subplots_adjust(right=0.92, hspace=0.35, wspace=0.3)
-
-    cbar0 = fig.colorbar(im0, ax=axes[0, :], location='right', shrink=0.9, pad=0.02)
+    cbars_ims = []
+    for r in range(3):
+        for c in range(4):
+            im = axes[r,c].imshow(imgs[r][c].T.cpu(), cmap='jet', origin='lower', extent=extent, vmin=vmins[r], vmax=vmaxs[r])
+            axes[r,c].set(title=titles[r][c], xlabel=xlabel, ylabel=ylabel)
+            format_ax(axes[r,c])
+            if c == 0: cbars_ims.append(im)
+    if slice_plane == 'xy':
+        fig.subplots_adjust(right=0.92, hspace=0.45, wspace=0.45)
+    else:
+        fig.subplots_adjust(right=0.92, hspace=0.35, wspace=0.30)
+        
+    cbar0 = fig.colorbar(cbars_ims[0], ax=axes[0, :], location='right', shrink=0.9, pad=0.02)
     cbar0.set_label('E (A.U.)')
-    cbar1 = fig.colorbar(im4, ax=axes[1, :], location='right', shrink=0.9, pad=0.02)
+    cbar1 = fig.colorbar(cbars_ims[1], ax=axes[1, :], location='right', shrink=0.9, pad=0.02)
     cbar1.set_label('H (A.U.)')
-    cbar2 = fig.colorbar(im8, ax=axes[2, :], location='right', shrink=0.9, pad=0.02)
+    cbar2 = fig.colorbar(cbars_ims[2], ax=axes[2, :], location='right', shrink=0.9, pad=0.02)
     cbar2.set_label('S (A.U.)')
+    
     fig.suptitle(title_base, fontsize=16)
     
     return fig, axes
