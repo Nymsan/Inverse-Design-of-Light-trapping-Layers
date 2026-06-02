@@ -20,7 +20,7 @@ module load cuda/11.8
 echo "Job starting on $(hostname)"
 
 # Using 'uv run' automatically handles the virtual environment for you!
-uv run Scripts/generate_curve.py \
+uv run generate_curve.py \
     --name "sweep_num_layers" \
     --params_x "40,0" \
     --order_N 10 \

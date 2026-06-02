@@ -21,9 +21,9 @@ echo "Job starting on $(hostname)"
 
 # Using 'uv run' automatically handles the virtual environment for you!
 uv run generate_curve.py \
-    --name "sweep_dtu_run_v100" \
+    --name "sweep_dtu_run" \
     --params_x "40,0" \
-    --order_N 10 \
+    --order_N 1 5 10 20 35 50 100 \
     --num_layers 5 \
     --wavelengths 300 1100 10 \
     --nx 5000 \
