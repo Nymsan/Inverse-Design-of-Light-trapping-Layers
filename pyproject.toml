@@ -7,7 +7,7 @@ requires-python = ">=3.13"
 dependencies = [
     "matplotlib>=3.10.7",
     "numpy>=2.3.5",
-    "torch>=2.9.1",
+    "torch==2.5.1",
     "torcwa>=0.1.4.2",
     "ipywidgets>=8.1.7",
     "jupyterlab>=4.4.10",
@@ -31,7 +31,7 @@ torchvision = { index = "pytorch-cuda"}
 
 [[tool.uv.index]]
 name = "pytorch-cuda"
-url = "https://download.pytorch.org/whl/cu130"
+url = "https://download.pytorch.org/whl/cu118"
 explicit = true
 
 [dependency-groups]
