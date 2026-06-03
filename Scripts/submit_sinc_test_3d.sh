@@ -16,7 +16,7 @@ mkdir -p logs
 module load cuda/11.8
 
 # Fix for PyTorch 2.5.1 cu118 missing libnccl.so.2 and libcudnn.so.9 on compute nodes
-export LD_LIBRARY_PATH="$PWD/.venv/lib/python3.13/site-packages/nvidia/cudnn/lib:$PWD/.venv/lib/python3.13/site-packages/nvidia/nccl/lib:$PWD/.venv/lib/python3.13/site-packages/nvidia/cublas/lib:$PWD/.venv/lib/python3.13/site-packages/nvidia/cusparse/lib:$PWD/.venv/lib/python3.13/site-packages/nvidia/cusolver/lib:${LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH="../.venv/lib/python3.13/site-packages/nvidia/cudnn/lib:../.venv/lib/python3.13/site-packages/nvidia/nccl/lib:../.venv/lib/python3.13/site-packages/nvidia/cublas/lib:../.venv/lib/python3.13/site-packages/nvidia/cusparse/lib:../.venv/lib/python3.13/site-packages/nvidia/cusolver/lib:${LD_LIBRARY_PATH}"
 
 echo "Job starting on $(hostname)"
 

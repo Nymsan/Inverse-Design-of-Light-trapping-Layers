@@ -30,7 +30,7 @@ def main():
     parser.add_argument('--name', type=str, required=True, help="Base name for the output file (e.g., 'convergence_test')")
     parser.add_argument('--params_x', type=str, required=True, help="Params X e.g. '40,0;10,3.14'")
     parser.add_argument('--params_y', type=str, default="", help="Params Y e.g. '40,0' (leave empty for 2D)")
-    parser.add_argument('--order_N', type=int, nargs='+', default=[15], help="List of X diffraction orders")
+    parser.add_argument('--order_N', type=int, nargs='+', default=[10], help="List of X diffraction orders")
     parser.add_argument('--order_N_y', type=int, nargs='+', default=None, help="List of Y diffraction orders")
     parser.add_argument('--num_layers', type=int, nargs='+', default=[10], help="List of layer counts for staircase approximation")
     parser.add_argument('--wavelengths', type=float, nargs=3, default=[300, 1100, 1601], help="Wavelengths: start end steps")
