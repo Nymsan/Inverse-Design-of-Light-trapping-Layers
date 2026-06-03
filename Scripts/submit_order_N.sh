@@ -1,5 +1,5 @@
 #!/bin/sh
-#BSUB -J gen_curves_order_N
+#BSUB -J gen_curves_order_N_no_subpixel
 #BSUB -o logs/gen_curves_order_N.out
 #BSUB -e logs/gen_curves_order_N.err
 #BSUB -q gpuv100
@@ -21,10 +21,11 @@ echo "Job starting on $(hostname)"
 
 # Using 'uv run' automatically handles the virtual environment for you!
 uv run generate_curve.py \
-    --name "sweep_order_N" \
+    --name "sweep_order_N_no_subpixel" \
     --params_x "40,0" \
     --order_N 1 5 10 20 35 50 100 \
     --num_layers 10 \
     --wavelengths 300 1100 1601 \
     --nx 5000 \
-    --ny 1
+    --ny 1 \
+    --no_subpixel
