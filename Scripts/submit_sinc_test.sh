@@ -1,7 +1,7 @@
 #!/bin/sh
-#BSUB -J gen_curves_700nm
-#BSUB -o logs/gen_curves_%J.out
-#BSUB -e logs/gen_curves_%J.err
+#BSUB -J gen_curves_sinc_test
+#BSUB -o logs/gen_curves_sinc_test.out
+#BSUB -e logs/gen_curves_sinc_test.err
 #BSUB -q gpuv100
 #BSUB -gpu "num=1:mode=exclusive_process"
 #BSUB -n 4
@@ -19,8 +19,8 @@ echo "Job starting on $(hostname)"
 
 # Using 'uv run' automatically handles the virtual environment for you!
 uv run generate_curve.py \
-    --name "sweep_700nm" \
-    --params_x "40,0" \
+    --name "sweep_sinc_test" \
+    --params_x "40,0;40,0;40,0;40,0;40,0;40,0;40,0;40,0;40,0;40,0" \
     --order_N 1 5 10 20 35 50 100 \
     --num_layers 1 2 3 5 10 15 20 25 50 100 150 250 251 \
     --wavelengths 700 700 1 \

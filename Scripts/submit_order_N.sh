@@ -1,7 +1,7 @@
 #!/bin/sh
 #BSUB -J gen_curves_order_N
-#BSUB -o logs/gen_curves_%J.out
-#BSUB -e logs/gen_curves_%J.err
+#BSUB -o logs/gen_curves_order_N.out
+#BSUB -e logs/gen_curves_order_N.err
 #BSUB -q gpuv100
 #BSUB -gpu "num=1:mode=exclusive_process"
 #BSUB -n 4

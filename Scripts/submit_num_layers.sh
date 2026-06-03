@@ -1,7 +1,7 @@
 #!/bin/sh
 #BSUB -J gen_curves_num_layers
-#BSUB -o logs/gen_curves_%J.out
-#BSUB -e logs/gen_curves_%J.err
+#BSUB -o logs/gen_curves_num_layers.out
+#BSUB -e logs/gen_curves_num_layers.err
 #BSUB -q gpuv100
 #BSUB -gpu "num=1:mode=exclusive_process"
 #BSUB -n 4
@@ -27,4 +27,4 @@ uv run generate_curve.py \
     --num_layers 1 2 3 5 10 15 20 25 50 100 150 250 251 \
     --wavelengths 300 1100 1601 \
     --nx 5000 \
-    --ny 1
+    --ny 1 \

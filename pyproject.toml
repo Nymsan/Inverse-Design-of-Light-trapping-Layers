@@ -19,11 +19,7 @@ dependencies = [
     "refractiveindex>=1.0.2",
 ]
 
-[project.optional-dependencies]
-mamba = [
-    "causal-conv1d>=1.4.0",
-    "mamba-ssm[causal-conv1d]>=2.3.1",
-]
+
 
 [tool.uv.sources]
 torch = { index = "pytorch-cuda" }

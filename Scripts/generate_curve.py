@@ -41,6 +41,7 @@ def main():
     parser.add_argument('--h', type=float, default=1000.0, help="Thickness h (nm)")
     parser.add_argument('--inc_ang', type=float, default=30.0, help="Incident angle in degrees")
     parser.add_argument('--azi_ang', type=float, default=0.0, help="Azimuthal angle in degrees")
+    parser.add_argument('--no_subpixel', action='store_true', help="Disable subpixel smoothing")
     
     args = parser.parse_args()
     
@@ -73,7 +74,7 @@ def main():
                 inc_ang=inc_ang_rad, azi_ang=azi_ang_rad,
                 grating_period=args.grating_period, grating_period_y=args.grating_period_y,
                 h=args.h, order_N=o_x, order_N_y=o_y, nx=args.nx, ny=args.ny,
-                n_layers=n_layers, add_reflector=True, reflector_type='pec', subpixel=True
+                n_layers=n_layers, add_reflector=True, reflector_type='pec', subpixel=not args.no_subpixel
             )
             A_film, A_grating = get_absorptance_curve(params_x=params_x, params_y=params_y, wavelengths=wavelengths, config=config)
             
@@ -90,7 +91,7 @@ def main():
                 inc_ang=inc_ang_rad, azi_ang=azi_ang_rad,
                 grating_period=args.grating_period, grating_period_y=args.grating_period_y,
                 h=args.h, order_N=o_x, order_N_y=o_y, nx=args.nx, ny=args.ny,
-                n_layers=n_layers, add_reflector=True, reflector_type='pec', subpixel=True
+                n_layers=n_layers, add_reflector=True, reflector_type='pec', subpixel=not args.no_subpixel
             )
             A_film, A_grating = get_absorptance_curve(params_x=params_x, params_y=params_y, wavelengths=wavelengths, config=config)
             
