@@ -15,7 +15,7 @@ from Utils.utils import get_absorptance_curve, geo_dtype, device, RCWAConfig
 
 def get_lhs_samples(num_samples):
     # 13 dimensions: h, inc_ang, azi_ang, 5x amplitudes, 5x phases
-    sampler = LatinHypercube(d=13, seed=42)
+    sampler = LatinHypercube(d=13)
     sample = sampler.random(n=num_samples)
     
     # Map from [0, 1] to physical bounds
