@@ -1,15 +1,13 @@
 #!/bin/sh
-#BSUB -J gen_curves_order_N[1-4]
-#BSUB -o logs/gen_curves_order_N_%I.out
-#BSUB -e logs/gen_curves_order_N_%I.err
+#BSUB -J gen_curves_combination[1-4]
+#BSUB -o logs/gen_curves_combination_%I.out
+#BSUB -e logs/gen_curves_combination_%I.err
 #BSUB -q gpuv100
 #BSUB -gpu "num=1:mode=exclusive_process"
 #BSUB -n 4
 #BSUB -R "rusage[mem=12GB]"
 #BSUB -R "span[hosts=1]"
 #BSUB -W 24:00
-
-# Note: Adjust the walltime (-W) above based on how many combinations you are running
 
 # Create a logs directory to keep the workspace clean
 mkdir -p logs
@@ -22,48 +20,51 @@ export LD_LIBRARY_PATH="../.venv/lib/python3.13/site-packages/nvidia/cudnn/lib:.
 
 echo "Job starting on $(hostname), Task ID: ${LSB_JOBINDEX}"
 
-# Using 'uv run' automatically handles the virtual environment for you!
 case ${LSB_JOBINDEX} in
     1)
+        echo "Running WITH subpixel smoothing... (100nm)"
         uv run generate_curve.py \
-            --name "sweep_order_N_no_subpixel_100nm" \
+            --name "sweep_combination_100nm" \
             --params_x "50,0" \
             --order_N 1 5 10 25 50 100 \
-            --num_layers 20 \
-            --wavelengths 300 1100 1601 \
+            --num_layers 1 2 5 10 25 50 100 250 500 \
+            --wavelengths 700 700 1 \
             --nx 5000 \
-            --ny 1 \
-            --no_subpixel
+            --ny 1
         ;;
     2)
+        echo "Running WITHOUT subpixel smoothing... (100nm)"
         uv run generate_curve.py \
-            --name "sweep_order_N_100nm" \
+            --name "sweep_combination_no_subpixel_100nm" \
+            --no_subpixel \
             --params_x "50,0" \
             --order_N 1 5 10 25 50 100 \
-            --num_layers 20 \
-            --wavelengths 300 1100 1601 \
+            --num_layers 1 2 5 10 25 50 100 250 500  \
+            --wavelengths 700 700 1 \
             --nx 5000 \
-            --ny 1 
+            --ny 1
         ;;
     3)
+        echo "Running WITH subpixel smoothing... (1000nm)"
         uv run generate_curve.py \
-            --name "sweep_order_N_no_subpixel_1000nm" \
+            --name "sweep_combination_1000nm" \
             --params_x "500,0" \
             --order_N 1 5 10 25 50 100 \
-            --num_layers 20 \
-            --wavelengths 300 1100 1601 \
+            --num_layers 1 2 5 10 25 50 100 250 500 \
+            --wavelengths 700 700 1 \
             --nx 5000 \
-            --ny 1 \
-            --no_subpixel
+            --ny 1
         ;;
     4)
+        echo "Running WITHOUT subpixel smoothing... (1000nm)"
         uv run generate_curve.py \
-            --name "sweep_order_N_1000nm" \
+            --name "sweep_combination_no_subpixel_1000nm" \
+            --no_subpixel \
             --params_x "500,0" \
             --order_N 1 5 10 25 50 100 \
-            --num_layers 20 \
-            --wavelengths 300 1100 1601 \
+            --num_layers 1 2 5 10 25 50 100 250 500  \
+            --wavelengths 700 700 1 \
             --nx 5000 \
-            --ny 1 
+            --ny 1
         ;;
 esac

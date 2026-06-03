@@ -27,11 +27,13 @@ class RCWAConfig:
     nx: int = 1000
     ny: int = 1
     n_layers: int = 10
+    nm_per_layer: Optional[float] = None
     subpixel: bool = True
     add_reflector: bool = True
     reflector_type: str = 'pec'
     inc_ang: float = 0.0
     azi_ang: float = 0.0
+    grating_material: str = 'Si'
 
 def split_params_3d(params):
     """Split a combined params tensor of shape (2, n, 2) or a tuple into params_x and params_y."""
@@ -91,15 +93,36 @@ def sun_weights(w):
     return torch.tensor(am15g[w.cpu().numpy()], dtype=geo_dtype, device=device)
 
 # material
-si = RefractiveIndexMaterial(shelf='main', book='Si', page='Green-2008')
-def si_eps(w):
-    return torch.tensor(si.get_refractive_index(w) + 1j * si.get_extinction_coefficient(w), 
-                        dtype=sim_dtype, device=device)**2
+_materials_db = {
+    'Si': RefractiveIndexMaterial(shelf='main', book='Si', page='Green-2008'),
+    'Ag': RefractiveIndexMaterial(shelf='main', book='Ag', page='McPeak'),
+    'TiO2': RefractiveIndexMaterial(shelf='main', book='TiO2', page='Siefke'),
+    'Si3N4': RefractiveIndexMaterial(shelf='main', book='Si3N4', page='Luke')
+}
 
-ag = RefractiveIndexMaterial(shelf='main', book='Ag', page='McPeak')
+def get_material_eps(material_name, w):
+    if material_name not in _materials_db:
+        raise ValueError(f"Material {material_name} not found in library. Available: {list(_materials_db.keys())}")
+    mat = _materials_db[material_name]
+    
+    w_val = w.item() if isinstance(w, torch.Tensor) else float(w)
+        
+    n = mat.get_refractive_index(w_val)
+    
+    try:
+        k = mat.get_extinction_coefficient(w_val)
+        if k is None:
+            k = 0.0
+    except Exception:
+        k = 0.0
+        
+    return torch.tensor(n + 1j * k, dtype=sim_dtype, device=device)**2
+
+def si_eps(w):
+    return get_material_eps('Si', w)
+
 def ag_eps(w):
-    return torch.tensor(ag.get_refractive_index(w) + 1j * ag.get_extinction_coefficient(w), 
-                        dtype=sim_dtype, device=device)**2
+    return get_material_eps('Ag', w)
 
 def get_continuous_boundary(x, params_x, grating_period, y=None, params_y=None, grating_period_y=None):
     """Extracts the continuous wavy boundary. Returns the boundary and the grating height."""
@@ -142,8 +165,9 @@ def get_absorptance(params_x, params_y, wavelength, config: RCWAConfig):
     inc_ang, azi_ang = config.inc_ang, config.azi_ang
     grating_period, grating_period_y, h = config.grating_period, config.grating_period_y, config.h
     order_N, order_N_y = config.order_N, config.order_N_y
-    nx, ny, n_layers, subpixel = config.nx, config.ny, config.n_layers, config.subpixel
+    nx, ny, n_layers, nm_per_layer, subpixel = config.nx, config.ny, config.n_layers, config.nm_per_layer, config.subpixel
     add_reflector, reflector_type = config.add_reflector, config.reflector_type
+    grating_material = config.grating_material
     if not isinstance(wavelength, torch.Tensor):
         wavelength = torch.tensor(wavelength, dtype=geo_dtype)
     params_x, params_y_split = split_params_3d(params_x)
@@ -176,9 +200,13 @@ def get_absorptance(params_x, params_y, wavelength, config: RCWAConfig):
         params_y=params_y, grating_period_y=grating_period_y
     )
 
+    effective_n_layers = n_layers
+    if nm_per_layer is not None:
+        effective_n_layers = max(1, int(round(grating_height / nm_per_layer)))
+
     sine_eps = get_staircase_sine_eps(
         x=torcwa.rcwa_geo.x, params_x=params_x, grating_period=grating_period,
-        num_layers=n_layers, eps_high=si_eps(wavelength), subpixel=subpixel if n_layers>1 else True,
+        num_layers=effective_n_layers, eps_high=get_material_eps(grating_material, wavelength), subpixel=subpixel if effective_n_layers>1 else True,
         y=torcwa.rcwa_geo.y if is_3d else None, params_y=params_y, grating_period_y=grating_period_y
     )
         
@@ -269,7 +297,7 @@ def get_weighted_absorptance(params_x, params_y, wavelengths, config: RCWAConfig
     inc_ang, azi_ang = config.inc_ang, config.azi_ang
     grating_period, grating_period_y, h = config.grating_period, config.grating_period_y, config.h
     order_N, order_N_y = config.order_N, config.order_N_y
-    nx, ny, n_layers, subpixel = config.nx, config.ny, config.n_layers, config.subpixel
+    nx, ny, n_layers, nm_per_layer, subpixel = config.nx, config.ny, config.n_layers, config.nm_per_layer, config.subpixel
     add_reflector, reflector_type = config.add_reflector, config.reflector_type
     grating_period_y = grating_period_y or grating_period
     L = [float(grating_period), float(grating_period_y)]
@@ -283,9 +311,9 @@ def get_weighted_absorptance(params_x, params_y, wavelengths, config: RCWAConfig
     for i, wavelength in enumerate(wavelengths):
         temp_config = RCWAConfig(
             grating_period=grating_period, grating_period_y=grating_period_y, h=h,
-            order_N=order_N, order_N_y=order_N_y, nx=nx, ny=ny, n_layers=n_layers, subpixel=subpixel,
+            order_N=order_N, order_N_y=order_N_y, nx=nx, ny=ny, n_layers=n_layers, nm_per_layer=nm_per_layer, subpixel=subpixel,
             add_reflector=add_reflector, reflector_type=reflector_type,
-            inc_ang=inc_ang, azi_ang=azi_ang
+            inc_ang=inc_ang, azi_ang=azi_ang, grating_material=config.grating_material
         )
         A_film = get_absorptance(params_x=params_x, params_y=params_y, wavelength=wavelength, config=temp_config)[2]
         mean_A = torch.mean(A_film)
@@ -300,7 +328,7 @@ def get_absorptance_curve(params_x, params_y, wavelengths, config: RCWAConfig):
     inc_ang, azi_ang = config.inc_ang, config.azi_ang
     grating_period, grating_period_y, h = config.grating_period, config.grating_period_y, config.h
     order_N, order_N_y = config.order_N, config.order_N_y
-    nx, ny, n_layers, subpixel = config.nx, config.ny, config.n_layers, config.subpixel
+    nx, ny, n_layers, nm_per_layer, subpixel = config.nx, config.ny, config.n_layers, config.nm_per_layer, config.subpixel
     add_reflector, reflector_type = config.add_reflector, config.reflector_type
     Absorptances_film = torch.zeros_like(wavelengths,dtype=geo_dtype).unsqueeze(1).repeat(1,2)
     Absorptances_grating = torch.zeros_like(wavelengths,dtype=geo_dtype).unsqueeze(1).repeat(1,2)
@@ -309,7 +337,7 @@ def get_absorptance_curve(params_x, params_y, wavelengths, config: RCWAConfig):
             grating_period=grating_period, grating_period_y=grating_period_y, h=h,
             order_N=order_N, order_N_y=order_N_y, nx=nx, ny=ny, n_layers=n_layers, subpixel=subpixel,
             add_reflector=add_reflector, reflector_type=reflector_type,
-            inc_ang=inc_ang, azi_ang=azi_ang
+            inc_ang=inc_ang, azi_ang=azi_ang, grating_material=config.grating_material
         )
         A_film,A_grating = get_absorptance(params_x=params_x, params_y=params_y, wavelength=wavelength, config=temp_config)[2:4]
 
@@ -426,7 +454,7 @@ def plot_fields(sim, x_plot, z_plot, wavelength, polarization, params_x, params_
 
     def format_ax(ax_to_format):
         if slice_plane in ['xz', 'yz', 'zy']:
-            ax_to_format.plot(v1_cpu, z_wavy_np, color='black', linewidth=thickness+2, linestyle='-')
+            ax_to_format.plot(v1_cpu, z_wavy_np, color='black', linewidth=thickness+2 if thickness>0 else 0, linestyle='-')
             ax_to_format.plot([v1_cpu[0], v1_cpu[-1]], [z_top, z_top], color='black', linewidth=thickness+2, linestyle='-')
             ax_to_format.plot(v1_cpu, z_wavy_np, color='white', linewidth=thickness, linestyle='-')
             ax_to_format.plot([v1_cpu[0], v1_cpu[-1]], [z_top, z_top], color='white', linewidth=thickness, linestyle='-')
@@ -440,17 +468,20 @@ def plot_fields(sim, x_plot, z_plot, wavelength, polarization, params_x, params_
         ax_to_format.set_xlim([v1_cpu[0], v1_cpu[-1]])
 
     if field == 'sine_eps':
-        eps_high = si_eps(wavelength)
-        sine_eps = get_staircase_sine_eps(x_plot, params_x, grating_period, config.n_layers, eps_high, subpixel=config.subpixel, y=y_plot, params_y=params_y, grating_period_y=grating_period_y)
-        
-        fig, ax = plt.subplots(figsize=(8, 4))
-        
         if params_y is not None:
             _, grating_height_val = get_continuous_boundary(x_plot, params_x, grating_period, y=y_plot, params_y=params_y, grating_period_y=grating_period_y)
         else:
             _, grating_height_val = get_continuous_boundary(x_plot, params_x, grating_period)
-            
         grating_height_val = float(grating_height_val)
+        
+        effective_n_layers = config.n_layers
+        if config.nm_per_layer is not None:
+            effective_n_layers = max(1, int(round(grating_height_val / config.nm_per_layer)))
+
+        eps_high = get_material_eps(config.grating_material, wavelength)
+        sine_eps = get_staircase_sine_eps(x_plot, params_x, grating_period, effective_n_layers, eps_high, subpixel=config.subpixel, y=y_plot, params_y=params_y, grating_period_y=grating_period_y)
+        
+        fig, ax = plt.subplots(figsize=(8, 4))
 
         if slice_plane == 'xz':
             h_min, h_max = x_plot.min().item(), x_plot.max().item()
@@ -478,9 +509,9 @@ def plot_fields(sim, x_plot, z_plot, wavelength, polarization, params_x, params_
             else:
                 v_min, v_max = -grating_period/2, grating_period/2
             xlabel, ylabel = 'x (nm)', 'y (nm)'
-            cell_height = grating_height_val / config.n_layers
+            cell_height = grating_height_val / effective_n_layers
             z_idx = int(slice_val / cell_height)
-            z_idx = min(max(z_idx, 0), config.n_layers - 1)
+            z_idx = min(max(z_idx, 0), effective_n_layers - 1)
             if params_y is not None:
                 plot_eps = sine_eps[:, :, z_idx]
             else:

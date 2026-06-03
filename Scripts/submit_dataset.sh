@@ -19,6 +19,7 @@ uv run generate_dataset.py \
     --num_samples 5000 \
     --batch_size 100 \
     --order_N 10 \
-    --num_layers 10 \
+    --nm_per_layer 5.0 \
     --grating_period 1000.0 \
-    --nx 5000
+    --nx 5000 \
+    --grating_material Si

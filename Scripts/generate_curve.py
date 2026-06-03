@@ -11,6 +11,7 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if project_root not in sys.path:
     sys.path.append(project_root)
 
+from dataclasses import asdict
 from Utils.utils import get_absorptance_curve, geo_dtype, device, RCWAConfig
 
 def parse_tensor_arg(arg_str):
@@ -33,6 +34,7 @@ def main():
     parser.add_argument('--order_N', type=int, nargs='+', default=[10], help="List of X diffraction orders")
     parser.add_argument('--order_N_y', type=int, nargs='+', default=None, help="List of Y diffraction orders")
     parser.add_argument('--num_layers', type=int, nargs='+', default=[10], help="List of layer counts for staircase approximation")
+    parser.add_argument('--nm_per_layer', type=float, default=None, help="Overrides num_layers to fix grating resolution")
     parser.add_argument('--wavelengths', type=float, nargs=3, default=[300, 1100, 1601], help="Wavelengths: start end steps")
     parser.add_argument('--nx', type=int, default=20000, help="Grid size nx")
     parser.add_argument('--ny', type=int, default=1, help="Grid size ny (use 1 for 2D, scale up for 3D)")
@@ -41,6 +43,9 @@ def main():
     parser.add_argument('--h', type=float, default=1000.0, help="Thickness h (nm)")
     parser.add_argument('--inc_ang', type=float, default=30.0, help="Incident angle in degrees")
     parser.add_argument('--azi_ang', type=float, default=0.0, help="Azimuthal angle in degrees")
+    parser.add_argument('--grating_material', type=str, default='Si', help="Material for the grating layer (e.g. Si, TiO2, Si3N4)")
+    parser.add_argument('--no_reflector', action='store_true', help="Disable the bottom reflector")
+    parser.add_argument('--reflector_type', type=str, default='pec', help="Reflector type (e.g., pec, Ag)")
     parser.add_argument('--no_subpixel', action='store_true', help="Disable subpixel smoothing")
     
     args = parser.parse_args()
@@ -60,6 +65,16 @@ def main():
     
     results_dict = {}
     
+    # Create base config to save in metadata
+    base_config = RCWAConfig(
+        inc_ang=inc_ang_rad, azi_ang=azi_ang_rad,
+        grating_period=args.grating_period, grating_period_y=args.grating_period_y,
+        h=args.h, nx=args.nx, ny=args.ny,
+        nm_per_layer=args.nm_per_layer,
+        add_reflector=not args.no_reflector, reflector_type=args.reflector_type, 
+        subpixel=not args.no_subpixel, grating_material=args.grating_material
+    )
+    
     # Evaluate combinations. If order_N_y isn't given, assume symmetric orders (o_y = o_x)
     if args.order_N_y is None:
         combinations = list(itertools.product(args.order_N, args.num_layers))
@@ -74,7 +89,8 @@ def main():
                 inc_ang=inc_ang_rad, azi_ang=azi_ang_rad,
                 grating_period=args.grating_period, grating_period_y=args.grating_period_y,
                 h=args.h, order_N=o_x, order_N_y=o_y, nx=args.nx, ny=args.ny,
-                n_layers=n_layers, add_reflector=True, reflector_type='pec', subpixel=not args.no_subpixel
+                n_layers=n_layers, nm_per_layer=args.nm_per_layer, add_reflector=not args.no_reflector, reflector_type=args.reflector_type, 
+                subpixel=not args.no_subpixel, grating_material=args.grating_material
             )
             A_film, A_grating = get_absorptance_curve(params_x=params_x, params_y=params_y, wavelengths=wavelengths, config=config)
             
@@ -91,7 +107,8 @@ def main():
                 inc_ang=inc_ang_rad, azi_ang=azi_ang_rad,
                 grating_period=args.grating_period, grating_period_y=args.grating_period_y,
                 h=args.h, order_N=o_x, order_N_y=o_y, nx=args.nx, ny=args.ny,
-                n_layers=n_layers, add_reflector=True, reflector_type='pec', subpixel=not args.no_subpixel
+                n_layers=n_layers, nm_per_layer=args.nm_per_layer, add_reflector=not args.no_reflector, reflector_type=args.reflector_type, 
+                subpixel=not args.no_subpixel, grating_material=args.grating_material
             )
             A_film, A_grating = get_absorptance_curve(params_x=params_x, params_y=params_y, wavelengths=wavelengths, config=config)
             
@@ -104,13 +121,7 @@ def main():
             'params_x': params_x.cpu() if params_x is not None else None,
             'params_y': params_y.cpu() if params_y is not None else None,
             'wavelengths': wavelengths.cpu(),
-            'inc_ang_deg': args.inc_ang,
-            'azi_ang_deg': args.azi_ang,
-            'grating_period': args.grating_period,
-            'grating_period_y': args.grating_period_y,
-            'h': args.h,
-            'nx': args.nx,
-            'ny': args.ny
+            'config': asdict(base_config)
         }
     }
     
