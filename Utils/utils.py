@@ -235,43 +235,31 @@ def get_absorptance(params_x, params_y, wavelength, config: RCWAConfig):
     
 
     sim.solve_global_smatrix()
-
-    z_top = torch.tensor(grating_height, device=device, dtype=geo_dtype) # top of bulk layer, bottom of grating
-    z_bot = torch.tensor(grating_height + h, device=device, dtype=geo_dtype) #bottom of bulk
-    z_air = torch.tensor(-5 * h, device=device, dtype=geo_dtype)
     
     results = {}
     for pol_idx, pol in enumerate([[1., 0.], [0., 1.]]): #first result is p-pol, second s-pol
         P_inc = get_incident_power(pol=pol,wavelength=wavelength,inc_ang=inc_ang,azi_ang=azi_ang,grating_period=grating_period,order=order,grating_period_y=grating_period_y)
         sim.source_planewave(amplitude=pol, direction='forward', notation='ps')
         
-        if is_3d:
-            area = grating_period * grating_period_y
-            
-            # z_air (incident space, layer_num=-1)
-            [Ex, Ey, Ez], [Hx, Hy, Hz] = sim.field_xy(-1, torcwa.rcwa_geo.x, torcwa.rcwa_geo.y, z_prop=-5*h)
-            S_z_air = 0.5 * torch.real(Ex * torch.conj(Hy) - Ey * torch.conj(Hx))
-            P_air = torch.mean(S_z_air) * area
-            
-            # z_top (top of bulk layer = layer num_layers, z_prop=0)
-            [Ex, Ey, Ez], [Hx, Hy, Hz] = sim.field_xy(n_layers, torcwa.rcwa_geo.x, torcwa.rcwa_geo.y, z_prop=0.0)
-            S_z_top = 0.5 * torch.real(Ex * torch.conj(Hy) - Ey * torch.conj(Hx))
-            P_top = torch.mean(S_z_top) * area
-            
-            # z_bot (top of output space = layer num_layers+1, z_prop=0)
-            [Ex, Ey, Ez], [Hx, Hy, Hz] = sim.field_xy(n_layers+1, torcwa.rcwa_geo.x, torcwa.rcwa_geo.y, z_prop=0.0)
-            S_z_bot = 0.5 * torch.real(Ex * torch.conj(Hy) - Ey * torch.conj(Hx))
-            P_bot = torch.mean(S_z_bot) * area
-        else:
-            [Ex, Ey, Ez], [Hx, Hy, Hz] = sim.field_xz(torcwa.rcwa_geo.x, torch.stack((z_top, z_bot, z_air)), y=0.0)
-            S_z = 0.5 * torch.real(Ex * torch.conj(Hy) - Ey * torch.conj(Hx))
-            
-            length = grating_period
-            P_top = torch.mean(S_z[:, 0]) * length
-            P_bot = torch.mean(S_z[:, 1]) * length
-            P_air = torch.mean(S_z[:, 2]) * length
-            
-        #TODO Add a sanity check using a volume integral for the power.
+        area = grating_period * grating_period_y if is_3d else grating_period
+        
+        # z_air (incident space, layer_num=-1)
+        [Ex, Ey, Ez], [Hx, Hy, Hz] = sim.field_xy(-1, torcwa.rcwa_geo.x, torcwa.rcwa_geo.y, z_prop=-5*h)
+        S_z_air = 0.5 * torch.real(Ex * torch.conj(Hy) - Ey * torch.conj(Hx))
+        P_air = torch.mean(S_z_air) * area
+        
+        # z_top (top of bulk layer = layer num_layers, z_prop=0)
+        [Ex, Ey, Ez], [Hx, Hy, Hz] = sim.field_xy(effective_n_layers, torcwa.rcwa_geo.x, torcwa.rcwa_geo.y, z_prop=0.0)
+        S_z_top = 0.5 * torch.real(Ex * torch.conj(Hy) - Ey * torch.conj(Hx))
+        P_top = torch.mean(S_z_top) * area
+        
+        # z_bot (top of output space = layer num_layers+1, z_prop=0)
+        [Ex, Ey, Ez], [Hx, Hy, Hz] = sim.field_xy(effective_n_layers+1, torcwa.rcwa_geo.x, torcwa.rcwa_geo.y, z_prop=0.0)
+        S_z_bot = 0.5 * torch.real(Ex * torch.conj(Hy) - Ey * torch.conj(Hx))
+        P_bot = torch.mean(S_z_bot) * area
+        
+        P_abs_film = P_top - P_bot
+        P_abs_grating = P_air - P_top#TODO Add a sanity check using a volume integral for the power.
         
         results[pol_idx] = {
             'A_film': (P_top - P_bot) / P_inc,
@@ -411,7 +399,7 @@ def plot_fields(sim, x_plot, z_plot, wavelength, polarization, params_x, params_
         raise ValueError(f"Unknown slice_plane: {slice_plane}")
 
     extent = [v1_cpu[0], v1_cpu[-1], v2_cpu[0], v2_cpu[-1]]
-    title_base += f"\n$\\lambda$ = {wavelength} nm, pol = {polarization} in ps-basis \ninc = {inc_ang*180/np.pi:.1f}°, azi = {azi_ang*180/np.pi:.1f}°"
+    title_base += f"\n$\\lambda$ = {wavelength:.3f} nm, pol = {polarization} in ps-basis \ninc = {inc_ang*180/np.pi:.1f}°, azi = {azi_ang*180/np.pi:.1f}°"
 
     # Field magnitudes and Poynting vector
     Enorm = torch.sqrt(torch.abs(Ex)**2 + torch.abs(Ey)**2 + torch.abs(Ez)**2)
@@ -530,7 +518,7 @@ def plot_fields(sim, x_plot, z_plot, wavelength, polarization, params_x, params_
         ax.set_yticks(np.linspace(v_min, v_max, 6))
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
-        ax.set_title(f'Staircase Permittivity Profile ({slice_plane} at {slice_val:.1f}nm)')
+        ax.set_title(f'Staircase Permittivity Profile ({slice_plane} at {slice_val:.1f}nm)\n{title_base}')
         fig.colorbar(im, ax=ax, label='permittivity')
         fig.tight_layout()
         return fig, ax
@@ -549,7 +537,8 @@ def plot_fields(sim, x_plot, z_plot, wavelength, polarization, params_x, params_
         plot_tensor = field_dict[field]
         im = ax.imshow(plot_tensor.T.cpu(), cmap='jet', origin='lower', extent=extent)
         format_ax(ax)
-        ax.set(title=f'{field} (real abs)' if 'norm' not in field else field, xlabel=xlabel, ylabel=ylabel)
+        title_str = (f'{field} (real abs)' if 'norm' not in field else field) + f"\n{title_base}"
+        ax.set(title=title_str, xlabel=xlabel, ylabel=ylabel)
         
         cbar_label = 'S (A.U.)' if 'S' in field else ('H (A.U.)' if 'H' in field else 'E (A.U.)')
         cbar = fig.colorbar(im, ax=ax, shrink=0.7)
