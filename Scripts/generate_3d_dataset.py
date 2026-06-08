@@ -15,9 +15,9 @@ if project_root not in sys.path:
 from Utils.utils import get_absorptance_curve, geo_dtype, RCWAConfig
 default_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-def get_lhs_samples(num_samples):
+def get_lhs_samples(num_samples, seed=42):
     # 24 dimensions: h, inc_ang, azi_ang, wavelength, 5x amps_x, 5x phases_x, 5x amps_y, 5x phases_y
-    sampler = LatinHypercube(d=24)
+    sampler = LatinHypercube(d=24, seed=seed)
     sample = sampler.random(n=num_samples)
     
     # Map from [0, 1] to physical bounds
@@ -32,6 +32,25 @@ def get_lhs_samples(num_samples):
     amps_y = 0 + 10 * sample[:, 14:19]       # 0 to 10 nm max
     phases_y = 0 + 2 * np.pi * sample[:, 19:24] # 0 to 2*pi
     
+    return h, inc_ang, azi_ang, wavelengths, amps_x, phases_x, amps_y, phases_y
+
+def get_or_create_samples_3d(out_dir, num_samples, seed=42):
+    samples_file = os.path.join(out_dir, '_lhs_samples_3d.npz')
+    
+    if os.path.exists(samples_file):
+        data = np.load(samples_file)
+        if len(data['h']) == num_samples:
+            print(f"Loaded existing LHS samples from {samples_file}")
+            sys.stdout.flush()
+            return data['h'], data['inc_ang'], data['azi_ang'], data['wavelengths'], data['amps_x'], data['phases_x'], data['amps_y'], data['phases_y']
+        else:
+            print(f"WARNING: Existing samples have {len(data['h'])} entries but {num_samples} requested. Regenerating...")
+            sys.stdout.flush()
+            
+    h, inc_ang, azi_ang, wavelengths, amps_x, phases_x, amps_y, phases_y = get_lhs_samples(num_samples, seed=seed)
+    np.savez(samples_file, h=h, inc_ang=inc_ang, azi_ang=azi_ang, wavelengths=wavelengths, amps_x=amps_x, phases_x=phases_x, amps_y=amps_y, phases_y=phases_y)
+    print(f"Generated and saved LHS samples to {samples_file}")
+    sys.stdout.flush()
     return h, inc_ang, azi_ang, wavelengths, amps_x, phases_x, amps_y, phases_y
 
 def main():
@@ -64,14 +83,15 @@ def main():
                         help="Reflector type (e.g., pec, Ag)")
     parser.add_argument('--no_subpixel', action='store_true',
                         help="Disable subpixel smoothing")
+    parser.add_argument('--seed', type=int, default=42, help="Random seed for LHS sampling")
     
     args = parser.parse_args()
     
-    out_dir = os.path.join(project_root, 'Data', 'LHS_3D_Dataset')
+    out_dir = os.path.join(project_root, 'Data', f'LHS_3D_Dataset_{args.grating_material}')
     os.makedirs(out_dir, exist_ok=True)
     
     # Generate LHS
-    h_arr, inc_ang_arr, azi_ang_arr, wl_arr, amps_x_arr, phases_x_arr, amps_y_arr, phases_y_arr = get_lhs_samples(args.num_samples)
+    h_arr, inc_ang_arr, azi_ang_arr, wl_arr, amps_x_arr, phases_x_arr, amps_y_arr, phases_y_arr = get_or_create_samples_3d(out_dir, args.num_samples, seed=args.seed)
     
     num_batches = int(np.ceil(args.num_samples / args.batch_size))
     

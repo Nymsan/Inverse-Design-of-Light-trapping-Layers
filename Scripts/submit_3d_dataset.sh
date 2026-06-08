@@ -1,13 +1,13 @@
 #!/bin/sh
-#BSUB -J generate_3d_dataset
+#BSUB -J generate_3d_dataset[1-3]
 #BSUB -q gpuv100
 #BSUB -gpu "num=1:mode=exclusive_process"
 #BSUB -n 8
 #BSUB -R "rusage[mem=12GB]"
 #BSUB -R "span[hosts=1]"
 #BSUB -W 24:00
-#BSUB -o logs/generate_3d_dataset.out
-#BSUB -e logs/generate_3d_dataset.err
+#BSUB -o logs/generate_3d_dataset_%J_%I.out
+#BSUB -e logs/generate_3d_dataset_%J_%I.err
 
 mkdir -p logs
 module load cuda/11.8
@@ -16,17 +16,60 @@ module load cuda/11.8
 export LD_LIBRARY_PATH="../.venv/lib/python3.13/site-packages/nvidia/cudnn/lib:../.venv/lib/python3.13/site-packages/nvidia/nccl/lib:../.venv/lib/python3.13/site-packages/nvidia/cublas/lib:../.venv/lib/python3.13/site-packages/nvidia/cusparse/lib:../.venv/lib/python3.13/site-packages/nvidia/cusolver/lib:${LD_LIBRARY_PATH}"
 
 export PYTHONUNBUFFERED=1
-echo "Job starting on $(hostname)"
+echo "Job starting on $(hostname), Task ID: ${LSB_JOBINDEX}"
 
-# Run 3D Dataset Generator
-uv run generate_3d_dataset.py \
-    --num_samples 5000 \
-    --batch_size 100 \
-    --order_N 8 \
-    --order_N_y 8 \
-    --height_per_layer 8.0 \
-    --grating_period 1000.0 \
-    --grating_period_y 1000.0 \
-    --nx 500 \
-    --ny 500 \
-    --grating_material TiO2
+case ${LSB_JOBINDEX} in
+    1)
+        echo "======================================"
+        echo "Running Material: Si"
+        echo "======================================"
+        uv run generate_3d_dataset.py \
+            --num_samples 10000 \
+            --batch_size 100 \
+            --order_N 10 \
+            --order_N_y 10 \
+            --height_per_layer 5.0 \
+            --grating_period 1000.0 \
+            --grating_period_y 1000.0 \
+            --nx 500 \
+            --ny 500 \
+            --grating_material Si \
+            --seed 42
+        ;;
+    2)
+        echo "======================================"
+        echo "Running Material: TiO2"
+        echo "======================================"
+        uv run generate_3d_dataset.py \
+            --num_samples 10000 \
+            --batch_size 100 \
+            --order_N 10 \
+            --order_N_y 10 \
+            --height_per_layer 5.0 \
+            --grating_period 1000.0 \
+            --grating_period_y 1000.0 \
+            --nx 500 \
+            --ny 500 \
+            --grating_material TiO2 \
+            --seed 43
+        ;;
+    3)
+        echo "======================================"
+        echo "Running Material: Si3N4"
+        echo "======================================"
+        uv run generate_3d_dataset.py \
+            --num_samples 10000 \
+            --batch_size 100 \
+            --order_N 10 \
+            --order_N_y 10 \
+            --height_per_layer 5.0 \
+            --grating_period 1000.0 \
+            --grating_period_y 1000.0 \
+            --nx 500 \
+            --ny 500 \
+            --grating_material Si3N4 \
+            --seed 44
+        ;;
+esac
+
+echo "Task completed!"
