@@ -11,5 +11,5 @@ wheels/
 Data/*
 
 # HPC Logs
-logs/*.out
-logs/*.err
+logs/
+Scripts/logs/
