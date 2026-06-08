@@ -1,4 +1,61 @@
+def process_sample_3d(i, h_arr, inc_ang_arr, azi_ang_arr, wl_arr, amps_x_arr, phases_x_arr, amps_y_arr, phases_y_arr, args):
+    import torch
+    import numpy as np
+    from Utils.utils import get_absorptance_curve, RCWAConfig, geo_dtype
+    torch.set_num_threads(1)
+    device = torch.device('cpu')
+    
+    h = h_arr[i]
+    inc_ang_deg = inc_ang_arr[i]
+    azi_ang_deg = azi_ang_arr[i]
+    wl = wl_arr[i]
+    
+    params_x_data = [[amps_x_arr[i, j], phases_x_arr[i, j]] for j in range(5)]
+    params_y_data = [[amps_y_arr[i, j], phases_y_arr[i, j]] for j in range(5)]
+    params_x = torch.tensor(params_x_data, dtype=geo_dtype, device=device)
+    params_y = torch.tensor(params_y_data, dtype=geo_dtype, device=device)
+    
+    wavelength_tensor = torch.tensor([wl], dtype=torch.float64) + 1e-3
+    
+    base_config = RCWAConfig(
+        grating_period=args.grating_period, grating_period_y=args.grating_period_y,
+        h=float(h), order_N=args.order_N, order_N_y=args.order_N_y,
+        n_layers=args.num_layers, height_per_layer=args.height_per_layer,
+        nx=args.nx, ny=args.ny,
+        add_reflector=not args.no_reflector, reflector_type=args.reflector_type,
+        subpixel=not args.no_subpixel, grating_material=args.grating_material
+    )
+    
+    base_config.inc_ang = 1e-3 * np.pi/180
+    base_config.azi_ang = 1e-3 * np.pi/180
+    A_film_norm, A_grat_norm = get_absorptance_curve(
+        params_x=params_x, params_y=params_y,
+        wavelengths=wavelength_tensor, config=base_config
+    )
+    
+    base_config.inc_ang = (inc_ang_deg + 1e-3) * np.pi/180
+    base_config.azi_ang = (azi_ang_deg + 1e-3) * np.pi/180
+    A_film_obl, A_grat_obl = get_absorptance_curve(
+        params_x=params_x, params_y=params_y,
+        wavelengths=wavelength_tensor, config=base_config
+    )
+    
+    return {
+        'wavelength': float(wl),
+        'h': float(h),
+        'inc_ang': float(inc_ang_deg),
+        'azi_ang': float(azi_ang_deg),
+        'params_x': params_x.cpu(),
+        'params_y': params_y.cpu(),
+        'A_film_normal': A_film_norm.cpu(),
+        'A_grating_normal': A_grat_norm.cpu(),
+        'A_film_oblique': A_film_obl.cpu(),
+        'A_grating_oblique': A_grat_obl.cpu(),
+    }
+
 import argparse
+import multiprocessing as mp
+from functools import partial
 import os
 import sys
 import torch
@@ -12,15 +69,13 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if project_root not in sys.path:
     sys.path.append(project_root)
 
-from Utils.utils import get_absorptance_curve, geo_dtype, RCWAConfig
+from Utils.utils import geo_dtype, RCWAConfig
 default_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def get_lhs_samples(num_samples, seed=42):
-    # 24 dimensions: h, inc_ang, azi_ang, wavelength, 5x amps_x, 5x phases_x, 5x amps_y, 5x phases_y
     sampler = LatinHypercube(d=24, seed=seed)
     sample = sampler.random(n=num_samples)
     
-    # Map from [0, 1] to physical bounds
     h = 500 + 4500 * sample[:, 0]            # 500 nm to 5000 nm
     inc_ang = 0 + 30 * sample[:, 1]          # 0 to 30 degrees
     azi_ang = 0 + 360 * sample[:, 2]         # 0 to 360 degrees
@@ -54,7 +109,7 @@ def get_or_create_samples_3d(out_dir, num_samples, seed=42):
     return h, inc_ang, azi_ang, wavelengths, amps_x, phases_x, amps_y, phases_y
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate 3D LHS Dataset for Inverse Design")
+    parser = argparse.ArgumentParser(description="Generate 3D LHS Dataset for Inverse Design (CPU parallel)")
     parser.add_argument('--num_samples', type=int, default=5000,
                         help="Total number of samples to generate")
     parser.add_argument('--batch_size', type=int, default=100,
@@ -63,6 +118,8 @@ def main():
                         help="Diffraction order X")
     parser.add_argument('--order_N_y', type=int, default=10,
                         help="Diffraction order Y")
+    parser.add_argument('--n_jobs', type=int, default=4,
+                        help="Number of CPU cores")
     parser.add_argument('--num_layers', type=int, default=10,
                         help="Number of staircase layers")
     parser.add_argument('--height_per_layer', type=float, default=None,
@@ -105,9 +162,11 @@ def main():
         subpixel=not args.no_subpixel, grating_material=args.grating_material
     )
     
-    print(f"Starting 3D LHS dataset generation: {args.num_samples} samples in {num_batches} batches.")
+    print(f"Starting 3D LHS dataset generation (CPU parallel, {args.n_jobs} workers): {args.num_samples} samples in {num_batches} batches.")
     print(f"Config: {asdict(clean_config)}")
     sys.stdout.flush()
+    
+    torch.set_num_threads(1)
     
     for batch_idx in range(num_batches):
         batch_file = os.path.join(out_dir, f"batch_{batch_idx:04d}.pt")
@@ -120,73 +179,37 @@ def main():
         end_idx = min(start_idx + args.batch_size, args.num_samples)
         batch_len = end_idx - start_idx
         
-        # Pre-allocate stacked tensors for DataLoader-friendly format
-        # For 3D single-wavelength: absorptance is shape (1, 2) per sample
-        all_wavelength = torch.zeros(batch_len)
-        all_h = torch.zeros(batch_len)
-        all_inc_ang = torch.zeros(batch_len)
-        all_azi_ang = torch.zeros(batch_len)
-        all_params_x = torch.zeros(batch_len, 5, 2)
-        all_params_y = torch.zeros(batch_len, 5, 2)
-        all_A_film_normal = torch.zeros(batch_len, 1, 2)
-        all_A_grating_normal = torch.zeros(batch_len, 1, 2)
-        all_A_film_oblique = torch.zeros(batch_len, 1, 2)
-        all_A_grating_oblique = torch.zeros(batch_len, 1, 2)
-        
         print(f"\nComputing Batch {batch_idx:04d} (Samples {start_idx} to {end_idx-1})...")
         sys.stdout.flush()
-        for local_i, i in enumerate(tqdm(range(start_idx, end_idx), desc=f"Batch {batch_idx:04d}", mininterval=2.0, file=sys.stdout)):
-            h = h_arr[i]
-            inc_ang_deg = inc_ang_arr[i]
-            azi_ang_deg = azi_ang_arr[i]
-            wl = wl_arr[i]
+        
+        worker = partial(
+            process_sample_3d,
+            h_arr=h_arr, inc_ang_arr=inc_ang_arr, azi_ang_arr=azi_ang_arr,
+            wl_arr=wl_arr, amps_x_arr=amps_x_arr, phases_x_arr=phases_x_arr,
+            amps_y_arr=amps_y_arr, phases_y_arr=phases_y_arr, args=args
+        )
+        
+        with mp.Pool(processes=args.n_jobs) as pool:
+            sample_dicts = list(tqdm(
+                pool.imap(worker, range(start_idx, end_idx)),
+                total=batch_len,
+                desc=f"Batch {batch_idx:04d}",
+                mininterval=2.0,
+                file=sys.stdout
+            ))
             
-            # Format params_x and params_y as (5, 2) tensors
-            params_x_data = [[amps_x_arr[i, j], phases_x_arr[i, j]] for j in range(5)]
-            params_y_data = [[amps_y_arr[i, j], phases_y_arr[i, j]] for j in range(5)]
-            params_x = torch.tensor(params_x_data, dtype=geo_dtype, device=default_device)
-            params_y = torch.tensor(params_y_data, dtype=geo_dtype, device=default_device)
-            
-            # Create a single wavelength tensor for this sample
-            wavelength_tensor = torch.tensor([wl], dtype=torch.float64) + 1e-3
-            
-            base_config = RCWAConfig(
-                grating_period=args.grating_period, grating_period_y=args.grating_period_y,
-                h=float(h), order_N=args.order_N, order_N_y=args.order_N_y,
-                n_layers=args.num_layers, height_per_layer=args.height_per_layer,
-                nx=args.nx, ny=args.ny,
-                add_reflector=not args.no_reflector, reflector_type=args.reflector_type,
-                subpixel=not args.no_subpixel, grating_material=args.grating_material
-            )
-            
-            # 1. Normal Incidence Calculation
-            base_config.inc_ang = 1e-3 * np.pi/180
-            base_config.azi_ang = 1e-3 * np.pi/180
-            A_film_norm, A_grat_norm = get_absorptance_curve(
-                params_x=params_x, params_y=params_y,
-                wavelengths=wavelength_tensor, config=base_config
-            )
-            
-            # 2. Oblique Incidence Calculation
-            base_config.inc_ang = (inc_ang_deg + 1e-3) * np.pi/180
-            base_config.azi_ang = (azi_ang_deg + 1e-3) * np.pi/180
-            A_film_obl, A_grat_obl = get_absorptance_curve(
-                params_x=params_x, params_y=params_y,
-                wavelengths=wavelength_tensor, config=base_config
-            )
-            
-            # Store into pre-allocated tensors
-            all_wavelength[local_i] = float(wl)
-            all_h[local_i] = float(h)
-            all_inc_ang[local_i] = float(inc_ang_deg)
-            all_azi_ang[local_i] = float(azi_ang_deg)
-            all_params_x[local_i] = params_x.cpu()
-            all_params_y[local_i] = params_y.cpu()
-            all_A_film_normal[local_i] = A_film_norm.cpu()
-            all_A_grating_normal[local_i] = A_grat_norm.cpu()
-            all_A_film_oblique[local_i] = A_film_obl.cpu()
-            all_A_grating_oblique[local_i] = A_grat_obl.cpu()
-            
+        # Stack into tensors
+        all_wavelength = torch.tensor([s['wavelength'] for s in sample_dicts])
+        all_h = torch.tensor([s['h'] for s in sample_dicts])
+        all_inc_ang = torch.tensor([s['inc_ang'] for s in sample_dicts])
+        all_azi_ang = torch.tensor([s['azi_ang'] for s in sample_dicts])
+        all_params_x = torch.stack([s['params_x'] for s in sample_dicts])
+        all_params_y = torch.stack([s['params_y'] for s in sample_dicts])
+        all_A_film_normal = torch.stack([s['A_film_normal'] for s in sample_dicts])
+        all_A_grating_normal = torch.stack([s['A_grating_normal'] for s in sample_dicts])
+        all_A_film_oblique = torch.stack([s['A_film_oblique'] for s in sample_dicts])
+        all_A_grating_oblique = torch.stack([s['A_grating_oblique'] for s in sample_dicts])
+        
         # Save batch as stacked tensors (DataLoader-friendly)
         save_dict = {
             'metadata': {

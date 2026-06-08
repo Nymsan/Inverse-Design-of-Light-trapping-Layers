@@ -27,6 +27,15 @@ def parse_tensor_arg(arg_str):
         data.append([float(x) for x in r.split(',')])
     return torch.tensor(data, dtype=geo_dtype, device=default_device)
 
+def _process_curve_chunk(args_tuple):
+    wavelength_chunk, params_x, params_y, config_dict = args_tuple
+    import torch
+    torch.set_num_threads(1)
+    config = RCWAConfig(**config_dict)
+    # We call the unmodified utils function, but just on a small chunk of wavelengths!
+    A_film, A_grating = get_absorptance_curve(params_x=params_x, params_y=params_y, wavelengths=wavelength_chunk, config=config, show_progress=False)
+    return A_film.cpu(), A_grating.cpu()
+
 def main():
     parser = argparse.ArgumentParser(description="Generate absorptance curves for inverse design")
     parser.add_argument('--name', type=str, required=True, help="Base name for the output file (e.g., 'convergence_test')")
@@ -48,6 +57,7 @@ def main():
     parser.add_argument('--no_reflector', action='store_true', help="Disable the bottom reflector")
     parser.add_argument('--reflector_type', type=str, default='pec', help="Reflector type (e.g., pec, Ag)")
     parser.add_argument('--no_subpixel', action='store_true', help="Disable subpixel smoothing")
+    parser.add_argument('--n_jobs', type=int, default=1, help="Number of CPU cores for parallel wavelength chunking")
     
     args = parser.parse_args()
     
@@ -74,6 +84,14 @@ def main():
         subpixel=not args.no_subpixel, grating_material=args.grating_material
     )
     
+    if args.n_jobs > 1:
+        import multiprocessing as mp
+        print(f"Parallelizing wavelengths across {args.n_jobs} chunks...")
+        chunks = torch.tensor_split(wavelengths, args.n_jobs)
+        pool = mp.Pool(processes=args.n_jobs)
+    else:
+        pool = None
+    
     # Evaluate combinations. If order_N_y isn't given, assume symmetric orders (o_y = o_x)
     if args.order_N_y is None:
         combinations = list(itertools.product(args.order_N, args.num_layers))
@@ -91,9 +109,18 @@ def main():
                 n_layers=n_layers, height_per_layer=args.height_per_layer, add_reflector=not args.no_reflector, reflector_type=args.reflector_type, 
                 subpixel=not args.no_subpixel, grating_material=args.grating_material
             )
-            A_film, A_grating = get_absorptance_curve(params_x=params_x, params_y=params_y, wavelengths=wavelengths, config=config, show_progress=True)
             
-            results_dict[key] = {'A_film': A_film.cpu(), 'A_grating': A_grating.cpu()}
+            if pool:
+                config_dict = asdict(config)
+                tasks = [(c, params_x, params_y, config_dict) for c in chunks]
+                results = pool.map(_process_curve_chunk, tasks)
+                A_film = torch.cat([r[0] for r in results], dim=0)
+                A_grating = torch.cat([r[1] for r in results], dim=0)
+                results_dict[key] = {'A_film': A_film, 'A_grating': A_grating}
+            else:
+                A_film, A_grating = get_absorptance_curve(params_x=params_x, params_y=params_y, wavelengths=wavelengths, config=config, show_progress=True)
+                results_dict[key] = {'A_film': A_film.cpu(), 'A_grating': A_grating.cpu()}
+                
     else:
         combinations = list(itertools.product(args.order_N, args.order_N_y, args.num_layers))
         print(f"Starting batch generation for {len(combinations)} parameter combination(s)...")
@@ -109,9 +136,21 @@ def main():
                 n_layers=n_layers, height_per_layer=args.height_per_layer, add_reflector=not args.no_reflector, reflector_type=args.reflector_type, 
                 subpixel=not args.no_subpixel, grating_material=args.grating_material
             )
-            A_film, A_grating = get_absorptance_curve(params_x=params_x, params_y=params_y, wavelengths=wavelengths, config=config, show_progress=True)
             
-            results_dict[key] = {'A_film': A_film.cpu(), 'A_grating': A_grating.cpu()}
+            if pool:
+                config_dict = asdict(config)
+                tasks = [(c, params_x, params_y, config_dict) for c in chunks]
+                results = pool.map(_process_curve_chunk, tasks)
+                A_film = torch.cat([r[0] for r in results], dim=0)
+                A_grating = torch.cat([r[1] for r in results], dim=0)
+                results_dict[key] = {'A_film': A_film, 'A_grating': A_grating}
+            else:
+                A_film, A_grating = get_absorptance_curve(params_x=params_x, params_y=params_y, wavelengths=wavelengths, config=config, show_progress=True)
+                results_dict[key] = {'A_film': A_film.cpu(), 'A_grating': A_grating.cpu()}
+                
+    if pool:
+        pool.close()
+        pool.join()
         
     # Bundle results and all simulation metadata for plotting later
     save_data = {

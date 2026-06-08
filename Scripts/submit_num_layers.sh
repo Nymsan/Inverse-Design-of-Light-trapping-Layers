@@ -2,10 +2,9 @@
 #BSUB -J gen_curves_num_layers[1-4]
 #BSUB -o logs/gen_curves_num_layers_%I.out
 #BSUB -e logs/gen_curves_num_layers_%I.err
-#BSUB -q gpuv100
-#BSUB -gpu "num=1:mode=exclusive_process"
-#BSUB -n 8
-#BSUB -R "rusage[mem=12GB]"
+#BSUB -q hpc
+#BSUB -n 16
+#BSUB -R "rusage[mem=8GB]"
 #BSUB -R "span[hosts=1]"
 #BSUB -W 24:00
 
@@ -28,7 +27,8 @@ case ${LSB_JOBINDEX} in
             --wavelengths 300 1100 1601 \
             --nx 5000 \
             --ny 1 \
-            --no_subpixel
+            --no_subpixel \
+            --n_jobs 16
         ;;
     2)
         uv run generate_curve.py \
@@ -38,7 +38,8 @@ case ${LSB_JOBINDEX} in
             --num_layers 1 5 10 25 50 100 250 251 500 \
             --wavelengths 300 1100 1601 \
             --nx 5000 \
-            --ny 1
+            --ny 1 \
+            --n_jobs 16
         ;;
     3)
         uv run generate_curve.py \
@@ -49,7 +50,8 @@ case ${LSB_JOBINDEX} in
             --wavelengths 300 1100 1601 \
             --nx 5000 \
             --ny 1 \
-            --no_subpixel
+            --no_subpixel \
+            --n_jobs 16
         ;;
     4)
         uv run generate_curve.py \
@@ -59,6 +61,7 @@ case ${LSB_JOBINDEX} in
             --num_layers 1 5 10 25 50 100 250 251 500 \
             --wavelengths 300 1100 1601 \
             --nx 5000 \
-            --ny 1
+            --ny 1 \
+            --n_jobs 16
         ;;
 esac

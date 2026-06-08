@@ -1,22 +1,18 @@
 #!/bin/sh
-#BSUB -J generate_lhs_dataset[1-3]
-#BSUB -q gpuv100
-#BSUB -gpu "num=1:mode=exclusive_process"
-#BSUB -n 8
-#BSUB -R "rusage[mem=12GB]"
+#BSUB -J generate_dataset_cpu[1-3]
+#BSUB -q hpc
+#BSUB -n 24
+#BSUB -R "rusage[mem=8GB]"
 #BSUB -R "span[hosts=1]"
 #BSUB -W 24:00
-#BSUB -o logs/generate_lhs_dataset_%J_%I.out
-#BSUB -e logs/generate_lhs_dataset_%J_%I.err
-
-mkdir -p logs
-module load cuda/11.8
-
-# Fix for PyTorch 2.5.1 cu118 missing shared libs on compute nodes
-export LD_LIBRARY_PATH="../.venv/lib/python3.13/site-packages/nvidia/cudnn/lib:../.venv/lib/python3.13/site-packages/nvidia/nccl/lib:../.venv/lib/python3.13/site-packages/nvidia/cublas/lib:../.venv/lib/python3.13/site-packages/nvidia/cusparse/lib:../.venv/lib/python3.13/site-packages/nvidia/cusolver/lib:${LD_LIBRARY_PATH}"
+#BSUB -o logs/generate_dataset_cpu_%J_%I.out
+#BSUB -e logs/generate_dataset_cpu_%J_%I.err
 
 export PYTHONUNBUFFERED=1
+mkdir -p logs
 echo "Job starting on $(hostname), Task ID: ${LSB_JOBINDEX}"
+
+export CUDA_VISIBLE_DEVICES=""
 
 case ${LSB_JOBINDEX} in
     1)
@@ -31,7 +27,8 @@ case ${LSB_JOBINDEX} in
             --grating_period 1000.0 \
             --nx 5000 \
             --grating_material Si \
-            --seed 42
+            --seed 42 \
+            --n_jobs 24
         ;;
     2)
         echo "======================================"
@@ -45,7 +42,8 @@ case ${LSB_JOBINDEX} in
             --grating_period 1000.0 \
             --nx 5000 \
             --grating_material TiO2 \
-            --seed 43
+            --seed 43 \
+            --n_jobs 24
         ;;
     3)
         echo "======================================"
@@ -59,7 +57,8 @@ case ${LSB_JOBINDEX} in
             --grating_period 1000.0 \
             --nx 5000 \
             --grating_material Si3N4 \
-            --seed 44
+            --seed 44 \
+            --n_jobs 24
         ;;
 esac
 

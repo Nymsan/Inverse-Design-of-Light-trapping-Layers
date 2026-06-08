@@ -2,10 +2,9 @@
 #BSUB -J gen_curves_combination_3d[1-4]
 #BSUB -o logs/gen_curves_combination_3d_%I.out
 #BSUB -e logs/gen_curves_combination_3d_%I.err
-#BSUB -q gpuv100
-#BSUB -gpu "num=1:mode=exclusive_process"
-#BSUB -n 8
-#BSUB -R "rusage[mem=12GB]"
+#BSUB -q hpc
+#BSUB -n 16
+#BSUB -R "rusage[mem=8GB]"
 #BSUB -R "span[hosts=1]"
 #BSUB -W 24:00
 
@@ -29,7 +28,8 @@ case ${LSB_JOBINDEX} in
             --num_layers 1 2 5 10 25 50 100 250 500 \
             --wavelengths 700 700 1 \
             --nx 500 \
-            --ny 500
+            --ny 500 \
+            --n_jobs 16
         ;;
     2)
         echo "Running WITHOUT subpixel smoothing... (100nm)"
@@ -42,7 +42,8 @@ case ${LSB_JOBINDEX} in
             --num_layers 1 2 5 10 25 50 100 250 500 \
             --wavelengths 700 700 1 \
             --nx 500 \
-            --ny 500
+            --ny 500 \
+            --n_jobs 16
         ;;
     3)
         echo "Running WITH subpixel smoothing... (1000nm)"
@@ -54,7 +55,8 @@ case ${LSB_JOBINDEX} in
             --num_layers 1 2 5 10 25 50 100 250 500 \
             --wavelengths 700 700 1 \
             --nx 500 \
-            --ny 500
+            --ny 500 \
+            --n_jobs 16
         ;;
     4)
         echo "Running WITHOUT subpixel smoothing... (1000nm)"
@@ -67,6 +69,7 @@ case ${LSB_JOBINDEX} in
             --num_layers 1 2 5 10 25 50 100 250 500 \
             --wavelengths 700 700 1 \
             --nx 500 \
-            --ny 500
+            --ny 500 \
+            --n_jobs 16
         ;;
 esac

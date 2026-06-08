@@ -1,9 +1,8 @@
 #!/bin/sh
 #BSUB -J generate_3d_dataset[1-3]
-#BSUB -q gpuv100
-#BSUB -gpu "num=1:mode=exclusive_process"
-#BSUB -n 8
-#BSUB -R "rusage[mem=12GB]"
+#BSUB -q hpc
+#BSUB -n 24
+#BSUB -R "rusage[mem=16GB]"
 #BSUB -R "span[hosts=1]"
 #BSUB -W 24:00
 #BSUB -o logs/generate_3d_dataset_%J_%I.out
@@ -24,7 +23,7 @@ case ${LSB_JOBINDEX} in
         echo "Running Material: Si"
         echo "======================================"
         uv run generate_3d_dataset.py \
-            --num_samples 10000 \
+            --num_samples 5000 \
             --batch_size 100 \
             --order_N 10 \
             --order_N_y 10 \
@@ -34,14 +33,15 @@ case ${LSB_JOBINDEX} in
             --nx 500 \
             --ny 500 \
             --grating_material Si \
-            --seed 42
+            --seed 42 \
+            --n_jobs 24
         ;;
     2)
         echo "======================================"
         echo "Running Material: TiO2"
         echo "======================================"
         uv run generate_3d_dataset.py \
-            --num_samples 10000 \
+            --num_samples 5000 \
             --batch_size 100 \
             --order_N 10 \
             --order_N_y 10 \
@@ -51,14 +51,15 @@ case ${LSB_JOBINDEX} in
             --nx 500 \
             --ny 500 \
             --grating_material TiO2 \
-            --seed 43
+            --seed 43 \
+            --n_jobs 24
         ;;
     3)
         echo "======================================"
         echo "Running Material: Si3N4"
         echo "======================================"
         uv run generate_3d_dataset.py \
-            --num_samples 10000 \
+            --num_samples 5000 \
             --batch_size 100 \
             --order_N 10 \
             --order_N_y 10 \
@@ -68,7 +69,8 @@ case ${LSB_JOBINDEX} in
             --nx 500 \
             --ny 500 \
             --grating_material Si3N4 \
-            --seed 44
+            --seed 44 \
+            --n_jobs 24
         ;;
 esac
 
