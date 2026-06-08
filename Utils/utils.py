@@ -243,6 +243,9 @@ def get_absorptance(params_x, params_y, wavelength, config: RCWAConfig):
         
         area = grating_period * grating_period_y if is_3d else grating_period
         
+        #Note the layer num argument of .field_xy is a bit weird here. Torcwa.rcwa source code hardcodes -1 to be the input layer
+        #and hardcodes Layer_n (here = effective_n_layers+1) to be the output space.
+        
         # z_air (incident space, layer_num=-1)
         [Ex, Ey, Ez], [Hx, Hy, Hz] = sim.field_xy(-1, torcwa.rcwa_geo.x, torcwa.rcwa_geo.y, z_prop=-5*h)
         S_z_air = 0.5 * torch.real(Ex * torch.conj(Hy) - Ey * torch.conj(Hx))
@@ -258,8 +261,7 @@ def get_absorptance(params_x, params_y, wavelength, config: RCWAConfig):
         S_z_bot = 0.5 * torch.real(Ex * torch.conj(Hy) - Ey * torch.conj(Hx))
         P_bot = torch.mean(S_z_bot) * area
         
-        P_abs_film = P_top - P_bot
-        P_abs_grating = P_air - P_top#TODO Add a sanity check using a volume integral for the power.
+        #TODO Add a sanity check using a volume integral for the power.
         
         results[pol_idx] = {
             'A_film': (P_top - P_bot) / P_inc,
