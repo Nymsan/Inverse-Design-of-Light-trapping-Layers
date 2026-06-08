@@ -86,8 +86,9 @@ def main():
     
     if args.n_jobs > 1:
         import multiprocessing as mp
-        print(f"Parallelizing wavelengths across {args.n_jobs} chunks...")
-        chunks = torch.tensor_split(wavelengths, args.n_jobs)
+        num_chunks = min(args.n_jobs * 10, len(wavelengths))
+        print(f"Parallelizing {len(wavelengths)} wavelengths across {num_chunks} chunks ({args.n_jobs} workers)...")
+        chunks = torch.tensor_split(wavelengths, num_chunks)
         pool = mp.Pool(processes=args.n_jobs)
     else:
         pool = None
