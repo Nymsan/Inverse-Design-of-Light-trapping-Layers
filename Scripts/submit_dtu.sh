@@ -19,7 +19,8 @@ module load cuda/11.8
 
 # Fix for PyTorch 2.5.1 cu118 missing libnccl.so.2 and libcudnn.so.9 on compute nodes
 
-echo "Job starting on $(hostname)"
+export PYTHONUNBUFFERED=1
+echo "Job starting on $(hostname), Task ID: ${LSB_JOBINDEX}"
 
 # Using 'uv run' automatically handles the virtual environment for you!
 uv run generate_curve.py \

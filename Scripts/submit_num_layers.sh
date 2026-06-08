@@ -9,26 +9,22 @@
 #BSUB -R "span[hosts=1]"
 #BSUB -W 24:00
 
-# Note: Adjust the walltime (-W) above based on how many combinations you are running
-
-# Create a logs directory to keep the workspace clean
 mkdir -p logs
-
-# Load necessary modules for DTU HPC
 module load cuda/11.8
 
-# Fix for PyTorch 2.5.1 cu118 missing libnccl.so.2 and libcudnn.so.9 on compute nodes
+# Fix for PyTorch 2.5.1 cu118 missing shared libs on compute nodes
+export LD_LIBRARY_PATH="../.venv/lib/python3.13/site-packages/nvidia/cudnn/lib:../.venv/lib/python3.13/site-packages/nvidia/nccl/lib:../.venv/lib/python3.13/site-packages/nvidia/cublas/lib:../.venv/lib/python3.13/site-packages/nvidia/cusparse/lib:../.venv/lib/python3.13/site-packages/nvidia/cusolver/lib:${LD_LIBRARY_PATH}"
 
+export PYTHONUNBUFFERED=1
 echo "Job starting on $(hostname), Task ID: ${LSB_JOBINDEX}"
 
-# Using 'uv run' automatically handles the virtual environment for you!
 case ${LSB_JOBINDEX} in
     1)
         uv run generate_curve.py \
             --name "sweep_num_layers_no_subpixel_100nm" \
             --params_x "50,0" \
             --order_N 20 \
-            --num_layers 1 5 10 25 50 100 250 251 500\
+            --num_layers 1 5 10 25 50 100 250 251 500 \
             --wavelengths 300 1100 1601 \
             --nx 5000 \
             --ny 1 \
@@ -42,7 +38,7 @@ case ${LSB_JOBINDEX} in
             --num_layers 1 5 10 25 50 100 250 251 500 \
             --wavelengths 300 1100 1601 \
             --nx 5000 \
-            --ny 1 
+            --ny 1
         ;;
     3)
         uv run generate_curve.py \
@@ -63,6 +59,6 @@ case ${LSB_JOBINDEX} in
             --num_layers 1 5 10 25 50 100 250 251 500 \
             --wavelengths 300 1100 1601 \
             --nx 5000 \
-            --ny 1 
+            --ny 1
         ;;
 esac

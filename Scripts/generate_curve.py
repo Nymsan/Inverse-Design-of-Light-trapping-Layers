@@ -12,7 +12,8 @@ if project_root not in sys.path:
     sys.path.append(project_root)
 
 from dataclasses import asdict
-from Utils.utils import get_absorptance_curve, geo_dtype, device, RCWAConfig
+from Utils.utils import get_absorptance_curve, geo_dtype, RCWAConfig
+default_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def parse_tensor_arg(arg_str):
     """
@@ -24,7 +25,7 @@ def parse_tensor_arg(arg_str):
     data = []
     for r in rows:
         data.append([float(x) for x in r.split(',')])
-    return torch.tensor(data, dtype=geo_dtype, device=device)
+    return torch.tensor(data, dtype=geo_dtype, device=default_device)
 
 def main():
     parser = argparse.ArgumentParser(description="Generate absorptance curves for inverse design")
@@ -61,8 +62,6 @@ def main():
     inc_ang_rad = (args.inc_ang + 1e-3) * (np.pi / 180)
     azi_ang_rad = (args.azi_ang + 1e-3) * (np.pi / 180)
     
-    order_N_y_list = args.order_N_y if args.order_N_y is not None else [None]
-    
     results_dict = {}
     
     # Create base config to save in metadata
@@ -92,7 +91,7 @@ def main():
                 n_layers=n_layers, height_per_layer=args.height_per_layer, add_reflector=not args.no_reflector, reflector_type=args.reflector_type, 
                 subpixel=not args.no_subpixel, grating_material=args.grating_material
             )
-            A_film, A_grating = get_absorptance_curve(params_x=params_x, params_y=params_y, wavelengths=wavelengths, config=config)
+            A_film, A_grating = get_absorptance_curve(params_x=params_x, params_y=params_y, wavelengths=wavelengths, config=config, show_progress=True)
             
             results_dict[key] = {'A_film': A_film.cpu(), 'A_grating': A_grating.cpu()}
     else:
@@ -110,7 +109,7 @@ def main():
                 n_layers=n_layers, height_per_layer=args.height_per_layer, add_reflector=not args.no_reflector, reflector_type=args.reflector_type, 
                 subpixel=not args.no_subpixel, grating_material=args.grating_material
             )
-            A_film, A_grating = get_absorptance_curve(params_x=params_x, params_y=params_y, wavelengths=wavelengths, config=config)
+            A_film, A_grating = get_absorptance_curve(params_x=params_x, params_y=params_y, wavelengths=wavelengths, config=config, show_progress=True)
             
             results_dict[key] = {'A_film': A_film.cpu(), 'A_grating': A_grating.cpu()}
         

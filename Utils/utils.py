@@ -15,7 +15,7 @@ from dataclasses import dataclass  # noqa: E402
 torch.backends.cuda.matmul.allow_tf32 = False
 sim_dtype = torch.complex64
 geo_dtype = torch.float32
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+default_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 @dataclass
@@ -82,7 +82,7 @@ def get_staircase_sine_eps(x, params_x, grating_period, num_layers, eps_high, ep
     
     if not subpixel:
         # The Straight-Through Estimator (STE) trick
-        # This avoids killing gradients        eps = (torch.round(eps) - eps).detach() + eps
+        # This avoids killing gradients
         eps = (torch.round(eps) - eps).detach() + eps
         
     return eps_low + (eps_high - eps_low) * eps
@@ -91,6 +91,7 @@ def get_staircase_sine_eps(x, params_x, grating_period, num_layers, eps_high, ep
 spectra = spectrum.get_reference_spectra()
 am15g = spectra['global']
 def sun_weights(w):
+    device = w.device if hasattr(w, "device") else default_device
     return torch.tensor(am15g[w.cpu().numpy()], dtype=geo_dtype, device=device)
 
 # material
@@ -102,6 +103,7 @@ _materials_db = {
 }
 
 def get_material_eps(material_name, w):
+    device = w.device if hasattr(w, "device") else default_device
     if material_name not in _materials_db:
         raise ValueError(f"Material {material_name} not found in library. Available: {list(_materials_db.keys())}")
     mat = _materials_db[material_name]
@@ -146,6 +148,7 @@ def get_continuous_boundary(x, params_x, grating_period, y=None, params_y=None, 
     return z_boundary, grating_height.item()
     
 def get_incident_power(pol,wavelength,inc_ang,azi_ang,grating_period,order,grating_period_y=None):
+    device = wavelength.device if hasattr(wavelength, 'device') else default_device
     is_3d = order[1] > 0
     grating_period_y = grating_period_y or grating_period
     L = [grating_period, grating_period_y]
@@ -163,6 +166,7 @@ def get_incident_power(pol,wavelength,inc_ang,azi_ang,grating_period,order,grati
     return P_inc.item() * grating_period
 
 def get_absorptance(params_x, params_y, wavelength, config: RCWAConfig):
+    device = params_x.device if hasattr(params_x, "device") else default_device
     inc_ang, azi_ang = config.inc_ang, config.azi_ang
     grating_period, grating_period_y, h = config.grating_period, config.grating_period_y, config.h
     order_N, order_N_y = config.order_N, config.order_N_y
@@ -284,38 +288,11 @@ def get_absorptance(params_x, params_y, wavelength, config: RCWAConfig):
 
     return sim, sine_eps, A_film, A_grating, Reflectance, Transmittance, P_abs_film, P_abs_grating#, P_slices
 
-def get_weighted_absorptance(params_x, params_y, wavelengths, config: RCWAConfig):
-    inc_ang, azi_ang = config.inc_ang, config.azi_ang
-    grating_period, grating_period_y, h = config.grating_period, config.grating_period_y, config.h
-    order_N, order_N_y = config.order_N, config.order_N_y
-    nx, ny, n_layers, height_per_layer, subpixel = config.nx, config.ny, config.n_layers, config.height_per_layer, config.subpixel
-    add_reflector, reflector_type = config.add_reflector, config.reflector_type
-    grating_period_y = grating_period_y or grating_period
-    L = [float(grating_period), float(grating_period_y)]
-    weights = sun_weights(wavelengths)
-    sum_am15g = torch.sum(weights)
-    sum_photons = torch.sum(weights * wavelengths.to(device))
-    
-    running_sun_weight = 0.0
-    running_photon_weight = 0.0
-    
-    for i, wavelength in enumerate(wavelengths):
-        temp_config = RCWAConfig(
-            grating_period=grating_period, grating_period_y=grating_period_y, h=h,
-            order_N=order_N, order_N_y=order_N_y, nx=nx, ny=ny, n_layers=n_layers, height_per_layer=height_per_layer, subpixel=subpixel,
-            add_reflector=add_reflector, reflector_type=reflector_type,
-            inc_ang=inc_ang, azi_ang=azi_ang, grating_material=config.grating_material
-        )
-        A_film = get_absorptance(params_x=params_x, params_y=params_y, wavelength=wavelength, config=temp_config)[2]
-        mean_A = torch.mean(A_film)
-        running_sun_weight += weights[i] * mean_A
-        running_photon_weight += weights[i] * mean_A * wavelength.to(device)
-        
-    weighted_A_sun = running_sun_weight / sum_am15g
-    weighted_A_photon = running_photon_weight / sum_photons
-    return weighted_A_sun, weighted_A_photon
-
-def get_absorptance_curve(params_x, params_y, wavelengths, config: RCWAConfig):
+def get_absorptance_curve(params_x, params_y, wavelengths, config: RCWAConfig, show_progress=False):
+    device = params_x.device if hasattr(params_x, "device") else default_device
+    wavelengths = wavelengths.to(device)
+    if params_y is not None:
+        params_y = params_y.to(device)
     inc_ang, azi_ang = config.inc_ang, config.azi_ang
     grating_period, grating_period_y, h = config.grating_period, config.grating_period_y, config.h
     order_N, order_N_y = config.order_N, config.order_N_y
@@ -323,10 +300,13 @@ def get_absorptance_curve(params_x, params_y, wavelengths, config: RCWAConfig):
     add_reflector, reflector_type = config.add_reflector, config.reflector_type
     Absorptances_film = torch.zeros_like(wavelengths,dtype=geo_dtype).unsqueeze(1).repeat(1,2)
     Absorptances_grating = torch.zeros_like(wavelengths,dtype=geo_dtype).unsqueeze(1).repeat(1,2)
-    for i,wavelength in enumerate(tqdm(wavelengths)):
+    
+    import sys
+    iterator = tqdm(wavelengths, leave=True, file=sys.stdout, mininterval=2.0) if show_progress else wavelengths
+    for i, wavelength in enumerate(iterator):
         temp_config = RCWAConfig(
             grating_period=grating_period, grating_period_y=grating_period_y, h=h,
-            order_N=order_N, order_N_y=order_N_y, nx=nx, ny=ny, n_layers=n_layers, subpixel=subpixel,
+            order_N=order_N, order_N_y=order_N_y, nx=nx, ny=ny, n_layers=n_layers, height_per_layer=height_per_layer, subpixel=subpixel,
             add_reflector=add_reflector, reflector_type=reflector_type,
             inc_ang=inc_ang, azi_ang=azi_ang, grating_material=config.grating_material
         )
@@ -339,13 +319,13 @@ def get_absorptance_curve(params_x, params_y, wavelengths, config: RCWAConfig):
     
 
 def plot_fields(sim, x_plot, z_plot, wavelength, polarization, params_x, params_y, config: RCWAConfig, field=None, thickness=2, y_plot=None, slice_plane='xz', slice_val=0.0):
-    inc_ang, azi_ang = config.inc_ang, config.azi_ang
-    grating_period, grating_period_y, h = config.grating_period, config.grating_period_y, config.h
     """
     Plots fields for a chosen 2D slice plane ('xz', 'yz', or 'xy').
     If `field` is None, plots a 4x3 grid.
     If `field` is a string (e.g., 'Ex', 'Snorm'), plots only that field.
     """
+    inc_ang, azi_ang = config.inc_ang, config.azi_ang
+    grating_period, grating_period_y, h = config.grating_period, config.grating_period_y, config.h
     sim.source_planewave(amplitude=polarization, direction='forward', notation='ps')
     dev = sim._device
     x_plot = x_plot.to(dev) if x_plot is not None else None
