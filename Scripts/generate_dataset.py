@@ -83,7 +83,7 @@ def main():
     
     args = parser.parse_args()
     
-    out_dir = os.path.join(project_root, 'Data', 'LHS_Dataset')
+    out_dir = os.path.join(project_root, 'Data', f'LHS_Dataset_{args.grating_material}')
     os.makedirs(out_dir, exist_ok=True)
     
     # Wavelengths: 300 to 1100 nm in 5 nm steps (161 steps)

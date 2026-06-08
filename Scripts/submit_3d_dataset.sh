@@ -2,7 +2,7 @@
 #BSUB -J generate_3d_dataset
 #BSUB -q gpuv100
 #BSUB -gpu "num=1:mode=exclusive_process"
-#BSUB -n 4
+#BSUB -n 8
 #BSUB -R "rusage[mem=12GB]"
 #BSUB -R "span[hosts=1]"
 #BSUB -W 24:00
@@ -22,9 +22,9 @@ echo "Job starting on $(hostname)"
 uv run generate_3d_dataset.py \
     --num_samples 5000 \
     --batch_size 100 \
-    --order_N 5 \
-    --order_N_y 5 \
-    --height_per_layer 5.0 \
+    --order_N 8 \
+    --order_N_y 8 \
+    --height_per_layer 8.0 \
     --grating_period 1000.0 \
     --grating_period_y 1000.0 \
     --nx 500 \
