@@ -35,7 +35,7 @@ def main():
     parser.add_argument('--batch_size', type=int, default=100, help="Number of samples to save per .pt file")
     parser.add_argument('--order_N', type=int, default=10, help="Diffraction order")
     parser.add_argument('--num_layers', type=int, default=10, help="Number of staircase layers")
-    parser.add_argument('--nm_per_layer', type=float, default=None, help="Overrides num_layers to fix grating resolution")
+    parser.add_argument('--height_per_layer', type=float, default=None, help="Overrides num_layers to fix grating resolution")
     parser.add_argument('--grating_period', type=float, default=1000.0, help="Grating period (nm)")
     parser.add_argument('--nx', type=int, default=5000, help="Grid resolution")
     parser.add_argument('--grating_material', type=str, default='Si', help="Material for the grating layer (e.g. Si, TiO2, Si3N4)")
@@ -82,7 +82,7 @@ def main():
             # Base Config
             base_config = RCWAConfig(
                 grating_period=args.grating_period, h=float(h), order_N=args.order_N, 
-                n_layers=args.num_layers, nm_per_layer=args.nm_per_layer,
+                n_layers=args.num_layers, height_per_layer=args.height_per_layer,
                 nx=args.nx, ny=1, add_reflector=not args.no_reflector, reflector_type=args.reflector_type,
                 subpixel=not args.no_subpixel, grating_material=args.grating_material
             )

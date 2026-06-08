@@ -18,7 +18,6 @@ mkdir -p logs
 module load cuda/11.8
 
 # Fix for PyTorch 2.5.1 cu118 missing libnccl.so.2 and libcudnn.so.9 on compute nodes
-export LD_LIBRARY_PATH="../.venv/lib/python3.13/site-packages/nvidia/cudnn/lib:../.venv/lib/python3.13/site-packages/nvidia/nccl/lib:../.venv/lib/python3.13/site-packages/nvidia/cublas/lib:../.venv/lib/python3.13/site-packages/nvidia/cusparse/lib:../.venv/lib/python3.13/site-packages/nvidia/cusolver/lib:${LD_LIBRARY_PATH}"
 
 echo "Job starting on $(hostname), Task ID: ${LSB_JOBINDEX}"
 
@@ -29,7 +28,7 @@ case ${LSB_JOBINDEX} in
             --name "sweep_num_layers_no_subpixel_100nm" \
             --params_x "50,0" \
             --order_N 20 \
-            --num_layers 1 5 10 25 50 100 250 500 \
+            --num_layers 1 5 10 25 50 100 250 251 500\
             --wavelengths 300 1100 1601 \
             --nx 5000 \
             --ny 1 \
@@ -40,7 +39,7 @@ case ${LSB_JOBINDEX} in
             --name "sweep_num_layers_100nm" \
             --params_x "50,0" \
             --order_N 20 \
-            --num_layers 1 5 10 25 50 100 250 500 \
+            --num_layers 1 5 10 25 50 100 250 251 500 \
             --wavelengths 300 1100 1601 \
             --nx 5000 \
             --ny 1 
@@ -50,7 +49,7 @@ case ${LSB_JOBINDEX} in
             --name "sweep_num_layers_no_subpixel_1000nm" \
             --params_x "500,0" \
             --order_N 20 \
-            --num_layers 1 5 10 25 50 100 250 500 \
+            --num_layers 1 5 10 25 50 100 250 251 500 \
             --wavelengths 300 1100 1601 \
             --nx 5000 \
             --ny 1 \
@@ -61,7 +60,7 @@ case ${LSB_JOBINDEX} in
             --name "sweep_num_layers_1000nm" \
             --params_x "500,0" \
             --order_N 20 \
-            --num_layers 1 5 10 25 50 100 250 500 \
+            --num_layers 1 5 10 25 50 100 250 251 500 \
             --wavelengths 300 1100 1601 \
             --nx 5000 \
             --ny 1 

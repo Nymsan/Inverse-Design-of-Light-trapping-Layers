@@ -5,6 +5,9 @@ import torcwa
 from pvlib import spectrum
 from refractiveindex import RefractiveIndexMaterial
 from tqdm import tqdm
+import math
+from typing import Optional
+from dataclasses import dataclass  # noqa: E402
 
 # Hardware
 # If GPU support TF32 tensor core, the matmul operation is faster than FP32 but with less precision.
@@ -14,8 +17,6 @@ sim_dtype = torch.complex64
 geo_dtype = torch.float32
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-from typing import Optional
-from dataclasses import dataclass
 
 @dataclass
 class RCWAConfig:
@@ -27,7 +28,7 @@ class RCWAConfig:
     nx: int = 1000
     ny: int = 1
     n_layers: int = 10
-    nm_per_layer: Optional[float] = None
+    height_per_layer: Optional[float] = None
     subpixel: bool = True
     add_reflector: bool = True
     reflector_type: str = 'pec'
@@ -165,7 +166,7 @@ def get_absorptance(params_x, params_y, wavelength, config: RCWAConfig):
     inc_ang, azi_ang = config.inc_ang, config.azi_ang
     grating_period, grating_period_y, h = config.grating_period, config.grating_period_y, config.h
     order_N, order_N_y = config.order_N, config.order_N_y
-    nx, ny, n_layers, nm_per_layer, subpixel = config.nx, config.ny, config.n_layers, config.nm_per_layer, config.subpixel
+    nx, ny, n_layers, height_per_layer, subpixel = config.nx, config.ny, config.n_layers, config.height_per_layer, config.subpixel
     add_reflector, reflector_type = config.add_reflector, config.reflector_type
     grating_material = config.grating_material
     if not isinstance(wavelength, torch.Tensor):
@@ -201,8 +202,8 @@ def get_absorptance(params_x, params_y, wavelength, config: RCWAConfig):
     )
 
     effective_n_layers = n_layers
-    if nm_per_layer is not None:
-        effective_n_layers = max(1, int(round(grating_height / nm_per_layer)))
+    if height_per_layer is not None:
+        effective_n_layers = max(1, math.ceil(grating_height / height_per_layer))
 
     sine_eps = get_staircase_sine_eps(
         x=torcwa.rcwa_geo.x, params_x=params_x, grating_period=grating_period,
@@ -225,11 +226,11 @@ def get_absorptance(params_x, params_y, wavelength, config: RCWAConfig):
 
     sim.set_incident_angle(inc_ang=inc_ang, azi_ang=azi_ang)
     
-    for i in range(sine_eps.shape[-1]):
+    for i in range(effective_n_layers):
         eps_slice = sine_eps[..., -1-i]
         if not is_3d:
             eps_slice = eps_slice.unsqueeze(-1)
-        sim.add_layer(thickness=grating_height/sine_eps.shape[-1], eps=eps_slice)
+        sim.add_layer(thickness=grating_height/effective_n_layers, eps=eps_slice)
         
     sim.add_layer(thickness=h, eps=si_eps(wavelength))
     
@@ -287,7 +288,7 @@ def get_weighted_absorptance(params_x, params_y, wavelengths, config: RCWAConfig
     inc_ang, azi_ang = config.inc_ang, config.azi_ang
     grating_period, grating_period_y, h = config.grating_period, config.grating_period_y, config.h
     order_N, order_N_y = config.order_N, config.order_N_y
-    nx, ny, n_layers, nm_per_layer, subpixel = config.nx, config.ny, config.n_layers, config.nm_per_layer, config.subpixel
+    nx, ny, n_layers, height_per_layer, subpixel = config.nx, config.ny, config.n_layers, config.height_per_layer, config.subpixel
     add_reflector, reflector_type = config.add_reflector, config.reflector_type
     grating_period_y = grating_period_y or grating_period
     L = [float(grating_period), float(grating_period_y)]
@@ -301,7 +302,7 @@ def get_weighted_absorptance(params_x, params_y, wavelengths, config: RCWAConfig
     for i, wavelength in enumerate(wavelengths):
         temp_config = RCWAConfig(
             grating_period=grating_period, grating_period_y=grating_period_y, h=h,
-            order_N=order_N, order_N_y=order_N_y, nx=nx, ny=ny, n_layers=n_layers, nm_per_layer=nm_per_layer, subpixel=subpixel,
+            order_N=order_N, order_N_y=order_N_y, nx=nx, ny=ny, n_layers=n_layers, height_per_layer=height_per_layer, subpixel=subpixel,
             add_reflector=add_reflector, reflector_type=reflector_type,
             inc_ang=inc_ang, azi_ang=azi_ang, grating_material=config.grating_material
         )
@@ -318,7 +319,7 @@ def get_absorptance_curve(params_x, params_y, wavelengths, config: RCWAConfig):
     inc_ang, azi_ang = config.inc_ang, config.azi_ang
     grating_period, grating_period_y, h = config.grating_period, config.grating_period_y, config.h
     order_N, order_N_y = config.order_N, config.order_N_y
-    nx, ny, n_layers, nm_per_layer, subpixel = config.nx, config.ny, config.n_layers, config.nm_per_layer, config.subpixel
+    nx, ny, n_layers, height_per_layer, subpixel = config.nx, config.ny, config.n_layers, config.height_per_layer, config.subpixel
     add_reflector, reflector_type = config.add_reflector, config.reflector_type
     Absorptances_film = torch.zeros_like(wavelengths,dtype=geo_dtype).unsqueeze(1).repeat(1,2)
     Absorptances_grating = torch.zeros_like(wavelengths,dtype=geo_dtype).unsqueeze(1).repeat(1,2)
@@ -465,8 +466,8 @@ def plot_fields(sim, x_plot, z_plot, wavelength, polarization, params_x, params_
         grating_height_val = float(grating_height_val)
         
         effective_n_layers = config.n_layers
-        if config.nm_per_layer is not None:
-            effective_n_layers = max(1, int(round(grating_height_val / config.nm_per_layer)))
+        if config.height_per_layer is not None:
+            effective_n_layers = max(1, math.ceil(grating_height_val / config.height_per_layer))
 
         eps_high = get_material_eps(config.grating_material, wavelength)
         sine_eps = get_staircase_sine_eps(x_plot, params_x, grating_period, effective_n_layers, eps_high, subpixel=config.subpixel, y=y_plot, params_y=params_y, grating_period_y=grating_period_y)

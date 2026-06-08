@@ -18,16 +18,9 @@ mkdir -p logs
 module load cuda/11.8
 
 # Fix for PyTorch 2.5.1 cu118 missing libnccl.so.2 and libcudnn.so.9 on compute nodes
-export LD_LIBRARY_PATH="../.venv/lib/python3.13/site-packages/nvidia/cudnn/lib:../.venv/lib/python3.13/site-packages/nvidia/nccl/lib:../.venv/lib/python3.13/site-packages/nvidia/cublas/lib:../.venv/lib/python3.13/site-packages/nvidia/cusparse/lib:../.venv/lib/python3.13/site-packages/nvidia/cusolver/lib:${LD_LIBRARY_PATH}"
 
 echo "Job starting on $(hostname)"
 
 # Using 'uv run' automatically handles the virtual environment for you!
 uv run generate_curve.py \
-    --name "sweep_dtu_run" \
-    --params_x "50,0" \
-    --order_N 1 5 10 20 35 50 100 \
-    --num_layers 5 \
-    --wavelengths 300 1100 10 \
-    --nx 5000 \
-    --ny 1
+    #Some arguments.This is an example.

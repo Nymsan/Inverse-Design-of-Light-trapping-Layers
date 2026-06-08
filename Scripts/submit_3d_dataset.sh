@@ -11,7 +11,6 @@
 
 mkdir -p logs
 module load cuda/11.8
-export LD_LIBRARY_PATH=../.venv/lib/python3.13/site-packages/nvidia/cudnn/lib:../.venv/lib/python3.13/site-packages/nvidia/nccl/lib:$LD_LIBRARY_PATH
 echo "Job starting on $(hostname)"
 
 # Run 3D Dataset Generator
@@ -20,7 +19,7 @@ uv run generate_3d_dataset.py \
     --batch_size 100 \
     --order_N 5 \
     --order_N_y 5 \
-    --nm_per_layer 5.0 \
+    --height_per_layer 5.0 \
     --grating_period 1000.0 \
     --grating_period_y 1000.0 \
     --nx 500 \

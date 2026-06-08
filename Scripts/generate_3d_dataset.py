@@ -40,7 +40,7 @@ def main():
     parser.add_argument('--order_N', type=int, default=10, help="Diffraction order X")
     parser.add_argument('--order_N_y', type=int, default=10, help="Diffraction order Y")
     parser.add_argument('--num_layers', type=int, default=10, help="Number of staircase layers")
-    parser.add_argument('--nm_per_layer', type=float, default=None, help="Overrides num_layers to fix grating resolution")
+    parser.add_argument('--height_per_layer', type=float, default=None, help="Overrides num_layers to fix grating resolution")
     parser.add_argument('--grating_period', type=float, default=1000.0, help="Grating period X (nm)")
     parser.add_argument('--grating_period_y', type=float, default=1000.0, help="Grating period Y (nm)")
     parser.add_argument('--nx', type=int, default=500, help="Grid resolution X")
@@ -92,7 +92,7 @@ def main():
             base_config = RCWAConfig(
                 grating_period=args.grating_period, grating_period_y=args.grating_period_y,
                 h=float(h), order_N=args.order_N, order_N_y=args.order_N_y,
-                n_layers=args.num_layers, nm_per_layer=args.nm_per_layer, nx=args.nx, ny=args.ny,
+                n_layers=args.num_layers, height_per_layer=args.height_per_layer, nx=args.nx, ny=args.ny,
                 add_reflector=not args.no_reflector, reflector_type=args.reflector_type,
                 subpixel=not args.no_subpixel, grating_material=args.grating_material
             )
