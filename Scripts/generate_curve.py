@@ -2,17 +2,17 @@ import argparse
 import itertools
 import datetime
 import os
-import torch
 import sys
 import numpy as np
 from dataclasses import asdict
-from Utils.utils import get_absorptance_curve, geo_dtype, RCWAConfig
 
 # Ensure project root is in path so we can import Utils
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if project_root not in sys.path:
     sys.path.append(project_root)
 
+import torch
+from Utils.utils import get_absorptance_curve, geo_dtype, RCWAConfig
 default_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def parse_tensor_arg(arg_str):
