@@ -4,7 +4,7 @@
 #BSUB -e logs/gen_curves_num_layers_%I.err
 #BSUB -q hpc
 #BSUB -n 16
-#BSUB -R "rusage[mem=8GB]"
+#BSUB -R "rusage[mem=16GB]"
 #BSUB -R "span[hosts=1]"
 #BSUB -W 24:00
 
