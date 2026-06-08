@@ -2,15 +2,18 @@
 #BSUB -J gen_curves_combination_3d[1-4]
 #BSUB -o logs/gen_curves_combination_3d_%I.out
 #BSUB -e logs/gen_curves_combination_3d_%I.err
-#BSUB -q hpc
-#BSUB -n 16
+#BSUB -q gpuv100
+#BSUB -gpu "num=1:mode=exclusive_process"
+#BSUB -n 4
 #BSUB -R "rusage[mem=8GB]"
 #BSUB -R "span[hosts=1]"
 #BSUB -W 24:00
 
 mkdir -p logs
+module load cuda/11.8
 
-
+# Fix for PyTorch 2.5.1 cu118 missing shared libs on compute nodes
+export LD_LIBRARY_PATH="../.venv/lib/python3.13/site-packages/nvidia/cudnn/lib:../.venv/lib/python3.13/site-packages/nvidia/nccl/lib:../.venv/lib/python3.13/site-packages/nvidia/cublas/lib:../.venv/lib/python3.13/site-packages/nvidia/cusparse/lib:../.venv/lib/python3.13/site-packages/nvidia/cusolver/lib:${LD_LIBRARY_PATH}"
 export PYTHONUNBUFFERED=1
 echo "Job starting on $(hostname), Task ID: ${LSB_JOBINDEX}"
 
@@ -25,8 +28,7 @@ case ${LSB_JOBINDEX} in
             --num_layers 1 2 5 10 25 50 100 250 500 \
             --wavelengths 700 700 1 \
             --nx 500 \
-            --ny 500 \
-            --n_jobs 16
+            --ny 500
         ;;
     2)
         echo "Running WITHOUT subpixel smoothing... (100nm)"
@@ -39,8 +41,7 @@ case ${LSB_JOBINDEX} in
             --num_layers 1 2 5 10 25 50 100 250 500 \
             --wavelengths 700 700 1 \
             --nx 500 \
-            --ny 500 \
-            --n_jobs 16
+            --ny 500
         ;;
     3)
         echo "Running WITH subpixel smoothing... (1000nm)"
@@ -52,8 +53,7 @@ case ${LSB_JOBINDEX} in
             --num_layers 1 2 5 10 25 50 100 250 500 \
             --wavelengths 700 700 1 \
             --nx 500 \
-            --ny 500 \
-            --n_jobs 16
+            --ny 500
         ;;
     4)
         echo "Running WITHOUT subpixel smoothing... (1000nm)"
@@ -66,7 +66,6 @@ case ${LSB_JOBINDEX} in
             --num_layers 1 2 5 10 25 50 100 250 500 \
             --wavelengths 700 700 1 \
             --nx 500 \
-            --ny 500 \
-            --n_jobs 16
+            --ny 500
         ;;
 esac
