@@ -61,8 +61,45 @@ if project_root not in sys.path:
 
 from Utils.utils import geo_dtype, RCWAConfig
 
-# Import shared sample generation from generate_dataset.py
-from generate_dataset import get_or_create_samples
+from scipy.stats.qmc import LatinHypercube
+
+def get_lhs_samples(num_samples, seed=42):
+    # 10 dimensions: h, inc_ang, 4x amps, 4x phases
+    sampler = LatinHypercube(d=10, seed=seed)
+    sample = sampler.random(n=num_samples)
+    
+    # Map from [0, 1] to physical bounds
+    h = 500 + 4500 * sample[:, 0]            # 500 nm to 5000 nm
+    inc_ang = 0 + 30 * sample[:, 1]          # 0 to 30 degrees
+    
+    amps = 0 + 10 * sample[:, 2:6]           # 0 to 10 nm max for a_1 to a_4
+    # Ensure a_0 is not mutated (keeps 0 offset)
+    amps = np.hstack((np.zeros((num_samples, 1)), amps)) # Shape (N, 5)
+    
+    phases = 0 + 2 * np.pi * sample[:, 6:10] # 0 to 2*pi for p_1 to p_4
+    # p_0 is 0
+    phases = np.hstack((np.zeros((num_samples, 1)), phases)) # Shape (N, 5)
+    
+    return h, inc_ang, amps, phases
+
+def get_or_create_samples(out_dir, num_samples, seed=42):
+    samples_file = os.path.join(out_dir, '_lhs_samples.npz')
+    
+    if os.path.exists(samples_file):
+        data = np.load(samples_file)
+        if len(data['h']) == num_samples:
+            print(f"Loaded existing LHS samples from {samples_file}")
+            sys.stdout.flush()
+            return data['h'], data['inc_ang'], data['amps'], data['phases']
+        else:
+            print(f"WARNING: Existing samples have {len(data['h'])} entries but {num_samples} requested. Regenerating...")
+            sys.stdout.flush()
+            
+    h, inc_ang, amps, phases = get_lhs_samples(num_samples, seed=seed)
+    np.savez(samples_file, h=h, inc_ang=inc_ang, amps=amps, phases=phases)
+    print(f"Generated and saved LHS samples to {samples_file}")
+    sys.stdout.flush()
+    return h, inc_ang, amps, phases
 
 def main():
     parser = argparse.ArgumentParser(description="Generate LHS Dataset for Inverse Design (CPU parallel)")
