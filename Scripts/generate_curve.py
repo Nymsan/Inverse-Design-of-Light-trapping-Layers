@@ -93,14 +93,16 @@ def main():
         pool = None
     
     # Evaluate combinations. If order_N_y isn't given, assume symmetric orders (o_y = o_x)
+    from tqdm import tqdm
     if args.order_N_y is None:
         combinations = list(itertools.product(args.order_N, args.num_layers))
         print(f"Starting batch generation for {len(combinations)} parameter combination(s)...")
         
-        for (o_x, n_layers) in combinations:
+        for (o_x, n_layers) in tqdm(combinations, desc="Combinations", file=sys.stdout, mininterval=2.0):
             o_y = o_x  # Symmetric
             key = f"order_x_{o_x}_order_y_{o_y}_layers_{n_layers}"
-            print(f"Running -> {key}")
+            print(f"\nRunning -> {key}")
+            sys.stdout.flush()
             
             config = RCWAConfig(
                 inc_ang=inc_ang_rad, azi_ang=azi_ang_rad,
@@ -113,7 +115,7 @@ def main():
             if pool:
                 config_dict = asdict(config)
                 tasks = [(c, params_x, params_y, config_dict) for c in chunks]
-                results = pool.map(_process_curve_chunk, tasks)
+                results = list(tqdm(pool.imap(_process_curve_chunk, tasks), total=len(tasks), desc="Wavelength Chunks", file=sys.stdout, mininterval=2.0, leave=False))
                 A_film = torch.cat([r[0] for r in results], dim=0)
                 A_grating = torch.cat([r[1] for r in results], dim=0)
                 results_dict[key] = {'A_film': A_film, 'A_grating': A_grating}
@@ -125,9 +127,10 @@ def main():
         combinations = list(itertools.product(args.order_N, args.order_N_y, args.num_layers))
         print(f"Starting batch generation for {len(combinations)} parameter combination(s)...")
         
-        for (o_x, o_y, n_layers) in combinations:
+        for (o_x, o_y, n_layers) in tqdm(combinations, desc="Combinations", file=sys.stdout, mininterval=2.0):
             key = f"order_x_{o_x}_order_y_{o_y}_layers_{n_layers}"
-            print(f"Running -> {key}")
+            print(f"\nRunning -> {key}")
+            sys.stdout.flush()
             
             config = RCWAConfig(
                 inc_ang=inc_ang_rad, azi_ang=azi_ang_rad,
@@ -140,7 +143,7 @@ def main():
             if pool:
                 config_dict = asdict(config)
                 tasks = [(c, params_x, params_y, config_dict) for c in chunks]
-                results = pool.map(_process_curve_chunk, tasks)
+                results = list(tqdm(pool.imap(_process_curve_chunk, tasks), total=len(tasks), desc="Wavelength Chunks", file=sys.stdout, mininterval=2.0, leave=False))
                 A_film = torch.cat([r[0] for r in results], dim=0)
                 A_grating = torch.cat([r[1] for r in results], dim=0)
                 results_dict[key] = {'A_film': A_film, 'A_grating': A_grating}
