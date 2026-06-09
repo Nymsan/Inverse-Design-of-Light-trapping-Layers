@@ -5,7 +5,7 @@
 #BSUB -n 4
 #BSUB -R "rusage[mem=8GB]"
 #BSUB -R "span[hosts=1]"
-#BSUB -W 4:00
+#BSUB -W 24:00
 #BSUB -o logs/train_surrogates_%J.out
 #BSUB -e logs/train_surrogates_%J.err
 
