@@ -29,6 +29,8 @@ References:
 import math
 from typing import Optional, Literal, Sequence, Dict
 
+from tqdm import tqdm
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -551,7 +553,8 @@ def train_forward_model(
     best_val, best_state, patience_ctr = float("inf"), None, 0
     history: dict[str, list[float]] = {"train_loss": [], "val_loss": []}
 
-    for epoch in range(1, epochs + 1):
+    pbar = tqdm(range(1, epochs + 1), desc="Epochs", unit="ep", dynamic_ncols=True)
+    for epoch in pbar:
         model.train()
         train_loss_accum = 0.0
         for batch in train_loader:
@@ -587,12 +590,11 @@ def train_forward_model(
         else:
             patience_ctr += 1
             if patience_ctr >= patience:
-                print(f"Early stopping at epoch {epoch} (best val={best_val:.6e})")
+                pbar.write(f"Early stopping at epoch {epoch} (best val={best_val:.6e})")
                 break
 
-        if epoch % 50 == 0 or epoch == 1:
-            print(f"[Epoch {epoch:4d}]  train={avg_train:.6e}  val={avg_val:.6e}  "
-                  f"lr={optimizer.param_groups[0]['lr']:.2e}  best={best_val:.6e}")
+        pbar.set_postfix(train=f"{avg_train:.3e}", val=f"{avg_val:.3e}",
+                         lr=f"{optimizer.param_groups[0]['lr']:.1e}", best=f"{best_val:.3e}")
 
     if best_state is not None:
         model.load_state_dict(best_state)
@@ -613,7 +615,8 @@ def train_tandem(
     best_val, best_state, patience_ctr = float("inf"), None, 0
     history: dict[str, list[float]] = {"train_loss": [], "val_loss": []}
 
-    for epoch in range(1, epochs + 1):
+    pbar = tqdm(range(1, epochs + 1), desc="Epochs", unit="ep", dynamic_ncols=True)
+    for epoch in pbar:
         tau = tau_start + (tau_end - tau_start) * (epoch - 1) / max(epochs - 1, 1)
 
         tandem.train()
@@ -647,12 +650,12 @@ def train_tandem(
         else:
             patience_ctr += 1
             if patience_ctr >= patience:
-                print(f"Early stopping at epoch {epoch} (best val={best_val:.6e})")
+                pbar.write(f"Early stopping at epoch {epoch} (best val={best_val:.6e})")
                 break
 
-        if epoch % 50 == 0 or epoch == 1:
-            print(f"[Epoch {epoch:4d}]  train={avg_train:.6e}  val={avg_val:.6e}  "
-                  f"tau={tau:.3f}  lr={optimizer.param_groups[0]['lr']:.2e}  best={best_val:.6e}")
+        pbar.set_postfix(train=f"{avg_train:.3e}", val=f"{avg_val:.3e}",
+                         tau=f"{tau:.2f}", lr=f"{optimizer.param_groups[0]['lr']:.1e}",
+                         best=f"{best_val:.3e}")
 
     if best_state is not None:
         tandem.inverse_decoder.load_state_dict(best_state)
@@ -675,7 +678,8 @@ def train_cvae(
         "train_recon": [], "train_mat_ce": [], "train_kl": [], "train_margin": [],
     }
 
-    for epoch in range(1, epochs + 1):
+    pbar = tqdm(range(1, epochs + 1), desc="Epochs", unit="ep", dynamic_ncols=True)
+    for epoch in pbar:
         tau = tau_start + (tau_end - tau_start) * (epoch - 1) / max(epochs - 1, 1)
 
         cvae.train()
@@ -714,14 +718,12 @@ def train_cvae(
         else:
             patience_ctr += 1
             if patience_ctr >= patience:
-                print(f"Early stopping at epoch {epoch} (best val={best_val:.6e})")
+                pbar.write(f"Early stopping at epoch {epoch} (best val={best_val:.6e})")
                 break
 
-        if epoch % 50 == 0 or epoch == 1:
-            print(f"[Epoch {epoch:4d}]  total={history['train_loss'][-1]:.4e}  "
-                  f"recon={history['train_recon'][-1]:.4e}  mat_ce={history['train_mat_ce'][-1]:.4e}  "
-                  f"kl={history['train_kl'][-1]:.4e}  margin={history['train_margin'][-1]:.4e}  "
-                  f"val={avg_val:.4e}  tau={tau:.3f}  lr={optimizer.param_groups[0]['lr']:.2e}")
+        pbar.set_postfix(total=f"{history['train_loss'][-1]:.3e}",
+                         val=f"{avg_val:.3e}", kl=f"{accum['kl']/n:.3e}",
+                         margin=f"{accum['margin']/n:.3e}", tau=f"{tau:.2f}")
 
     if best_state is not None:
         cvae.load_state_dict(best_state)
