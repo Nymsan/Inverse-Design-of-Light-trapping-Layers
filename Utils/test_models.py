@@ -72,10 +72,10 @@ def test_polar_to_cartesian():
 def test_forward_mlp():
     print("=" * 60)
     print("TEST: ForwardMLP")
-    B, N_harmonics, N_wl = 16, 5, 161
+    B, N_harmonics, N_wl = 16, 5, 322
 
     model = ForwardMLP(
-        n_continuous=2 * N_harmonics + 1,  # cartesian + h
+        n_continuous=2 * N_harmonics + 2,  # cartesian + h + inc_ang
         n_wavelengths=N_wl,
         n_materials=N_MATERIALS,
         embed_dim=8,
@@ -86,7 +86,7 @@ def test_forward_mlp():
     print(f"  Parameters: {n_params:,}")
 
     # Test with integer material IDs
-    geo = torch.randn(B, 2 * N_harmonics + 1)
+    geo = torch.randn(B, 2 * N_harmonics + 2)
     mat_id = torch.randint(0, N_MATERIALS, (B,))
     out = model(geo, mat_id)
     assert out.shape == (B, N_wl), f"Shape: {out.shape}"
@@ -107,7 +107,7 @@ def test_forward_mlp():
 def test_spatial_cnn():
     print("=" * 60)
     print("TEST: SpatialCNN")
-    B, N_harmonics, N_wl = 16, 5, 161
+    B, N_harmonics, N_wl = 16, 5, 322
 
     model = SpatialCNN(
         n_harmonics=N_harmonics,
@@ -137,7 +137,7 @@ def test_spatial_cnn():
 def test_inverse_decoder():
     print("=" * 60)
     print("TEST: InverseDecoder")
-    B, N_wl, N_geo = 16, 161, 11
+    B, N_wl, N_geo = 16, 322, 12
 
     decoder = InverseDecoder(
         n_wavelengths=N_wl,
@@ -164,7 +164,7 @@ def test_inverse_decoder():
 def test_tandem_network():
     print("=" * 60)
     print("TEST: TandemNetwork")
-    B, N_wl, N_geo = 16, 161, 11
+    B, N_wl, N_geo = 16, 322, 12
 
     # Build forward model
     forward = ForwardMLP(
@@ -215,7 +215,7 @@ def test_tandem_network():
 def test_generative_tandem():
     print("=" * 60)
     print("TEST: GenerativeTandemNetwork")
-    B, N_wl, N_geo, latent_dim = 16, 161, 11, 32
+    B, N_wl, N_geo, latent_dim = 16, 322, 12, 32
 
     forward = ForwardMLP(
         n_continuous=N_geo,
@@ -267,7 +267,7 @@ def test_generative_tandem():
 def test_contrastive_vae():
     print("=" * 60)
     print("TEST: ContrastiveVAE")
-    B, N_wl, N_geo, latent_dim = 16, 161, 11, 64
+    B, N_wl, N_geo, latent_dim = 16, 322, 12, 64
     margin_radius = 1.0
 
     geo_enc = GeometryEncoder(

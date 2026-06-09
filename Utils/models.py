@@ -26,8 +26,6 @@ References:
       the Inverse Design of Nanophotonic Structures"
 """
 
-from __future__ import annotations
-
 import math
 from typing import Optional, Literal, Sequence, Dict
 
@@ -475,7 +473,6 @@ class GratingDataset(torch.utils.data.Dataset):
 
     def __init__(
         self, data_dirs: Dict[str, str], target_key: str = "A_film_normal",
-        polarization: int = 0, include_h: bool = True, include_inc_ang: bool = False,
         geo_min: Optional[torch.Tensor] = None, geo_max: Optional[torch.Tensor] = None,
     ):
         super().__init__()
@@ -498,19 +495,19 @@ class GratingDataset(torch.utils.data.Dataset):
                 all_params_x.append(px)
 
                 geo_parts = [polar_to_cartesian(px)]
-                if include_h:
-                    geo_parts.append(data["h"].float().unsqueeze(-1))
-                if include_inc_ang and "inc_ang" in data:
+                geo_parts.append(data["h"].float().unsqueeze(-1))
+                if "inc_ang" in data:
                     geo_parts.append(data["inc_ang"].float().unsqueeze(-1))
                 all_geometry.append(torch.cat(geo_parts, dim=-1))
 
                 all_material.append(torch.full((B,), mat_id, dtype=torch.long))
 
                 target = data[target_key].float()
+                # Concatenate p-pol and s-pol -> (B, N_wl * 2)
                 if target.dim() == 2 and target.shape[1] == 2:
-                    target = target[:, polarization]
+                    target = torch.cat([target[:, 0], target[:, 1]], dim=-1)
                 elif target.dim() == 3:
-                    target = target[:, :, polarization]
+                    target = torch.cat([target[:, :, 0], target[:, :, 1]], dim=-1)
                 all_target.append(target)
 
         self.geometry = torch.cat(all_geometry, dim=0)
