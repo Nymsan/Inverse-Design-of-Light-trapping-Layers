@@ -25,7 +25,7 @@ References:
     - Tandem network: Liu et al. 2018, "Training Deep Neural Networks for
       the Inverse Design of Nanophotonic Structures"
 """
-
+import sys
 import math
 from typing import Optional, Literal, Sequence, Dict
 
@@ -553,7 +553,7 @@ def train_forward_model(
     best_val, best_state, patience_ctr = float("inf"), None, 0
     history: dict[str, list[float]] = {"train_loss": [], "val_loss": []}
 
-    pbar = tqdm(range(1, epochs + 1), desc="Epochs", unit="ep", dynamic_ncols=True)
+    pbar = tqdm(range(1, epochs + 1), desc="Epochs", unit="ep", dynamic_ncols=True, file=sys.stdout)
     for epoch in pbar:
         model.train()
         train_loss_accum = 0.0
@@ -615,7 +615,7 @@ def train_tandem(
     best_val, best_state, patience_ctr = float("inf"), None, 0
     history: dict[str, list[float]] = {"train_loss": [], "val_loss": []}
 
-    pbar = tqdm(range(1, epochs + 1), desc="Epochs", unit="ep", dynamic_ncols=True)
+    pbar = tqdm(range(1, epochs + 1), desc="Epochs", unit="ep", dynamic_ncols=True, file=sys.stdout)
     for epoch in pbar:
         tau = tau_start + (tau_end - tau_start) * (epoch - 1) / max(epochs - 1, 1)
 
@@ -678,7 +678,7 @@ def train_cvae(
         "train_recon": [], "train_mat_ce": [], "train_kl": [], "train_margin": [],
     }
 
-    pbar = tqdm(range(1, epochs + 1), desc="Epochs", unit="ep", dynamic_ncols=True)
+    pbar = tqdm(range(1, epochs + 1), desc="Epochs", unit="ep", dynamic_ncols=True, file=sys.stdout)
     for epoch in pbar:
         tau = tau_start + (tau_end - tau_start) * (epoch - 1) / max(epochs - 1, 1)
 

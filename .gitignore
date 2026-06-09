@@ -13,3 +13,6 @@ Data/*
 # HPC Logs
 logs/
 Scripts/logs/
+
+# Trained Models
+Checkpoints/
