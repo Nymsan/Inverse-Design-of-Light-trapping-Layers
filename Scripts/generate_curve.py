@@ -85,12 +85,15 @@ def main():
         subpixel=not args.no_subpixel, grating_material=args.grating_material
     )
     
-    if args.n_jobs > 1:
+    if args.n_jobs > 1 and len(wavelengths) > 1:
         num_chunks = min(args.n_jobs * 10, len(wavelengths))
         print(f"Parallelizing {len(wavelengths)} wavelengths across {num_chunks} chunks ({args.n_jobs} workers)...")
         chunks = torch.tensor_split(wavelengths, num_chunks)
         pool = mp.Pool(processes=args.n_jobs)
     else:
+        if args.n_jobs > 1:
+            print(f"Using {args.n_jobs} PyTorch threads for dense matrix operations...")
+            torch.set_num_threads(args.n_jobs)
         pool = None
     
     # Evaluate combinations. If order_N_y isn't given, assume symmetric orders (o_y = o_x)
