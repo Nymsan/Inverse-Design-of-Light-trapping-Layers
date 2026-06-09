@@ -132,7 +132,8 @@ def main():
     
     args = parser.parse_args()
     
-    out_dir = os.path.join(project_root, 'Data', f'LHS_Dataset_{args.grating_material}')
+    reflector_str = f"_{args.reflector_type}" if args.reflector_type != 'pec' else ""
+    out_dir = os.path.join(project_root, 'Data', f'LHS_Dataset_{args.grating_material}{reflector_str}')
     os.makedirs(out_dir, exist_ok=True)
     
     # Wavelengths: 300 to 1100 nm in 5 nm steps (161 steps)

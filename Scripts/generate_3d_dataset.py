@@ -144,7 +144,8 @@ def main():
     
     args = parser.parse_args()
     
-    out_dir = os.path.join(project_root, 'Data', f'LHS_3D_Dataset_{args.grating_material}')
+    reflector_str = f"_{args.reflector_type}" if args.reflector_type != 'pec' else ""
+    out_dir = os.path.join(project_root, 'Data', f'LHS_3D_Dataset_{args.grating_material}{reflector_str}')
     os.makedirs(out_dir, exist_ok=True)
     
     # Generate LHS
