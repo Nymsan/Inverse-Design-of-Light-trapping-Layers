@@ -25,7 +25,7 @@ case ${LSB_JOBINDEX} in
             --params_x "25,0" \
             --params_y "25,0" \
             --order_N 1 3 5 8 10 12 15 \
-            --num_layers 1 2 5 10 25 50 100 250 500 \
+            --num_layers 1 2 5 10 25 50 100 \
             --wavelengths 700 700 1 \
             --nx 500 \
             --ny 500
@@ -38,7 +38,7 @@ case ${LSB_JOBINDEX} in
             --params_x "25,0" \
             --params_y "25,0" \
             --order_N 1 3 5 8 10 12 15 \
-            --num_layers 1 2 5 10 25 50 100 250 500 \
+            --num_layers 1 2 5 10 25 50 100 \
             --wavelengths 700 700 1 \
             --nx 500 \
             --ny 500
@@ -50,7 +50,7 @@ case ${LSB_JOBINDEX} in
             --params_x "250,0" \
             --params_y "250,0" \
             --order_N 1 3 5 8 10 12 15 \
-            --num_layers 1 2 5 10 25 50 100 250 500 \
+            --num_layers 1 2 5 10 25 50 100 \
             --wavelengths 700 700 1 \
             --nx 500 \
             --ny 500
@@ -63,7 +63,7 @@ case ${LSB_JOBINDEX} in
             --params_x "250,0" \
             --params_y "250,0" \
             --order_N 1 3 5 8 10 12 15 \
-            --num_layers 1 2 5 10 25 50 100 250 500 \
+            --num_layers 1 2 5 10 25 50 100 \
             --wavelengths 700 700 1 \
             --nx 500 \
             --ny 500

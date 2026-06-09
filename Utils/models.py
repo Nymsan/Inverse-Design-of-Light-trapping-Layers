@@ -39,8 +39,6 @@ import torch.nn.functional as F
 MATERIAL_LIBRARY: Dict[str, int] = {"Si": 0, "TiO2": 1, "Si3N4": 2}
 N_MATERIALS: int = len(MATERIAL_LIBRARY)
 
-REFLECTOR_MATERIALS: Dict[str, int] = {"pec": 0, "Ag": 1}
-
 
 class Snake(nn.Module):
     """Snake activation: x + (1/a) sin²(ax). Learnable per-channel frequency."""

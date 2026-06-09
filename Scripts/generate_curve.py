@@ -11,6 +11,8 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if project_root not in sys.path:
     sys.path.append(project_root)
 
+import multiprocessing as mp
+from tqdm import tqdm
 import torch
 from Utils.utils import get_absorptance_curve, geo_dtype, RCWAConfig
 default_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -29,7 +31,6 @@ def parse_tensor_arg(arg_str):
 
 def _process_curve_chunk(args_tuple):
     wavelength_chunk, params_x, params_y, config_dict = args_tuple
-    import torch
     torch.set_num_threads(1)
     config = RCWAConfig(**config_dict)
     # We call the unmodified utils function, but just on a small chunk of wavelengths!
@@ -85,7 +86,6 @@ def main():
     )
     
     if args.n_jobs > 1:
-        import multiprocessing as mp
         num_chunks = min(args.n_jobs * 10, len(wavelengths))
         print(f"Parallelizing {len(wavelengths)} wavelengths across {num_chunks} chunks ({args.n_jobs} workers)...")
         chunks = torch.tensor_split(wavelengths, num_chunks)
@@ -94,7 +94,6 @@ def main():
         pool = None
     
     # Evaluate combinations. If order_N_y isn't given, assume symmetric orders (o_y = o_x)
-    from tqdm import tqdm
     if args.order_N_y is None:
         combinations = list(itertools.product(args.order_N, args.num_layers))
         print(f"Starting batch generation for {len(combinations)} parameter combination(s)...")

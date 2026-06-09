@@ -30,20 +30,19 @@ from Utils.models import (
     polar_to_cartesian,
     N_MATERIALS,
     MATERIAL_LIBRARY,
-    REFLECTOR_MATERIALS,
 )
 
 
-def test_material_library():
+def test_materials():
     print("=" * 60)
     print("TEST: Material Library")
-    # Ag must NOT be a grating material
-    assert "Ag" not in MATERIAL_LIBRARY, "Ag should not be a grating material!"
-    assert "Ag" in REFLECTOR_MATERIALS, "Ag should be a reflector material!"
-    assert N_MATERIALS == 3, f"Expected 3 grating materials, got {N_MATERIALS}"
+    assert "Si" in MATERIAL_LIBRARY
+    assert "TiO2" in MATERIAL_LIBRARY
+    assert "Si3N4" in MATERIAL_LIBRARY
+    assert N_MATERIALS == 3
     print(f"  ✓ Grating materials: {MATERIAL_LIBRARY}")
-    print(f"  ✓ Reflector materials: {REFLECTOR_MATERIALS}")
-    print(f"  ✓ Ag correctly excluded from grating library.")
+    assert "Ag" not in MATERIAL_LIBRARY, "Ag should NOT be in grating materials!"
+    print("  ✓ Ag correctly excluded from grating library.")
 
 
 def test_snake_activation():
@@ -394,7 +393,7 @@ if __name__ == "__main__":
     print("  Surrogate Model Architecture Smoke Tests")
     print("═" * 60)
 
-    test_material_library()
+    test_materials()
     test_snake_activation()
     test_polar_to_cartesian()
     test_forward_mlp()

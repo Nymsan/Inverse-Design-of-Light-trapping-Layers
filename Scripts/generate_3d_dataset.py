@@ -1,7 +1,23 @@
+import os
+import sys
+import argparse
+import multiprocessing as mp
+from functools import partial
+import torch
+import numpy as np
+from scipy.stats.qmc import LatinHypercube
+from tqdm import tqdm
+from dataclasses import asdict
+
+# Ensure project root is in path so we can import Utils
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if project_root not in sys.path:
+    sys.path.append(project_root)
+
+from Utils.utils import geo_dtype, RCWAConfig, get_absorptance_curve
+default_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 def process_sample_3d(i, h_arr, inc_ang_arr, azi_ang_arr, wl_arr, amps_x_arr, phases_x_arr, amps_y_arr, phases_y_arr, args):
-    import torch
-    import numpy as np
-    from Utils.utils import get_absorptance_curve, RCWAConfig, geo_dtype
     torch.set_num_threads(1)
     device = torch.device('cpu')
     
@@ -52,25 +68,6 @@ def process_sample_3d(i, h_arr, inc_ang_arr, azi_ang_arr, wl_arr, amps_x_arr, ph
         'A_film_oblique': A_film_obl.cpu(),
         'A_grating_oblique': A_grat_obl.cpu(),
     }
-
-import argparse
-import multiprocessing as mp
-from functools import partial
-import os
-import sys
-import torch
-import numpy as np
-from scipy.stats.qmc import LatinHypercube
-from tqdm import tqdm
-from dataclasses import asdict
-
-# Ensure project root is in path so we can import Utils
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-if project_root not in sys.path:
-    sys.path.append(project_root)
-
-from Utils.utils import geo_dtype, RCWAConfig
-default_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def get_lhs_samples(num_samples, seed=42):
     sampler = LatinHypercube(d=24, seed=seed)

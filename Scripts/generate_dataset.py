@@ -1,8 +1,22 @@
+import os
+import sys
+import argparse
+import multiprocessing as mp
+from functools import partial
+import torch
+import numpy as np
+from scipy.stats.qmc import LatinHypercube
+from tqdm import tqdm
+from dataclasses import asdict
+
+# Ensure project root is in path so we can import Utils
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if project_root not in sys.path:
+    sys.path.append(project_root)
+
+from Utils.utils import geo_dtype, RCWAConfig, get_absorptance_curve
 
 def process_sample(i, h_arr, inc_ang_arr, amps_arr, phases_arr, wavelengths, args):
-    import torch
-    import numpy as np
-    from Utils.utils import get_absorptance_curve, RCWAConfig, geo_dtype
     torch.set_num_threads(1)
     device = torch.device('cpu')
     
@@ -43,23 +57,6 @@ def process_sample(i, h_arr, inc_ang_arr, amps_arr, phases_arr, wavelengths, arg
         'A_film_oblique': A_film_obl.cpu(),
         'A_grating_oblique': A_grat_obl.cpu(),
     }
-
-import argparse
-import multiprocessing as mp
-from functools import partial
-import os
-import sys
-import torch
-import numpy as np
-from tqdm import tqdm
-from dataclasses import asdict
-
-# Ensure project root is in path so we can import Utils
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-if project_root not in sys.path:
-    sys.path.append(project_root)
-
-from Utils.utils import geo_dtype, RCWAConfig
 
 from scipy.stats.qmc import LatinHypercube
 

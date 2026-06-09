@@ -1,3 +1,5 @@
+import sys
+import contextlib
 import numpy as np
 import torch
 from matplotlib import pyplot as plt
@@ -288,7 +290,7 @@ def get_absorptance(params_x, params_y, wavelength, config: RCWAConfig):
 
     return sim, sine_eps, A_film, A_grating, Reflectance, Transmittance, P_abs_film, P_abs_grating#, P_slices
 
-def get_absorptance_curve(params_x, params_y, wavelengths, config: RCWAConfig, show_progress=False):
+def get_absorptance_curve(params_x, params_y, wavelengths, config: RCWAConfig, show_progress=False, requires_grad=False):
     device = params_x.device if hasattr(params_x, "device") else default_device
     wavelengths = wavelengths.to(device)
     if params_y is not None:
@@ -298,11 +300,13 @@ def get_absorptance_curve(params_x, params_y, wavelengths, config: RCWAConfig, s
     order_N, order_N_y = config.order_N, config.order_N_y
     nx, ny, n_layers, height_per_layer, subpixel = config.nx, config.ny, config.n_layers, config.height_per_layer, config.subpixel
     add_reflector, reflector_type = config.add_reflector, config.reflector_type
-    Absorptances_film = torch.zeros_like(wavelengths,dtype=geo_dtype).unsqueeze(1).repeat(1,2)
-    Absorptances_grating = torch.zeros_like(wavelengths,dtype=geo_dtype).unsqueeze(1).repeat(1,2)
     
-    import sys
+    A_film_list = []
+    A_grating_list = []
+    
     iterator = tqdm(wavelengths, leave=True, file=sys.stdout, mininterval=2.0) if show_progress else wavelengths
+    context = contextlib.nullcontext() if requires_grad else torch.no_grad()
+    
     for i, wavelength in enumerate(iterator):
         temp_config = RCWAConfig(
             grating_period=grating_period, grating_period_y=grating_period_y, h=h,
@@ -310,10 +314,16 @@ def get_absorptance_curve(params_x, params_y, wavelengths, config: RCWAConfig, s
             add_reflector=add_reflector, reflector_type=reflector_type,
             inc_ang=inc_ang, azi_ang=azi_ang, grating_material=config.grating_material
         )
-        A_film,A_grating = get_absorptance(params_x=params_x, params_y=params_y, wavelength=wavelength, config=temp_config)[2:4]
+        with context:
+            A_film, A_grating = get_absorptance(params_x=params_x, params_y=params_y, wavelength=wavelength, config=temp_config)[2:4]
 
-        Absorptances_film[i,:] = A_film.cpu()
-        Absorptances_grating[i,:] = A_grating.cpu()
+            A_film_list.append(A_film if requires_grad else A_film.cpu())
+            A_grating_list.append(A_grating if requires_grad else A_grating.cpu())
+            if not requires_grad and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                
+    Absorptances_film = torch.stack(A_film_list, dim=0)
+    Absorptances_grating = torch.stack(A_grating_list, dim=0)
     return Absorptances_film, Absorptances_grating
 
     
