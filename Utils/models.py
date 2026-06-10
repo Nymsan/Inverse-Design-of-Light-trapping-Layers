@@ -112,7 +112,82 @@ class ForwardMLP(nn.Module):
         mat_embed = _embed_material(material_id, self.material_embedding)
         x = torch.cat([geometry, mat_embed], dim=-1)
         return torch.sigmoid(self.head(self.trunk(x)))
+class SpatialMamba(nn.Module):
+    """Mamba forward model that scans the 1D grating profile sequentially."""
 
+    def __init__(
+        self,
+        n_harmonics: int = 5,
+        n_wavelengths: int = 161,
+        n_materials: int = 3,
+        embed_dim: int = 8,
+        n_pixels: int = 256,
+        grating_period: float = 1000.0,
+        d_model: int = 512,
+        n_layers: int = 4,
+        fc_dims: Sequence[int] = (512, 1024, 512),
+        dropout: float = 0.05,
+    ):
+        super().__init__()
+        self.n_harmonics = n_harmonics
+        self.n_pixels = n_pixels
+        self.grating_period = grating_period
+
+        self.register_buffer("r_grid", torch.linspace(0, grating_period, n_pixels + 1)[:-1])
+        self.register_buffer("harmonic_idx", torch.arange(1, n_harmonics + 1, dtype=torch.float32))
+        self.material_embedding = nn.Embedding(n_materials, embed_dim)
+
+        from Utils.mamba import MambaNet
+        # Input features per step: 1 (profile height) + embed_dim (material) + 1 (h)
+        in_ch = 1 + embed_dim + 1
+        self.mamba = MambaNet(d_input=in_ch, d_model=d_model, n_layers=n_layers)
+
+        fc_in = d_model
+        fc_layers: list[nn.Module] = []
+        for fc_dim in fc_dims:
+            fc_layers.append(nn.Linear(fc_in, fc_dim))
+            fc_layers.append(nn.LayerNorm(fc_dim))
+            fc_layers.append(nn.GELU())
+            fc_layers.append(nn.Dropout(dropout))
+            fc_in = fc_dim
+        fc_layers.append(nn.Linear(fc_in, n_wavelengths))
+        self.fc_head = nn.Sequential(*fc_layers)
+
+    def _build_profile(self, params_x: torch.Tensor) -> torch.Tensor:
+        amps = params_x[:, :, 0]
+        phases = params_x[:, :, 1]
+        grating_height = 2.0 * amps.sum(dim=1, keepdim=True) + 1e-9
+
+        n = self.harmonic_idx[None, :, None]
+        r = self.r_grid[None, None, :]
+        arg = 2.0 * math.pi * n * r / self.grating_period - phases[:, :, None]
+        cosines = amps[:, :, None] * torch.cos(arg)
+        profile = grating_height[:, :, None] / 2.0 + cosines.sum(dim=1, keepdim=True)
+
+        p_min = profile.min(dim=-1, keepdim=True).values
+        p_max = profile.max(dim=-1, keepdim=True).values
+        return (profile - p_min) / (p_max - p_min + 1e-9)
+
+    def forward(self, params_x: torch.Tensor, h_norm: torch.Tensor, material_id: torch.Tensor) -> torch.Tensor:
+        P = self.n_pixels
+        profile = self._build_profile(params_x) # (B, 1, P)
+
+        mat_embed = _embed_material(material_id, self.material_embedding) # (B, embed_dim)
+        mat_channel = mat_embed.unsqueeze(-1).expand(-1, -1, P)
+
+        if h_norm.dim() == 1:
+            h_norm = h_norm.unsqueeze(-1)
+        h_channel = h_norm.unsqueeze(-1).expand(-1, -1, P)
+
+        x = torch.cat([profile, mat_channel, h_channel], dim=1) # (B, in_ch, P)
+        
+        # Mamba expects sequence: (B, P, in_ch)
+        x_seq = x.transpose(1, 2)
+        
+        mamba_out = self.mamba(x_seq) # (B, P, d_model)
+        h = mamba_out.mean(dim=1) # Global average pooling over spatial sequence
+        
+        return torch.sigmoid(self.fc_head(h))
 
 class SpatialCNN(nn.Module):
     """1D CNN that builds a grating profile from Fourier params, then convolves.

@@ -35,7 +35,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from Utils.models import (
     MATERIAL_LIBRARY, N_MATERIALS,
-    ForwardMLP, SpatialCNN,
+    ForwardMLP, SpatialCNN, SpatialMamba,
     InverseDecoder, TandemNetwork, GenerativeTandemNetwork,
     GeometryEncoder, GeometryDecoder, SpectrumEncoder, ContrastiveVAE,
     GratingDataset,
@@ -396,6 +396,20 @@ def main():
         forward_models["spatial_cnn"] = model
         all_history["spatial_cnn"] = hist
         print("Loaded: spatial_cnn")
+
+    # SpatialMamba
+    mamba_path = ckpt_dir / "spatial_mamba.pt"
+    if mamba_path.exists():
+        model = SpatialMamba(
+            n_harmonics=n_harmonics, n_wavelengths=n_wavelengths,
+            n_materials=N_MATERIALS, embed_dim=8,
+            n_pixels=256, d_model=512, n_layers=4,
+            fc_dims=(512, 1024, 512),
+        )
+        hist, model = load_checkpoint(mamba_path, model)
+        forward_models["spatial_mamba"] = model
+        all_history["spatial_mamba"] = hist
+        print("Loaded: spatial_mamba")
 
     # Load histories for inverse models
     for name in ("tandem", "generative_tandem", "cvae"):

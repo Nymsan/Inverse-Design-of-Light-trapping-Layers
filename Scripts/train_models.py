@@ -31,7 +31,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from Utils.models import (
     MATERIAL_LIBRARY, N_MATERIALS,
-    ForwardMLP, SpatialCNN,
+    ForwardMLP, SpatialCNN, SpatialMamba,
     InverseDecoder, TandemNetwork, GenerativeTandemNetwork,
     GeometryEncoder, GeometryDecoder, SpectrumEncoder, ContrastiveVAE,
     GratingDataset,
@@ -64,7 +64,7 @@ def parse_args():
     p.add_argument("--device", default=None,
                    help="Device (auto-detected if omitted)")
     p.add_argument("--skip", nargs="*", default=[],
-                   choices=["mlp", "cnn", "tandem", "gen_tandem", "cvae"],
+                   choices=["mlp", "cnn", "mamba_fwd", "tandem", "gen_tandem", "cvae"],
                    help="Skip specific models")
     return p.parse_args()
 
@@ -210,6 +210,33 @@ def main():
         print(f"  Time: {elapsed / 60:.1f} min")
 
         save_checkpoint(model, hist, str(ckpt_dir / "spatial_cnn.pt"))
+
+    # ── 2.5. SpatialMamba (forward model) ──
+    if "mamba_fwd" not in args.skip:
+        print("\n" + "=" * 60)
+        print("Training: SpatialMamba")
+        print("=" * 60)
+        model = SpatialMamba(
+            n_harmonics=n_harmonics, n_wavelengths=n_wavelengths,
+            n_materials=N_MATERIALS, embed_dim=8,
+            n_pixels=256, d_model=512, n_layers=4,
+            fc_dims=(512, 1024, 512),
+        )
+        n_params = sum(p.numel() for p in model.parameters())
+        print(f"  Parameters: {n_params:,}")
+
+        t0 = time.time()
+        hist = train_forward_model(
+            model, train_loader, val_loader,
+            epochs=args.epochs, lr=args.lr, patience=args.patience,
+            device=device, use_cnn=True,
+        )
+        elapsed = time.time() - t0
+        timings["spatial_mamba"] = elapsed
+        all_history["spatial_mamba"] = hist
+        print(f"  Time: {elapsed / 60:.1f} min")
+
+        save_checkpoint(model, hist, str(ckpt_dir / "spatial_mamba.pt"))
 
     # ── 3. TandemNetwork (requires trained forward model) ──
     if "tandem" not in args.skip:
