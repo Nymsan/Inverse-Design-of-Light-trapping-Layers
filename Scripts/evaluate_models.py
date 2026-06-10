@@ -376,7 +376,7 @@ def main():
         model = ForwardMLP(
             n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
-            hidden_dims=(256, 512, 512, 256), activation="snake",
+            hidden_dims=(512, 1024, 1024, 1024, 512), activation="snake",
         )
         hist, model = load_checkpoint(mlp_path, model)
         forward_models["forward_mlp"] = model
@@ -389,8 +389,8 @@ def main():
         model = SpatialCNN(
             n_harmonics=n_harmonics, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
-            n_pixels=256, conv_channels=(32, 64, 128, 64),
-            kernel_size=7, fc_dims=(256, 256),
+            n_pixels=256, conv_channels=(64, 128, 256, 512, 256),
+            fc_dims=(512, 1024, 512),
         )
         hist, model = load_checkpoint(cnn_path, model)
         forward_models["spatial_cnn"] = model
@@ -412,7 +412,7 @@ def main():
         dec = InverseDecoder(
             n_wavelengths=n_wavelengths, n_geometry=n_continuous,
             n_materials=N_MATERIALS, latent_dim=0,
-            hidden_dims=(256, 512, 512, 256), activation="gelu",
+            hidden_dims=(512, 1024, 1024, 1024, 512),
         )
         tandem = TandemNetwork(inverse_decoder=dec, forward_model=forward_models["forward_mlp"])
         ckpt = torch.load(tandem_path, map_location="cpu", weights_only=False)
@@ -427,7 +427,7 @@ def main():
         dec = InverseDecoder(
             n_wavelengths=n_wavelengths, n_geometry=n_continuous,
             n_materials=N_MATERIALS, latent_dim=32,
-            hidden_dims=(256, 512, 512, 256), activation="gelu",
+            hidden_dims=(512, 1024, 1024, 1024, 512),
         )
         gen_tandem = GenerativeTandemNetwork(inverse_decoder=dec, forward_model=forward_models["forward_mlp"], latent_dim=32)
         ckpt = torch.load(gen_path, map_location="cpu", weights_only=False)
@@ -441,15 +441,15 @@ def main():
     if cvae_path.exists():
         geo_enc = GeometryEncoder(
             n_continuous=n_continuous, n_materials=N_MATERIALS, embed_dim=8,
-            latent_dim=64, hidden_dims=(256, 256),
+            latent_dim=64, hidden_dims=(512, 1024, 512),
         )
         geo_dec = GeometryDecoder(
             latent_dim=64, n_geometry=n_continuous,
-            n_materials=N_MATERIALS, hidden_dims=(256, 256),
+            n_materials=N_MATERIALS, hidden_dims=(512, 1024, 512),
         )
         spec_enc = SpectrumEncoder(
             n_wavelengths=n_wavelengths, latent_dim=64,
-            hidden_dims=(256, 256),
+            hidden_dims=(512, 1024, 1024, 512),
         )
         cvae = ContrastiveVAE(
             geometry_encoder=geo_enc, geometry_decoder=geo_dec,

@@ -17,6 +17,7 @@ dependencies = [
     "pvlib>=0.13.1",
     "marimo>=0.21.0",
     "refractiveindex>=1.0.2",
+    "einops>=0.8.2",
 ]
 
 
