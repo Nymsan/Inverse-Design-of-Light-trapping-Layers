@@ -1,0 +1,280 @@
+#!/usr/bin/env python
+"""
+Evaluate trained forward surrogate models and generate performance report.
+
+Usage:
+    python Scripts/evaluate_forward.py --ckpt_dir Checkpoints/Si_TiO2_Si3N4
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from pathlib import Path
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader, random_split
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from Utils.models import (
+    N_MATERIALS,
+    ForwardMLP, SpatialCNN,
+    GratingDataset,
+)
+
+plt.rcParams.update({
+    "font.size": 11, "axes.titlesize": 13, "axes.labelsize": 12,
+    "figure.dpi": 150, "savefig.dpi": 150,
+})
+
+WAVELENGTHS = np.linspace(300, 1100, 161)
+
+
+def load_checkpoint(path, model):
+    ckpt = torch.load(path, map_location="cpu", weights_only=False)
+    model.load_state_dict(ckpt["model_state_dict"])
+    model.eval()
+    return ckpt.get("history", {}), model
+
+
+def parse_args():
+    p = argparse.ArgumentParser()
+    p.add_argument("--ckpt_dir", required=True, help="Path to checkpoint directory")
+    p.add_argument("--n_eval", type=int, default=2000, help="Max samples for evaluation")
+    p.add_argument("--seed", type=int, default=42)
+    return p.parse_args()
+
+
+def plot_loss_curves(all_history: dict, save_path: str):
+    if not all_history:
+        return
+    n_models = len(all_history)
+    fig, axes = plt.subplots(1, n_models, figsize=(5 * n_models, 4), squeeze=False, layout="constrained")
+    axes = axes[0]
+
+    for ax, (name, hist) in zip(axes, all_history.items()):
+        if "train_loss" not in hist:
+            continue
+        epochs = range(1, len(hist["train_loss"]) + 1)
+        ax.semilogy(epochs, hist["train_loss"], label="Train", alpha=0.8)
+        ax.semilogy(epochs, hist["val_loss"], label="Val", alpha=0.8)
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel("MSE Loss")
+        ax.set_title(name.replace("_", " ").title())
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+
+    plt.suptitle("Forward Training Loss Curves", fontsize=15, y=1.02)
+    plt.savefig(save_path)
+    plt.close()
+    print(f"  Saved: {save_path}")
+
+
+@torch.no_grad()
+def plot_forward_parity(models: dict[str, nn.Module], val_loader, save_path: str, n_wavelengths: int):
+    n_models = len(models)
+    if n_models == 0:
+        return
+    fig, axes = plt.subplots(1, n_models, figsize=(5 * n_models, 5), squeeze=False, layout="constrained")
+    axes = axes[0]
+
+    for ax, (name, model) in zip(axes, models.items()):
+        all_pred, all_true = [], []
+        for batch in val_loader:
+            geo, px, mat, target = (batch["geometry"], batch["params_x"],
+                                    batch["material_id"], batch["target"])
+            if "cnn" in name.lower() or "mamba" in name.lower():
+                h_val = geo[:, -1:]
+                pred = model(px, h_val, mat)
+            else:
+                pred = model(geo, mat)
+            all_pred.append(pred)
+            all_true.append(target)
+
+        pred = torch.cat(all_pred).numpy().flatten()
+        true = torch.cat(all_true).numpy().flatten()
+
+        ax.hexbin(true, pred, gridsize=80, cmap="inferno", mincnt=1)
+        ax.plot([0, 1], [0, 1], "w--", lw=1.5, alpha=0.8)
+        ax.set_xlabel("True Absorptance")
+        ax.set_ylabel("Predicted Absorptance")
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.set_aspect("equal")
+        ax.set_title(f"Parity: {name.replace('_', ' ').title()}", fontsize=12)
+
+    plt.savefig(save_path)
+    plt.close()
+    print(f"  Saved: {save_path}")
+
+
+@torch.no_grad()
+def plot_spectrum_samples(models: dict[str, nn.Module], val_loader, save_path: str, n_wavelengths: int):
+    if not models:
+        return
+    batch = next(iter(val_loader))
+    geo, px, mat, target = batch["geometry"], batch["params_x"], batch["material_id"], batch["target"]
+    n_samples = min(6, target.shape[0])
+    n_wl_half = n_wavelengths // 2
+
+    fig, axes = plt.subplots(n_samples, 2, figsize=(10, 2.5 * n_samples), squeeze=False, layout="constrained")
+    colors = plt.cm.tab10(np.linspace(0, 1, len(models)))
+
+    for i in range(n_samples):
+        preds = {}
+        for name, model in models.items():
+            if "cnn" in name.lower() or "mamba" in name.lower():
+                pred = model(px[i:i+1], geo[i:i+1, -1:], mat[i:i+1])
+            else:
+                pred = model(geo[i:i+1], mat[i:i+1])
+            preds[name] = pred
+
+        for pol_idx, pol_label in enumerate(["p-pol", "s-pol"]):
+            ax = axes[i, pol_idx]
+            start = pol_idx * n_wl_half
+            end = start + n_wl_half
+            ax.plot(WAVELENGTHS, target[i, start:end].numpy(), "k-", lw=2.5, label="Truth", alpha=0.5)
+
+            for (name, pred), c in zip(preds.items(), colors):
+                ax.plot(WAVELENGTHS, pred[0, start:end].numpy(),
+                        "--", color=c, lw=2.0, label=name.replace("_", " ").title())
+            
+            ax.set_xlim(300, 1100)
+            ax.set_ylim(-0.05, 1.05)
+            ax.set_ylabel("Absorptance")
+            if i == 0:
+                ax.set_title(f"Predictions ({pol_label})")
+            if i == 0 and pol_idx == 0:
+                ax.legend(fontsize=9)
+            if i == n_samples - 1:
+                ax.set_xlabel("Wavelength (nm)")
+
+    plt.savefig(save_path)
+    plt.close()
+    print(f"  Saved: {save_path}")
+
+
+@torch.no_grad()
+def compute_metrics(models: dict[str, nn.Module], val_loader, n_wavelengths: int) -> dict:
+    metrics = {}
+    for name, model in models.items():
+        all_pred, all_true = [], []
+        for batch in val_loader:
+            geo, px, mat, target = batch["geometry"], batch["params_x"], batch["material_id"], batch["target"]
+            if "cnn" in name.lower() or "mamba" in name.lower():
+                pred = model(px, geo[:, -1:], mat)
+            else:
+                pred = model(geo, mat)
+            all_pred.append(pred)
+            all_true.append(target)
+
+        pred = torch.cat(all_pred)
+        true = torch.cat(all_true)
+        diff = pred - true
+
+        metrics[name] = {
+            "mse": float(torch.mean(diff ** 2)),
+            "mae": float(torch.mean(torch.abs(diff))),
+            "max_abs_error": float(torch.max(torch.abs(diff))),
+            "r2": float(1 - torch.sum(diff ** 2) / torch.sum((true - true.mean()) ** 2)),
+        }
+    return metrics
+
+
+def main():
+    args = parse_args()
+    torch.manual_seed(args.seed)
+    ckpt_dir = Path(args.ckpt_dir)
+    eval_dir = ckpt_dir / "evaluation"
+    eval_dir.mkdir(parents=True, exist_ok=True)
+
+    stats = torch.load(ckpt_dir / "dataset_stats.pt", map_location="cpu", weights_only=False)
+    n_continuous = stats["n_continuous"]
+    n_wavelengths = stats["n_wavelengths"]
+    n_harmonics = stats["n_harmonics"]
+    
+    mat_dirs = {k: str(PROJECT_ROOT / "Data" / Path(v).name) for k, v in stats["materials"].items()}
+    target_key = stats["target_key"]
+    print(f"n_continuous={n_continuous}  n_wavelengths={n_wavelengths}  materials={list(mat_dirs.keys())}")
+
+    full_dataset = GratingDataset(
+        data_dirs=mat_dirs, target_key=target_key,
+        geo_min=stats["geo_min"], geo_max=stats["geo_max"],
+    )
+    n_val = int(len(full_dataset) * 0.15)
+    n_train = len(full_dataset) - n_val
+    _, val_ds = random_split(
+        full_dataset, [n_train, n_val],
+        generator=torch.Generator().manual_seed(42),
+    )
+    if args.n_eval < len(val_ds):
+        val_ds, _ = random_split(val_ds, [args.n_eval, len(val_ds) - args.n_eval],
+                                 generator=torch.Generator().manual_seed(args.seed))
+    val_loader = DataLoader(val_ds, batch_size=256, shuffle=False)
+    print(f"Validation samples: {len(val_ds)}")
+
+    all_history = {}
+    forward_models = {}
+
+    mlp_path = ckpt_dir / "forward_mlp.pt"
+    if mlp_path.exists():
+        model = ForwardMLP(
+            n_continuous=n_continuous, n_wavelengths=n_wavelengths,
+            n_materials=N_MATERIALS, embed_dim=8,
+            hidden_dims=(256, 512, 512, 256), activation="snake",
+        )
+        hist, model = load_checkpoint(mlp_path, model)
+        forward_models["forward_mlp"] = model
+        all_history["forward_mlp"] = hist
+        print("Loaded: forward_mlp")
+
+    cnn_path = ckpt_dir / "spatial_cnn.pt"
+    if cnn_path.exists():
+        model = SpatialCNN(
+            n_harmonics=n_harmonics, n_wavelengths=n_wavelengths,
+            n_materials=N_MATERIALS, embed_dim=8,
+            n_pixels=256, conv_channels=(32, 64, 128, 64),
+            fc_dims=(256, 512, 256),
+        )
+        hist, model = load_checkpoint(cnn_path, model)
+        forward_models["spatial_cnn"] = model
+        all_history["spatial_cnn"] = hist
+        print("Loaded: spatial_cnn")
+
+
+
+    print("\nGenerating evaluation plots...")
+    if all_history:
+        plot_loss_curves(all_history, str(eval_dir / "forward_loss_curves.png"))
+
+    if forward_models:
+        plot_forward_parity(forward_models, val_loader,
+                           str(eval_dir / "forward_parity.png"), n_wavelengths)
+        plot_spectrum_samples(forward_models, val_loader,
+                             str(eval_dir / "forward_spectrum_samples.png"), n_wavelengths)
+
+        print("\nComputing metrics...")
+        metrics = compute_metrics(forward_models, val_loader, n_wavelengths)
+        for name, m in metrics.items():
+            print(f"\n  {name}:")
+            print(f"    MSE: {m['mse']:.6e}")
+            print(f"    MAE: {m['mae']:.6f}")
+            print(f"    Max Error: {m['max_abs_error']:.6f}")
+            print(f"    R²: {m['r2']:.6f}")
+
+        metrics_path = eval_dir / "forward_metrics.json"
+        with open(metrics_path, "w") as f:
+            json.dump(metrics, f, indent=2)
+        print(f"\n  Saved: {metrics_path}")
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,271 @@
+#!/usr/bin/env python
+"""
+Train inverse models on generated grating data.
+Automatically loads the best available frozen forward surrogate from checkpoints.
+
+Usage:
+    python Scripts/train_inverse.py --data_dir Data/LHS_Dataset_Si
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import time
+from pathlib import Path
+
+import torch
+from torch.utils.data import DataLoader, random_split
+
+# Resolve project root
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from Utils.models import (
+    MATERIAL_LIBRARY, N_MATERIALS,
+    ForwardMLP, SpatialCNN,
+    InverseDecoder, TandemNetwork, GenerativeTandemNetwork,
+    GeometryEncoder, GeometryDecoder, SpectrumEncoder, ContrastiveVAE,
+    GratingDataset,
+    train_tandem, train_cvae, train_cvae_wishful,
+)
+
+def save_checkpoint(model, history: dict, path: str):
+    torch.save({
+        "model_state_dict": model.state_dict(),
+        "history": history,
+    }, path)
+
+def get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics):
+    best_loss = float('inf')
+    best_name = None
+    best_model = None
+
+    # ForwardMLP
+    p = ckpt_dir / "forward_mlp.pt"
+    if p.exists():
+        model = ForwardMLP(
+            n_continuous=n_continuous, n_wavelengths=n_wavelengths,
+            n_materials=N_MATERIALS, embed_dim=8,
+            hidden_dims=(256, 512, 512, 256), activation="snake",
+        )
+        ckpt = torch.load(p, map_location="cpu", weights_only=False)
+        hist = ckpt.get("history", {})
+        if "val_loss" in hist and len(hist["val_loss"]) > 0:
+            val_loss = min(hist["val_loss"])
+            if val_loss < best_loss:
+                best_loss = val_loss
+                best_name = "forward_mlp"
+                model.load_state_dict(ckpt["model_state_dict"])
+                best_model = model
+
+    # SpatialCNN
+    p = ckpt_dir / "spatial_cnn.pt"
+    if p.exists():
+        model = SpatialCNN(
+            n_harmonics=n_harmonics, n_wavelengths=n_wavelengths,
+            n_materials=N_MATERIALS, embed_dim=8,
+            n_pixels=256, conv_channels=(32, 64, 128, 64),
+            fc_dims=(256, 512, 256),
+        )
+        ckpt = torch.load(p, map_location="cpu", weights_only=False)
+        hist = ckpt.get("history", {})
+        if "val_loss" in hist and len(hist["val_loss"]) > 0:
+            val_loss = min(hist["val_loss"])
+            if val_loss < best_loss:
+                best_loss = val_loss
+                best_name = "spatial_cnn"
+                model.load_state_dict(ckpt["model_state_dict"])
+                best_model = model
+
+    return best_model, best_name, best_loss
+
+
+def get_args():
+    p = argparse.ArgumentParser()
+    p.add_argument("--data_dir", nargs="+", required=True)
+    p.add_argument("--materials", nargs="+", default=["Si", "TiO2", "Si3N4"])
+    p.add_argument("--batch_size", type=int, default=64)
+    p.add_argument("--epochs", type=int, default=500)
+    p.add_argument("--lr", type=float, default=1e-3)
+    p.add_argument("--patience", type=int, default=100)
+    p.add_argument("--val_split", type=float, default=0.1)
+    p.add_argument("--latent_dim_gen", type=int, default=32)
+    p.add_argument("--latent_dim_cvae", type=int, default=64)
+    p.add_argument("--target_key", type=str, default="all_film")
+    p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--device", default=None)
+    p.add_argument("--skip", nargs="*", default=[], choices=["tandem", "gen_tandem", "cvae"])
+    return p.parse_args()
+
+def main():
+    args = get_args()
+    torch.manual_seed(args.seed)
+    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+
+    data_dirs = {mat: d for mat, d in zip(args.materials, args.data_dir)}
+    run_name = "_".join(args.materials)
+    ckpt_dir = PROJECT_ROOT / "Checkpoints" / run_name
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"Loading data from: {list(data_dirs.values())}")
+    t0 = time.time()
+    dataset = GratingDataset(data_dirs, target_key=args.target_key)
+    print(f"Dataset loaded: {len(dataset)} samples in {time.time() - t0:.1f} s")
+
+    n_val = int(len(dataset) * args.val_split)
+    n_train = len(dataset) - n_val
+    train_set, val_set = random_split(dataset, [n_train, n_val])
+
+    train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, drop_last=True)
+    val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False)
+
+    n_continuous = dataset.geometry.shape[-1]
+    n_harmonics = dataset.params_x.shape[1]
+    n_wavelengths = dataset.target.shape[-1]
+
+    print(f"n_continuous={n_continuous}  n_wavelengths={n_wavelengths}  materials={args.materials}")
+
+    # Find the best forward model
+    forward_model, fwd_name, fwd_loss = get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics)
+    
+    if forward_model is not None:
+        print(f"\n=> Loaded BEST forward model: {fwd_name} (val_loss = {fwd_loss:.6f})")
+    else:
+        print("\n=> WARNING: No forward models found in Checkpoints directory! Tandem training will be skipped.")
+
+    timings = {}
+    all_history = {}
+
+    if "tandem" not in args.skip:
+        print("\n" + "=" * 60)
+        print("Training: TandemNetwork")
+        print("=" * 60)
+        if forward_model is None:
+            print("  SKIPPED — no forward model available.")
+        else:
+            decoder = InverseDecoder(
+                n_wavelengths=n_wavelengths, n_geometry=n_continuous,
+                n_materials=N_MATERIALS, latent_dim=0,
+                hidden_dims=(256, 512, 512, 256),
+            )
+            tandem = TandemNetwork(inverse_decoder=decoder, forward_model=forward_model)
+            n_params = sum(p.numel() for p in tandem.inverse_decoder.parameters())
+            print(f"  Trainable parameters (decoder only): {n_params:,}")
+
+            t0 = time.time()
+            hist = train_tandem(
+                tandem, train_loader, val_loader,
+                epochs=args.epochs, lr=args.lr, patience=args.patience,
+                device=device,
+            )
+            elapsed = time.time() - t0
+            timings["tandem"] = elapsed
+            all_history["tandem"] = hist
+            print(f"  Time: {elapsed / 60:.1f} min")
+            save_checkpoint(tandem, hist, str(ckpt_dir / "tandem.pt"))
+
+    if "gen_tandem" not in args.skip:
+        print("\n" + "=" * 60)
+        print("Training: GenerativeTandemNetwork")
+        print("=" * 60)
+        if forward_model is None:
+            print("  SKIPPED — no forward model available.")
+        else:
+            latent_dim = args.latent_dim_gen
+            decoder = InverseDecoder(
+                n_wavelengths=n_wavelengths, n_geometry=n_continuous,
+                n_materials=N_MATERIALS, latent_dim=latent_dim,
+                hidden_dims=(256, 512, 512, 256),
+            )
+            gen_tandem = GenerativeTandemNetwork(
+                inverse_decoder=decoder, forward_model=forward_model,
+                latent_dim=latent_dim,
+            )
+            n_params = sum(p.numel() for p in gen_tandem.inverse_decoder.parameters())
+            print(f"  Trainable parameters (decoder only): {n_params:,}")
+
+            t0 = time.time()
+            hist = train_tandem(
+                gen_tandem, train_loader, val_loader,
+                epochs=args.epochs, lr=args.lr, patience=args.patience,
+                device=device,
+            )
+            elapsed = time.time() - t0
+            timings["generative_tandem"] = elapsed
+            all_history["generative_tandem"] = hist
+            print(f"  Time: {elapsed / 60:.1f} min")
+            save_checkpoint(gen_tandem, hist, str(ckpt_dir / "generative_tandem.pt"))
+
+    if "cvae" not in args.skip:
+        print("\n" + "=" * 60)
+        print("Training: ContrastiveVAE")
+        print("=" * 60)
+        latent_dim = args.latent_dim_cvae
+        geo_enc = GeometryEncoder(
+            n_continuous=n_continuous, n_materials=N_MATERIALS, embed_dim=8,
+            latent_dim=latent_dim, hidden_dims=(256, 256),
+        )
+        geo_dec = GeometryDecoder(
+            latent_dim=latent_dim, n_geometry=n_continuous,
+            n_materials=N_MATERIALS, hidden_dims=(256, 256),
+        )
+        spec_enc = SpectrumEncoder(
+            n_wavelengths=n_wavelengths, latent_dim=latent_dim,
+            hidden_dims=(128, 256, 128),
+        )
+        cvae = ContrastiveVAE(
+            geometry_encoder=geo_enc, geometry_decoder=geo_dec,
+            spectrum_encoder=spec_enc, margin_radius=1.0,
+            beta=1e-3, gamma=1.0,
+        )
+        n_params = sum(p.numel() for p in cvae.parameters())
+        print(f"  Parameters: {n_params:,}")
+
+        t0 = time.time()
+        hist = train_cvae(
+            cvae, train_loader, val_loader,
+            epochs=args.epochs, lr=args.lr, patience=args.patience,
+            device=device,
+        )
+        elapsed = time.time() - t0
+        timings["cvae"] = elapsed
+        all_history["cvae"] = hist
+        print(f"  Time: {elapsed / 60:.1f} min")
+        save_checkpoint(cvae, hist, str(ckpt_dir / "cvae.pt"))
+
+        print("\n" + "-" * 60)
+        print("Wishful Finetuning: CVAE")
+        print("-" * 60)
+        t0 = time.time()
+        # Finetune with lower lr and fewer epochs
+        hist_ft = train_cvae_wishful(
+            cvae, train_loader, val_loader,
+            epochs=max(10, args.epochs // 2), lr=args.lr * 0.1, patience=max(5, args.patience // 2),
+            device=device,
+        )
+        elapsed = time.time() - t0
+        timings["cvae_wishful"] = elapsed
+        all_history["cvae_wishful"] = hist_ft
+        print(f"  Time: {elapsed / 60:.1f} min")
+        save_checkpoint(cvae, hist_ft, str(ckpt_dir / "cvae_wishful.pt"))
+
+    history_path = ckpt_dir / "inverse_history.json"
+    with open(history_path, "w") as f:
+        json.dump(all_history, f, indent=2)
+    print(f"\nTraining history: {history_path}")
+
+    print("\n" + "=" * 60)
+    print("Training Summary")
+    print("=" * 60)
+    total = 0.0
+    for name, t in timings.items():
+        print(f"  {name:25s}  {t / 60:6.1f} min")
+        total += t
+    print(f"  {'TOTAL':25s}  {total / 60:6.1f} min")
+
+if __name__ == "__main__":
+    main()

@@ -112,82 +112,7 @@ class ForwardMLP(nn.Module):
         mat_embed = _embed_material(material_id, self.material_embedding)
         x = torch.cat([geometry, mat_embed], dim=-1)
         return torch.sigmoid(self.head(self.trunk(x)))
-class SpatialMamba(nn.Module):
-    """Mamba forward model that scans the 1D grating profile sequentially."""
 
-    def __init__(
-        self,
-        n_harmonics: int = 5,
-        n_wavelengths: int = 161,
-        n_materials: int = 3,
-        embed_dim: int = 8,
-        n_pixels: int = 256,
-        grating_period: float = 1000.0,
-        d_model: int = 512,
-        n_layers: int = 4,
-        fc_dims: Sequence[int] = (512, 1024, 512),
-        dropout: float = 0.05,
-    ):
-        super().__init__()
-        self.n_harmonics = n_harmonics
-        self.n_pixels = n_pixels
-        self.grating_period = grating_period
-
-        self.register_buffer("r_grid", torch.linspace(0, grating_period, n_pixels + 1)[:-1])
-        self.register_buffer("harmonic_idx", torch.arange(1, n_harmonics + 1, dtype=torch.float32))
-        self.material_embedding = nn.Embedding(n_materials, embed_dim)
-
-        from Utils.mamba import MambaNet
-        # Input features per step: 1 (profile height) + embed_dim (material) + 1 (h)
-        in_ch = 1 + embed_dim + 1
-        self.mamba = MambaNet(d_input=in_ch, d_model=d_model, n_layers=n_layers)
-
-        fc_in = d_model
-        fc_layers: list[nn.Module] = []
-        for fc_dim in fc_dims:
-            fc_layers.append(nn.Linear(fc_in, fc_dim))
-            fc_layers.append(nn.LayerNorm(fc_dim))
-            fc_layers.append(nn.GELU())
-            fc_layers.append(nn.Dropout(dropout))
-            fc_in = fc_dim
-        fc_layers.append(nn.Linear(fc_in, n_wavelengths))
-        self.fc_head = nn.Sequential(*fc_layers)
-
-    def _build_profile(self, params_x: torch.Tensor) -> torch.Tensor:
-        amps = params_x[:, :, 0]
-        phases = params_x[:, :, 1]
-        grating_height = 2.0 * amps.sum(dim=1, keepdim=True) + 1e-9
-
-        n = self.harmonic_idx[None, :, None]
-        r = self.r_grid[None, None, :]
-        arg = 2.0 * math.pi * n * r / self.grating_period - phases[:, :, None]
-        cosines = amps[:, :, None] * torch.cos(arg)
-        profile = grating_height[:, :, None] / 2.0 + cosines.sum(dim=1, keepdim=True)
-
-        p_min = profile.min(dim=-1, keepdim=True).values
-        p_max = profile.max(dim=-1, keepdim=True).values
-        return (profile - p_min) / (p_max - p_min + 1e-9)
-
-    def forward(self, params_x: torch.Tensor, h_norm: torch.Tensor, material_id: torch.Tensor) -> torch.Tensor:
-        P = self.n_pixels
-        profile = self._build_profile(params_x) # (B, 1, P)
-
-        mat_embed = _embed_material(material_id, self.material_embedding) # (B, embed_dim)
-        mat_channel = mat_embed.unsqueeze(-1).expand(-1, -1, P)
-
-        if h_norm.dim() == 1:
-            h_norm = h_norm.unsqueeze(-1)
-        h_channel = h_norm.unsqueeze(-1).expand(-1, -1, P)
-
-        x = torch.cat([profile, mat_channel, h_channel], dim=1) # (B, in_ch, P)
-        
-        # Mamba expects sequence: (B, P, in_ch)
-        x_seq = x.transpose(1, 2)
-        
-        mamba_out = self.mamba(x_seq) # (B, P, d_model)
-        h = mamba_out.mean(dim=1) # Global average pooling over spatial sequence
-        
-        return torch.sigmoid(self.fc_head(h))
 
 class SpatialCNN(nn.Module):
     """1D CNN that builds a grating profile from Fourier params, then convolves.
@@ -288,13 +213,9 @@ class InverseDecoder(nn.Module):
         self.latent_dim = latent_dim
         self.seq_len = n_wavelengths // 2
 
-        from Utils.mamba import MambaNet
-        # Input features per step: 2 (p-pol and s-pol) + latent_dim
-        self.mamba = MambaNet(d_input=2 + latent_dim, d_model=hidden_dims[0], n_layers=4)
-
-        in_dim = hidden_dims[0]
+        in_dim = n_wavelengths + latent_dim
         layers: list[nn.Module] = []
-        for h_dim in hidden_dims[1:]:
+        for h_dim in hidden_dims:
             layers.append(nn.Linear(in_dim, h_dim))
             layers.append(nn.LayerNorm(h_dim))
             layers.append(nn.GELU())
@@ -311,24 +232,11 @@ class InverseDecoder(nn.Module):
         tau: float = 1.0, hard: bool = True,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Returns (pred_geometry in [0,1], material_onehot, material_logits)."""
-        B = target_curve.shape[0]
-        
-        # Reshape target_curve from (B, N_wl) to (B, seq_len, 2)
-        x_seq = target_curve.view(B, 2, self.seq_len).transpose(1, 2)
-        
+        x = target_curve
         if z is not None:
-            # Expand z to (B, seq_len, latent_dim)
-            z_seq = z.unsqueeze(1).expand(-1, self.seq_len, -1)
-            x_seq = torch.cat([x_seq, z_seq], dim=-1)
+            x = torch.cat([x, z], dim=-1)
             
-        # Process with Mamba
-        mamba_out = self.mamba(x_seq) # (B, seq_len, d_model)
-        
-        # Global average pooling
-        h = mamba_out.mean(dim=1)
-        
-        # MLP Trunk
-        h = self.trunk(h)
+        h = self.trunk(x)
         
         pred_geometry = torch.sigmoid(self.geometry_head(h))
         material_logits = self.material_head(h)
@@ -468,18 +376,26 @@ class SpectrumEncoder(nn.Module):
 
     def __init__(
         self, n_wavelengths: int = 161, latent_dim: int = 64,
-        hidden_dims: Sequence[int] = (256, 256), dropout: float = 0.05,
+        hidden_dims: Sequence[int] = (128, 256, 128), dropout: float = 0.05,
     ):
         super().__init__()
         self.seq_len = n_wavelengths // 2
         
-        from Utils.mamba import MambaNet
-        # Input features per step: 2 (p-pol and s-pol)
-        self.mamba = MambaNet(d_input=2, d_model=hidden_dims[0], n_layers=4)
+        # Replace Mamba with a 1D CNN to encode the sequence
+        self.cnn = nn.Sequential(
+            nn.Conv1d(2, 32, kernel_size=5, padding=2),
+            nn.BatchNorm1d(32),
+            nn.GELU(),
+            nn.MaxPool1d(2),
+            nn.Conv1d(32, 64, kernel_size=5, padding=2),
+            nn.BatchNorm1d(64),
+            nn.GELU(),
+            nn.AdaptiveAvgPool1d(1)
+        )
         
-        in_dim = hidden_dims[0]
+        in_dim = 64
         layers: list[nn.Module] = []
-        for h_dim in hidden_dims[1:]:
+        for h_dim in hidden_dims:
             layers.append(nn.Linear(in_dim, h_dim))
             layers.append(nn.LayerNorm(h_dim))
             layers.append(nn.GELU())
@@ -491,11 +407,11 @@ class SpectrumEncoder(nn.Module):
 
     def forward(self, target_curve: torch.Tensor) -> torch.Tensor:
         B = target_curve.shape[0]
-        # Reshape to (B, seq_len, 2)
-        x_seq = target_curve.view(B, 2, self.seq_len).transpose(1, 2)
+        # Reshape to (B, channels, seq_len)
+        x_seq = target_curve.view(B, 2, self.seq_len)
         
-        mamba_out = self.mamba(x_seq) # (B, seq_len, d_model)
-        h = mamba_out.mean(dim=1) # Global average pooling
+        cnn_out = self.cnn(x_seq) # (B, 64, 1)
+        h = cnn_out.squeeze(-1)   # (B, 64)
         
         h = self.trunk(h)
         return self.head(h)
@@ -607,27 +523,37 @@ class GratingDataset(torch.utils.data.Dataset):
                 data = torch.load(bf, map_location="cpu", weights_only=False)
                 B = data["h"].shape[0]
 
-                target = data[target_key].float()
-                if target.dim() == 2 and target.shape[1] == 2:
-                    target = torch.cat([target[:, 0], target[:, 1]], dim=-1)
-                elif target.dim() == 3:
-                    target = torch.cat([target[:, :, 0], target[:, :, 1]], dim=-1)
+                def process_target(key, override_inc_ang=None):
+                    target = data[key].float()
+                    if target.dim() == 2 and target.shape[1] == 2:
+                        target = torch.cat([target[:, 0], target[:, 1]], dim=-1)
+                    elif target.dim() == 3:
+                        target = torch.cat([target[:, :, 0], target[:, :, 1]], dim=-1)
 
-                # Filter out exploding curves (unphysical RCWA artifacts)
-                valid_mask = (target.max(dim=-1).values <= 1.0) & (target.min(dim=-1).values >= 0.0)
-                
-                if valid_mask.any():
-                    px = data["params_x"].float()[valid_mask]
-                    all_params_x.append(px)
+                    valid_mask = (target.max(dim=-1).values <= 1.0) & (target.min(dim=-1).values >= 0.0)
+                    
+                    if valid_mask.any():
+                        px = data["params_x"].float()[valid_mask]
+                        all_params_x.append(px)
 
-                    geo_parts = [polar_to_cartesian(px)]
-                    geo_parts.append(data["h"].float()[valid_mask].unsqueeze(-1))
-                    if "inc_ang" in data:
-                        geo_parts.append(data["inc_ang"].float()[valid_mask].unsqueeze(-1))
-                    all_geometry.append(torch.cat(geo_parts, dim=-1))
+                        geo_parts = [polar_to_cartesian(px)]
+                        geo_parts.append(data["h"].float()[valid_mask].unsqueeze(-1))
+                        if "inc_ang" in data:
+                            if override_inc_ang is not None:
+                                geo_parts.append(torch.full((valid_mask.sum().item(), 1), override_inc_ang, dtype=torch.float32))
+                            else:
+                                geo_parts.append(data["inc_ang"].float()[valid_mask].unsqueeze(-1))
+                        all_geometry.append(torch.cat(geo_parts, dim=-1))
 
-                    all_material.append(torch.full((valid_mask.sum().item(),), mat_id, dtype=torch.long))
-                    all_target.append(target[valid_mask])
+                        all_material.append(torch.full((valid_mask.sum().item(),), mat_id, dtype=torch.long))
+                        all_target.append(target[valid_mask])
+
+                if target_key == "all_film":
+                    process_target("A_film_normal", override_inc_ang=0.0)
+                    process_target("A_film_oblique", override_inc_ang=None)
+                else:
+                    process_target(target_key, override_inc_ang=None)
+        
         self.geometry = torch.cat(all_geometry, dim=0)
         self.params_x = torch.cat(all_params_x, dim=0)
         self.material_id = torch.cat(all_material, dim=0)
@@ -678,7 +604,17 @@ def train_forward_model(
                                     batch["material_id"].to(device), batch["target"].to(device))
             h_val = geo[:, -1:]
             pred = model(px, h_val, mat) if use_cnn else model(geo, mat)
-            loss = criterion(pred, target)
+            
+            mse_loss = criterion(pred, target)
+            wl = target.shape[-1] // 2
+            dp_pred = pred[:, 1:wl] - pred[:, :wl-1]
+            dp_target = target[:, 1:wl] - target[:, :wl-1]
+            ds_pred = pred[:, wl+1:] - pred[:, wl:-1]
+            ds_target = target[:, wl+1:] - target[:, wl:-1]
+            grad_loss = criterion(dp_pred, dp_target) + criterion(ds_pred, ds_target)
+            
+            loss = mse_loss + 2.0 * grad_loss
+            
             optimizer.zero_grad(); loss.backward(); optimizer.step()
             train_loss_accum += loss.item()
 
@@ -693,7 +629,16 @@ def train_forward_model(
                                         batch["material_id"].to(device), batch["target"].to(device))
                 h_val = geo[:, -1:]
                 pred = model(px, h_val, mat) if use_cnn else model(geo, mat)
-                val_loss_accum += criterion(pred, target).item()
+                
+                mse_loss = criterion(pred, target)
+                wl = target.shape[-1] // 2
+                dp_pred = pred[:, 1:wl] - pred[:, :wl-1]
+                dp_target = target[:, 1:wl] - target[:, :wl-1]
+                ds_pred = pred[:, wl+1:] - pred[:, wl:-1]
+                ds_target = target[:, wl+1:] - target[:, wl:-1]
+                grad_loss = criterion(dp_pred, dp_target) + criterion(ds_pred, ds_target)
+                
+                val_loss_accum += (mse_loss + 2.0 * grad_loss).item()
 
         avg_val = val_loss_accum / len(val_loader)
         history["val_loss"].append(avg_val)
@@ -740,7 +685,18 @@ def train_tandem(
         for batch in train_loader:
             target = batch["target"].to(device)
             out = tandem(target, tau=tau)
-            loss = criterion(out["predicted_curve"], target)
+            pred = out["predicted_curve"]
+            
+            mse_loss = criterion(pred, target)
+            wl = target.shape[-1] // 2
+            dp_pred = pred[:, 1:wl] - pred[:, :wl-1]
+            dp_target = target[:, 1:wl] - target[:, :wl-1]
+            ds_pred = pred[:, wl+1:] - pred[:, wl:-1]
+            ds_target = target[:, wl+1:] - target[:, wl:-1]
+            grad_loss = criterion(dp_pred, dp_target) + criterion(ds_pred, ds_target)
+            
+            loss = mse_loss + 2.0 * grad_loss
+            
             optimizer.zero_grad(); loss.backward(); optimizer.step()
             train_loss_accum += loss.item()
 
@@ -753,7 +709,17 @@ def train_tandem(
             for batch in val_loader:
                 target = batch["target"].to(device)
                 out = tandem(target, tau=tau)
-                val_loss_accum += criterion(out["predicted_curve"], target).item()
+                pred = out["predicted_curve"]
+                
+                mse_loss = criterion(pred, target)
+                wl = target.shape[-1] // 2
+                dp_pred = pred[:, 1:wl] - pred[:, :wl-1]
+                dp_target = target[:, 1:wl] - target[:, :wl-1]
+                ds_pred = pred[:, wl+1:] - pred[:, wl:-1]
+                ds_target = target[:, wl+1:] - target[:, wl:-1]
+                grad_loss = criterion(dp_pred, dp_target) + criterion(ds_pred, ds_target)
+                
+                val_loss_accum += (mse_loss + 2.0 * grad_loss).item()
 
         avg_val = val_loss_accum / len(val_loader)
         history["val_loss"].append(avg_val)
@@ -840,6 +806,98 @@ def train_cvae(
         pbar.set_postfix(total=f"{history['train_loss'][-1]:.3e}",
                          val=f"{avg_val:.3e}", kl=f"{accum['kl']/n:.3e}",
                          margin=f"{accum['margin']/n:.3e}", tau=f"{tau:.2f}")
+
+    if best_state is not None:
+        cvae.load_state_dict(best_state)
+    return history
+
+def train_cvae_wishful(
+    cvae: ContrastiveVAE, train_loader, val_loader, *,
+    epochs: int = 100, lr: float = 1e-4, weight_decay: float = 1e-5,
+    patience: int = 50, tau_start: float = 0.5, tau_end: float = 0.1,
+    alpha_end: float = 0.9, top_k_quantile: float = 0.9,
+    device: torch.device = torch.device("cpu"),
+) -> dict[str, list[float]]:
+    """Wishful thinking finetuning: select top quantile of curves and gradually pull them to 1.0."""
+    cvae = cvae.to(device)
+    optimizer = torch.optim.AdamW(cvae.parameters(), lr=lr, weight_decay=weight_decay)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=patience // 5)
+    best_val, best_state, patience_ctr = float("inf"), None, 0
+    history: dict[str, list[float]] = {
+        "train_loss": [], "val_loss": [],
+        "train_recon": [], "train_mat_ce": [], "train_kl": [], "train_margin": [],
+    }
+
+    pbar = tqdm(range(1, epochs + 1), desc="Finetune CVAE", unit="ep", dynamic_ncols=True, file=sys.stdout)
+    for epoch in pbar:
+        tau = tau_start + (tau_end - tau_start) * (epoch - 1) / max(epochs - 1, 1)
+        alpha = alpha_end * (epoch - 1) / max(epochs - 1, 1)
+
+        cvae.train()
+        accum = {"loss": 0.0, "recon": 0.0, "mat_ce": 0.0, "kl": 0.0, "margin": 0.0}
+        n_batches = 0
+        for batch in train_loader:
+            geo, mat, target = (batch["geometry"].to(device),
+                                batch["material_id"].to(device), batch["target"].to(device))
+            
+            means = target.mean(dim=-1)
+            threshold = torch.quantile(means, top_k_quantile)
+            mask = means >= threshold
+            if not mask.any(): continue
+            
+            geo, mat, target = geo[mask], mat[mask], target[mask]
+            
+            # Wishful thinking: shift curve towards 1.0
+            target = target + alpha * (1.0 - target)
+            
+            out = cvae(geo, mat, target, tau=tau)
+            losses = cvae.compute_loss(out, geo, mat)
+            optimizer.zero_grad(); losses["loss"].backward(); optimizer.step()
+            for k in accum:
+                accum[k] += losses[f"loss_{k}"].item() if k != "loss" else losses["loss"].item()
+            n_batches += 1
+
+        if n_batches == 0: continue
+
+        history["train_loss"].append(accum["loss"] / n_batches)
+        for k in ("recon", "mat_ce", "kl", "margin"):
+            history[f"train_{k}"].append(accum[k] / n_batches)
+
+        cvae.eval()
+        val_accum = 0.0
+        n_val = 0
+        with torch.no_grad():
+            for batch in val_loader:
+                geo, mat, target = (batch["geometry"].to(device),
+                                    batch["material_id"].to(device), batch["target"].to(device))
+                means = target.mean(dim=-1)
+                threshold = torch.quantile(means, top_k_quantile)
+                mask = means >= threshold
+                if not mask.any(): continue
+                geo, mat, target = geo[mask], mat[mask], target[mask]
+                target = target + alpha * (1.0 - target)
+                
+                losses = cvae.compute_loss(cvae(geo, mat, target, tau=tau), geo, mat)
+                val_accum += losses["loss"].item()
+                n_val += 1
+
+        if n_val == 0: continue
+        avg_val = val_accum / n_val
+        history["val_loss"].append(avg_val)
+        scheduler.step(avg_val)
+
+        if avg_val < best_val:
+            best_val = avg_val
+            best_state = {k: v.clone() for k, v in cvae.state_dict().items()}
+            patience_ctr = 0
+        else:
+            patience_ctr += 1
+            if patience_ctr >= patience:
+                pbar.write(f"Early stopping at epoch {epoch} (best val={best_val:.6e})")
+                break
+
+        pbar.set_postfix(total=f"{history['train_loss'][-1]:.3e}",
+                         val=f"{avg_val:.3e}", alpha=f"{alpha:.2f}", tau=f"{tau:.2f}")
 
     if best_state is not None:
         cvae.load_state_dict(best_state)
