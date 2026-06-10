@@ -202,26 +202,30 @@ class InverseDecoder(nn.Module):
         self,
         n_wavelengths: int = 161,
         n_geometry: int = 12,
-        n_materials: int = N_MATERIALS,
+        n_materials: int = 3,
         latent_dim: int = 0,
-        hidden_dims: Sequence[int] = (256, 512, 512, 256),
-        activation: Literal["gelu", "relu", "snake"] = "gelu",
-        norm: Literal["batch", "layer"] = "layer",
+        hidden_dims: Sequence[int] = (256, 256, 256),
         dropout: float = 0.05,
     ):
         super().__init__()
         self.n_geometry = n_geometry
         self.n_materials = n_materials
         self.latent_dim = latent_dim
+        self.seq_len = n_wavelengths // 2
 
-        in_dim = n_wavelengths + latent_dim
+        from Utils.mamba import MambaNet
+        # Input features per step: 2 (p-pol and s-pol) + latent_dim
+        self.mamba = MambaNet(d_input=2 + latent_dim, d_model=hidden_dims[0], n_layers=4)
+
+        in_dim = hidden_dims[0]
         layers: list[nn.Module] = []
-        for h_dim in hidden_dims:
+        for h_dim in hidden_dims[1:]:
             layers.append(nn.Linear(in_dim, h_dim))
-            layers.append(nn.BatchNorm1d(h_dim) if norm == "batch" else nn.LayerNorm(h_dim))
-            layers.append(_make_activation(activation, h_dim))
+            layers.append(nn.LayerNorm(h_dim))
+            layers.append(nn.GELU())
             layers.append(nn.Dropout(dropout))
             in_dim = h_dim
+        
         self.trunk = nn.Sequential(*layers)
 
         self.geometry_head = nn.Linear(in_dim, n_geometry)
@@ -232,8 +236,25 @@ class InverseDecoder(nn.Module):
         tau: float = 1.0, hard: bool = True,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Returns (pred_geometry in [0,1], material_onehot, material_logits)."""
-        x = target_curve if z is None else torch.cat([target_curve, z], dim=-1)
-        h = self.trunk(x)
+        B = target_curve.shape[0]
+        
+        # Reshape target_curve from (B, N_wl) to (B, seq_len, 2)
+        x_seq = target_curve.view(B, 2, self.seq_len).transpose(1, 2)
+        
+        if z is not None:
+            # Expand z to (B, seq_len, latent_dim)
+            z_seq = z.unsqueeze(1).expand(-1, self.seq_len, -1)
+            x_seq = torch.cat([x_seq, z_seq], dim=-1)
+            
+        # Process with Mamba
+        mamba_out = self.mamba(x_seq) # (B, seq_len, d_model)
+        
+        # Global average pooling
+        h = mamba_out.mean(dim=1)
+        
+        # MLP Trunk
+        h = self.trunk(h)
+        
         pred_geometry = torch.sigmoid(self.geometry_head(h))
         material_logits = self.material_head(h)
         material_onehot = F.gumbel_softmax(material_logits, tau=tau, hard=hard)
@@ -375,16 +396,34 @@ class SpectrumEncoder(nn.Module):
         hidden_dims: Sequence[int] = (256, 256), dropout: float = 0.05,
     ):
         super().__init__()
-        in_dim = n_wavelengths
+        self.seq_len = n_wavelengths // 2
+        
+        from Utils.mamba import MambaNet
+        # Input features per step: 2 (p-pol and s-pol)
+        self.mamba = MambaNet(d_input=2, d_model=hidden_dims[0], n_layers=4)
+        
+        in_dim = hidden_dims[0]
         layers: list[nn.Module] = []
-        for h_dim in hidden_dims:
-            layers += [nn.Linear(in_dim, h_dim), nn.LayerNorm(h_dim), nn.GELU(), nn.Dropout(dropout)]
+        for h_dim in hidden_dims[1:]:
+            layers.append(nn.Linear(in_dim, h_dim))
+            layers.append(nn.LayerNorm(h_dim))
+            layers.append(nn.GELU())
+            layers.append(nn.Dropout(dropout))
             in_dim = h_dim
-        layers.append(nn.Linear(in_dim, latent_dim))
-        self.net = nn.Sequential(*layers)
+            
+        self.trunk = nn.Sequential(*layers)
+        self.head = nn.Linear(in_dim, latent_dim)
 
-    def forward(self, curve: torch.Tensor) -> torch.Tensor:
-        return self.net(curve)
+    def forward(self, target_curve: torch.Tensor) -> torch.Tensor:
+        B = target_curve.shape[0]
+        # Reshape to (B, seq_len, 2)
+        x_seq = target_curve.view(B, 2, self.seq_len).transpose(1, 2)
+        
+        mamba_out = self.mamba(x_seq) # (B, seq_len, d_model)
+        h = mamba_out.mean(dim=1) # Global average pooling
+        
+        h = self.trunk(h)
+        return self.head(h)
 
 
 class ContrastiveVAE(nn.Module):
@@ -493,25 +532,27 @@ class GratingDataset(torch.utils.data.Dataset):
                 data = torch.load(bf, map_location="cpu", weights_only=False)
                 B = data["h"].shape[0]
 
-                px = data["params_x"].float()
-                all_params_x.append(px)
-
-                geo_parts = [polar_to_cartesian(px)]
-                geo_parts.append(data["h"].float().unsqueeze(-1))
-                if "inc_ang" in data:
-                    geo_parts.append(data["inc_ang"].float().unsqueeze(-1))
-                all_geometry.append(torch.cat(geo_parts, dim=-1))
-
-                all_material.append(torch.full((B,), mat_id, dtype=torch.long))
-
                 target = data[target_key].float()
-                # Concatenate p-pol and s-pol -> (B, N_wl * 2)
                 if target.dim() == 2 and target.shape[1] == 2:
                     target = torch.cat([target[:, 0], target[:, 1]], dim=-1)
                 elif target.dim() == 3:
                     target = torch.cat([target[:, :, 0], target[:, :, 1]], dim=-1)
-                all_target.append(target)
 
+                # Filter out exploding curves (unphysical RCWA artifacts)
+                valid_mask = (target.max(dim=-1).values <= 1.0) & (target.min(dim=-1).values >= 0.0)
+                
+                if valid_mask.any():
+                    px = data["params_x"].float()[valid_mask]
+                    all_params_x.append(px)
+
+                    geo_parts = [polar_to_cartesian(px)]
+                    geo_parts.append(data["h"].float()[valid_mask].unsqueeze(-1))
+                    if "inc_ang" in data:
+                        geo_parts.append(data["inc_ang"].float()[valid_mask].unsqueeze(-1))
+                    all_geometry.append(torch.cat(geo_parts, dim=-1))
+
+                    all_material.append(torch.full((valid_mask.sum().item(),), mat_id, dtype=torch.long))
+                    all_target.append(target[valid_mask])
         self.geometry = torch.cat(all_geometry, dim=0)
         self.params_x = torch.cat(all_params_x, dim=0)
         self.material_id = torch.cat(all_material, dim=0)

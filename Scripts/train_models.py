@@ -166,7 +166,7 @@ def main():
         model = ForwardMLP(
             n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
-            hidden_dims=(256, 512, 512, 256), activation="snake",
+            hidden_dims=(512, 1024, 1024, 1024, 512), activation="snake",
         )
         n_params = sum(p.numel() for p in model.parameters())
         print(f"  Parameters: {n_params:,}")
@@ -192,8 +192,8 @@ def main():
         model = SpatialCNN(
             n_harmonics=n_harmonics, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
-            n_pixels=256, conv_channels=(32, 64, 128, 64),
-            kernel_size=7, fc_dims=(256, 256),
+            n_pixels=256, conv_channels=(64, 128, 256, 512, 256),
+            fc_dims=(512, 1024, 512),
         )
         n_params = sum(p.numel() for p in model.parameters())
         print(f"  Parameters: {n_params:,}")
@@ -225,7 +225,7 @@ def main():
             forward_model = ForwardMLP(
                 n_continuous=n_continuous, n_wavelengths=n_wavelengths,
                 n_materials=N_MATERIALS, embed_dim=8,
-                hidden_dims=(256, 512, 512, 256), activation="snake",
+                hidden_dims=(512, 1024, 1024, 1024, 512), activation="snake",
             )
             forward_model.load_state_dict(
                 torch.load(fwd_ckpt, map_location="cpu", weights_only=False)["model_state_dict"]
@@ -233,7 +233,7 @@ def main():
             decoder = InverseDecoder(
                 n_wavelengths=n_wavelengths, n_geometry=n_continuous,
                 n_materials=N_MATERIALS, latent_dim=0,
-                hidden_dims=(256, 512, 512, 256), activation="gelu",
+                hidden_dims=(512, 1024, 1024, 1024, 512),
             )
             tandem = TandemNetwork(inverse_decoder=decoder, forward_model=forward_model)
             n_params = sum(p.numel() for p in tandem.inverse_decoder.parameters())
@@ -265,7 +265,7 @@ def main():
             forward_model = ForwardMLP(
                 n_continuous=n_continuous, n_wavelengths=n_wavelengths,
                 n_materials=N_MATERIALS, embed_dim=8,
-                hidden_dims=(256, 512, 512, 256), activation="snake",
+                hidden_dims=(512, 1024, 1024, 1024, 512), activation="snake",
             )
             forward_model.load_state_dict(
                 torch.load(fwd_ckpt, map_location="cpu", weights_only=False)["model_state_dict"]
@@ -274,7 +274,7 @@ def main():
             decoder = InverseDecoder(
                 n_wavelengths=n_wavelengths, n_geometry=n_continuous,
                 n_materials=N_MATERIALS, latent_dim=latent_dim,
-                hidden_dims=(256, 512, 512, 256), activation="gelu",
+                hidden_dims=(512, 1024, 1024, 1024, 512),
             )
             gen_tandem = GenerativeTandemNetwork(
                 inverse_decoder=decoder, forward_model=forward_model,
@@ -304,15 +304,15 @@ def main():
         latent_dim = args.latent_dim_cvae
         geo_enc = GeometryEncoder(
             n_continuous=n_continuous, n_materials=N_MATERIALS, embed_dim=8,
-            latent_dim=latent_dim, hidden_dims=(256, 256),
+            latent_dim=latent_dim, hidden_dims=(512, 1024, 512),
         )
         geo_dec = GeometryDecoder(
             latent_dim=latent_dim, n_geometry=n_continuous,
-            n_materials=N_MATERIALS, hidden_dims=(256, 256),
+            n_materials=N_MATERIALS, hidden_dims=(512, 1024, 512),
         )
         spec_enc = SpectrumEncoder(
             n_wavelengths=n_wavelengths, latent_dim=latent_dim,
-            hidden_dims=(256, 256),
+            hidden_dims=(512, 1024, 1024, 512),
         )
         cvae = ContrastiveVAE(
             geometry_encoder=geo_enc, geometry_decoder=geo_dec,
