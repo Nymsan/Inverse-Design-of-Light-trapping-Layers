@@ -138,11 +138,54 @@ class SineLayer(nn.Module):
                                              np.sqrt(6 / self.linear.in_features) / self.omega_0)
     
     def forward(self, x):
-        h = torch.sin(self.omega_0 * self.linear(x))
-        return x + h if (self.linear.in_features == self.linear.out_features and not self.is_first) else h
+        return torch.sin(self.omega_0 * self.linear(x))
 
-class ForwardSIREN(nn.Module):
-    def __init__(self, n_harmonics=5, nx=128, n_continuous=12, n_wavelengths=161, n_materials=3, embed_dim=8, hidden_dims=(256, 512, 512, 256)):
+
+
+class ResBlock1D(nn.Module):
+    def __init__(self, in_ch, out_ch, kernel_size=7, dropout=0.05, stride=1):
+        super().__init__()
+        pad_mode = "zeros" if stride > 1 else "circular"
+        
+        self.conv1 = nn.Conv1d(in_ch, out_ch, kernel_size, stride=stride, padding=kernel_size // 2, padding_mode=pad_mode)
+        self.norm1 = nn.BatchNorm1d(out_ch)
+        self.act1 = nn.GELU()
+        self.drop1 = nn.Dropout(dropout)
+        
+        self.conv2 = nn.Conv1d(out_ch, out_ch, kernel_size, stride=1, padding=kernel_size // 2, padding_mode="circular")
+        self.norm2 = nn.BatchNorm1d(out_ch)
+        
+        if in_ch != out_ch or stride > 1:
+            self.skip = nn.Sequential(
+                nn.Conv1d(in_ch, out_ch, kernel_size=1, stride=stride),
+                nn.BatchNorm1d(out_ch)
+            )
+        else:
+            self.skip = nn.Identity()
+            
+        self.act2 = nn.GELU()
+        self.drop2 = nn.Dropout(dropout)
+
+    def forward(self, x):
+        res = self.skip(x)
+        x = self.conv1(x)
+        x = self.norm1(x)
+        x = self.act1(x)
+        x = self.drop1(x)
+        x = self.conv2(x)
+        x = self.norm2(x)
+        return self.drop2(self.act2(x + res))
+
+
+class SIREN(nn.Module):
+    """
+    A Hybrid 'Conditioned Implicit Neural Representation'.
+    1. A CNN encodes the global 1D physical parameters into a latent vector.
+    2. A SIREN decoder takes (latent_vector, normalized_wavelength) -> (P_abs, S_abs)
+    This breaks the Spectral Bias trap, learning both global mappings and infinite-resolution sharp peaks.
+    """
+    def __init__(self, n_harmonics=5, nx=128, n_continuous=12, n_wavelengths=161, n_materials=3, embed_dim=8, 
+                 conv_channels=(32, 64, 128, 64), kernel_size=7, dropout=0.05, siren_hidden=(256, 256, 256), latent_dim=128, omega_0=10.0):
         super().__init__()
         self.n_harmonics = n_harmonics
         self.nx = nx
@@ -150,24 +193,74 @@ class ForwardSIREN(nn.Module):
         self.n_wavelengths = n_wavelengths
         self.material_embedding = nn.Embedding(n_materials, embed_dim)
         
-        in_dim = nx + 1 + embed_dim + 1
-        self.input_norm = nn.BatchNorm1d(in_dim)
+        in_ch = 1 + 1 + embed_dim + 1
+        self.input_norm = nn.BatchNorm1d(in_ch)
         
-        layers = []
-        for i, h_dim in enumerate(hidden_dims):
-            layers.append(SineLayer(in_dim, h_dim, is_first=(i==0)))
-            in_dim = h_dim
-            
-        self.trunk = nn.Sequential(*layers)
-        self.head = nn.Linear(in_dim, n_wavelengths)
+        # 1. CNN Encoder (Learns the global bulk physics mapping from the spatial profile)
+        conv_layers = []
+        for i, out_ch in enumerate(conv_channels):
+            stride = 4 if i > 0 else 1
+            conv_layers.append(ResBlock1D(in_ch, out_ch, kernel_size, dropout, stride))
+            in_ch = out_ch
+        self.encoder_cnn = nn.Sequential(*conv_layers)
         
+        downsample_factor = 4 ** (len(conv_channels) - 1)
+        spatial_dim = nx // downsample_factor
+        fc_in = conv_channels[-1] * spatial_dim
+        
+        # Project CNN output to latent vector
+        self.encoder_proj = nn.Sequential(
+            SkipLinear(fc_in, 256, activation="gelu", norm="layer", dropout=dropout),
+            nn.Linear(256, latent_dim)
+        )
+        
+        # 2. SIREN Decoder (Learns the high-frequency continuous optical spectrum)
+        siren_in_dim = latent_dim + 1 # latent_vector + 1D normalized wavelength
+        siren_layers = []
+        for i, h_dim in enumerate(siren_hidden):
+            siren_layers.append(SineLayer(siren_in_dim, h_dim, is_first=(i==0), omega_0=omega_0))
+            siren_in_dim = h_dim
+        
+        self.siren_decoder = nn.Sequential(*siren_layers)
+        self.head = nn.Linear(siren_in_dim, 2) # Outputs (P_absorptance, S_absorptance)
+
     def forward(self, geometry, material_id):
         profile, h, inc_ang = build_profile(geometry, self.n_harmonics, self.nx)
         mat_embed = _embed_material(material_id, self.material_embedding)
-        x_list = [profile, h, mat_embed, inc_ang]
-        x = torch.cat(x_list, dim=-1)
+        
+        B, L = profile.shape
+        h_spatial = h.unsqueeze(2).expand(B, 1, L)
+        mat_spatial = mat_embed.unsqueeze(2).expand(B, -1, L)
+        inc_ang_spatial = inc_ang.unsqueeze(2).expand(B, 1, L)
+        
+        x_list = [profile.unsqueeze(1), h_spatial, mat_spatial, inc_ang_spatial]
+        x = torch.cat(x_list, dim=1)
+        
         x = self.input_norm(x)
-        return self.head(self.trunk(x))
+        x = self.encoder_cnn(x)
+        x = x.view(B, -1)
+        latent = self.encoder_proj(x)
+        
+        # Normalized wavelength grid [-1, 1] for the 161 points
+        wls = torch.linspace(-1, 1, self.n_wavelengths, device=geometry.device)
+        
+        # Expand latent to [B, W, latent_dim]
+        latent_expanded = latent.unsqueeze(1).expand(B, self.n_wavelengths, -1)
+        # Expand wls to [B, W, 1]
+        wls_expanded = wls.view(1, self.n_wavelengths, 1).expand(B, -1, -1)
+        
+        # SIREN Input: [B, W, latent_dim + 1]
+        siren_in = torch.cat([latent_expanded, wls_expanded], dim=-1)
+        
+        # Output: [B, W, 2]
+        out = self.head(self.siren_decoder(siren_in))
+        
+        # Separate into P and S polarizations: [B, W]
+        p_pol = out[..., 0]
+        s_pol = out[..., 1]
+        
+        # Concatenate back to match the [B, 322] dataset target shape
+        return torch.cat([p_pol, s_pol], dim=1)
 
 class ForwardMLP(nn.Module):
     def __init__(self, n_harmonics=5, nx=128, n_continuous=12, n_wavelengths=161, n_materials=3, embed_dim=8, hidden_dims=(256, 512, 512, 256), activation="snake", norm="layer", dropout=0.05):
@@ -197,6 +290,55 @@ class ForwardMLP(nn.Module):
         x = torch.cat(x_list, dim=-1)
         x = self.input_norm(x)
         return self.head(self.trunk(x))
+
+
+class SkipCNN(nn.Module):
+    def __init__(self, n_harmonics=5, nx=128, n_continuous=12, n_wavelengths=161, n_materials=3, embed_dim=8, grating_period=1000.0, conv_channels=(32, 64, 64), kernel_size=7, fc_dims=(256, 128), dropout=0.05):
+        super().__init__()
+        self.n_harmonics = n_harmonics
+        self.nx = nx
+        self.n_continuous = n_continuous
+        self.n_wavelengths = n_wavelengths
+        self.grating_period = grating_period
+        self.material_embedding = nn.Embedding(n_materials, embed_dim)
+
+        in_ch = 1 + 1 + embed_dim + 1
+        self.input_norm = nn.BatchNorm1d(in_ch)
+        
+        conv_layers = []
+        for i, out_ch in enumerate(conv_channels):
+            stride = 4 if i > 0 else 1
+            conv_layers.append(ResBlock1D(in_ch, out_ch, kernel_size, dropout, stride))
+            in_ch = out_ch
+        self.conv_backbone = nn.Sequential(*conv_layers)
+
+        # After len(conv_channels)-1 ops, spatial dim is downsampled
+        downsample_factor = 4 ** (len(conv_channels) - 1)
+        spatial_dim = nx // downsample_factor
+        fc_in = conv_channels[-1] * spatial_dim
+        
+        fc_layers = []
+        for fc_dim in fc_dims:
+            fc_layers.append(SkipLinear(fc_in, fc_dim, activation="gelu", norm="layer", dropout=dropout))
+            fc_in = fc_dim
+        fc_layers.append(nn.Linear(fc_in, n_wavelengths))
+        self.fc_head = nn.Sequential(*fc_layers)
+
+    def forward(self, geometry, material_id):
+        profile, h, inc_ang = build_profile(geometry, self.n_harmonics, self.nx)
+        mat_embed = _embed_material(material_id, self.material_embedding)
+        
+        B, L = profile.shape
+        h_spatial = h.unsqueeze(2).expand(B, 1, L)
+        mat_spatial = mat_embed.unsqueeze(2).expand(B, -1, L)
+        inc_ang_spatial = inc_ang.unsqueeze(2).expand(B, 1, L)
+        
+        x_list = [profile.unsqueeze(1), h_spatial, mat_spatial, inc_ang_spatial]
+        x = torch.cat(x_list, dim=1)
+        x = self.input_norm(x)
+        x = self.conv_backbone(x)
+        x = x.view(B, -1) # Flatten instead of mean()!
+        return self.fc_head(x)
 
 
 class SpatialCNN(nn.Module):
@@ -250,6 +392,7 @@ class SpatialCNN(nn.Module):
         x = self.conv_backbone(x)
         x = x.view(B, -1) # Flatten instead of mean()!
         return self.fc_head(x)
+
 
 
 class InverseDecoder(nn.Module):
@@ -633,13 +776,13 @@ def train_forward_model(
     epochs: int = 500, lr: float = 1e-3, weight_decay: float = 1e-5,
     patience: int = 100, device: torch.device = torch.device("cpu"),
 ) -> dict[str, list[float]]:
-    """Train Forward models (MLP, CNN, SIREN)."""
+    """Train Forward models (MLP, CNN, SIREN, SIREN)."""
     model = model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=patience // 5)
     criterion = nn.MSELoss()
     best_val, best_state, patience_ctr = float("inf"), None, 0
-    history: dict[str, list[float]] = {"train_loss": [], "val_loss": []}
+    history: dict[str, list[float]] = {"train_loss": [], "val_loss": [], "val_mae": [], "val_max_err": []}
 
     pbar = tqdm(range(1, epochs + 1), desc="Epochs", unit="ep", dynamic_ncols=True, file=sys.stdout)
     for epoch in pbar:
@@ -698,6 +841,8 @@ def train_forward_model(
         avg_mae = val_mae_accum / len(val_loader)
         
         history["val_loss"].append(avg_val)
+        history["val_mae"].append(avg_mae)
+        history["val_max_err"].append(val_max_err_accum)
         scheduler.step(avg_val)
 
         if avg_val < best_val:
@@ -710,9 +855,9 @@ def train_forward_model(
                 pbar.write(f"Early stopping at epoch {epoch} (best val={best_val:.6e})")
                 break
 
-        pbar.set_postfix(train=f"{avg_train:.3f}", val=f"{avg_val:.3f}", 
-                         vMAE=f"{avg_mae:.3f}", vMaxE=f"{val_max_err_accum:.3f}",
-                         lr=f"{optimizer.param_groups[0]['lr']:.1e}", best=f"{best_val:.3f}")
+        pbar.set_postfix_str(f"lr={optimizer.param_groups[0]['lr']:.1e} "
+                             f"best={best_val:.3e} train={avg_train:.3e} val={avg_val:.3e} "
+                             f"vMAE={avg_mae:.3f} vMaxE={val_max_err_accum:.3f}")
 
     if best_state is not None:
         model.load_state_dict(best_state)
@@ -731,7 +876,7 @@ def train_tandem(
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=patience // 5)
     criterion = nn.MSELoss()
     best_val, best_state, patience_ctr = float("inf"), None, 0
-    history: dict[str, list[float]] = {"train_loss": [], "val_loss": []}
+    history: dict[str, list[float]] = {"train_loss": [], "val_loss": [], "val_mae": [], "val_max_err": []}
 
     pbar = tqdm(range(1, epochs + 1), desc="Epochs", unit="ep", dynamic_ncols=True, file=sys.stdout)
     for epoch in pbar:
@@ -765,6 +910,8 @@ def train_tandem(
 
         tandem.eval()
         val_loss_accum = 0.0
+        val_mae_accum = 0.0
+        val_max_err_accum = 0.0
         with torch.no_grad():
             for batch in val_loader:
                 target = batch["target"].to(device)
@@ -774,7 +921,6 @@ def train_tandem(
                 mse_loss = criterion(pred, target)
                 wl = target.shape[-1] // 2
                 
-                # Spectral Loss
                 fft_pred_p = torch.fft.rfft(pred[:, :wl], dim=-1).abs()
                 fft_pred_s = torch.fft.rfft(pred[:, wl:], dim=-1).abs()
                 fft_target_p = torch.fft.rfft(target[:, :wl], dim=-1).abs()
@@ -783,9 +929,17 @@ def train_tandem(
                 spectral_loss = (criterion(fft_pred_p, fft_target_p) + criterion(fft_pred_s, fft_target_s)) / wl
                 
                 val_loss_accum += (mse_loss + 0.5 * spectral_loss).item()
+                
+                abs_err = torch.abs(pred - target)
+                val_mae_accum += abs_err.mean().item()
+                val_max_err_accum = max(val_max_err_accum, abs_err.max().item())
 
         avg_val = val_loss_accum / len(val_loader)
+        avg_mae = val_mae_accum / len(val_loader)
+        
         history["val_loss"].append(avg_val)
+        history["val_mae"].append(avg_mae)
+        history["val_max_err"].append(val_max_err_accum)
         scheduler.step(avg_val)
 
         if avg_val < best_val:
@@ -798,9 +952,9 @@ def train_tandem(
                 pbar.write(f"Early stopping at epoch {epoch} (best val={best_val:.6e})")
                 break
 
-        pbar.set_postfix(train=f"{avg_train:.3e}", val=f"{avg_val:.3e}",
-                         tau=f"{tau:.2f}", lr=f"{optimizer.param_groups[0]['lr']:.1e}",
-                         best=f"{best_val:.3e}")
+        pbar.set_postfix_str(f"tau={tau:.2f} lr={optimizer.param_groups[0]['lr']:.1e} "
+                             f"best={best_val:.3e} train={avg_train:.3e} val={avg_val:.3e} "
+                             f"vMAE={avg_mae:.3f} vMaxE={val_max_err_accum:.3f}")
 
     if best_state is not None:
         tandem.inverse_decoder.load_state_dict(best_state)

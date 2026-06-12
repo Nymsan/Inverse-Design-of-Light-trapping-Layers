@@ -19,6 +19,8 @@ import torch
 from Utils.models import (
     ForwardMLP,
     SpatialCNN,
+    SkipCNN,
+    SIREN,
     InverseDecoder,
     TandemNetwork,
     GenerativeTandemNetwork,
@@ -99,6 +101,33 @@ def test_spatial_cnn():
     B, N_harmonics, N_wl = 16, 5, 322
 
     model = SpatialCNN(
+        n_harmonics=N_harmonics,
+        nx=128,
+        n_continuous=12,
+        n_wavelengths=N_wl,
+        n_materials=N_MATERIALS,
+        embed_dim=8,
+        grating_period=1000.0,
+        conv_channels=(32, 64),
+        fc_dims=(128,),
+    )
+    n_params = sum(p.numel() for p in model.parameters())
+    print(f"  Parameters: {n_params:,}")
+
+    geo = torch.randn(B, 12)
+    mat_id = torch.randint(0, N_MATERIALS, (B,))
+
+    out = model(geo, mat_id)
+    assert out.shape == (B, N_wl), f"Shape: {out.shape}"
+    print(f"  ✓ Output shape {out.shape}")
+
+
+def test_skip_cnn():
+    print("=" * 60)
+    print("TEST: SkipCNN")
+    B, N_harmonics, N_wl = 16, 5, 322
+
+    model = SkipCNN(
         n_harmonics=N_harmonics,
         nx=128,
         n_continuous=12,
@@ -367,20 +396,23 @@ def test_contrastive_vae():
 
 
 
-def test_forward_siren():
+def test_siren():
     print("=" * 60)
-    print("TEST: ForwardSIREN")
-    B, N_harmonics, N_wl = 16, 5, 322
+    print("TEST: SIREN")
+    B, N_wl, N_geo, N_harmonics = 16, 322, 12, 5
 
     try:
-        from Utils.models import ForwardSIREN
-        model = ForwardSIREN(
+        from Utils.models import SIREN
+        model = SIREN(
             n_harmonics=N_harmonics, nx=128,
-            n_continuous=12,
-            n_wavelengths=N_wl,
+            n_continuous=N_geo,
+            n_wavelengths=N_wl // 2,
             n_materials=N_MATERIALS,
             embed_dim=8,
-            hidden_dims=(128, 256, 128),
+            conv_channels=(32, 64), kernel_size=7, dropout=0.05,
+            siren_hidden=(128, 128),
+            latent_dim=64,
+            omega_0=10.0
         )
         n_params = sum(p.numel() for p in model.parameters())
         print(f"  Parameters: {n_params:,}")
@@ -389,7 +421,7 @@ def test_forward_siren():
         mat_id = torch.randint(0, N_MATERIALS, (B,))
         out = model(geo, mat_id)
         assert out.shape == (B, N_wl), f"Shape: {out.shape}"
-        print(f"  ✓ Integer material ID path: output shape {out.shape}")
+        print(f"  ✓ Output shape {out.shape}")
     except Exception as e:
         print(f"  FAILED: {e}")
 
@@ -403,7 +435,8 @@ if __name__ == "__main__":
     
     test_forward_mlp()
     test_spatial_cnn()
-    test_forward_siren()
+    test_skip_cnn()
+    test_siren()
     test_inverse_decoder()
     test_tandem_network()
     test_generative_tandem()
