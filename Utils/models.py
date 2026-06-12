@@ -213,18 +213,24 @@ class SpatialCNN(nn.Module):
         self.input_norm = nn.BatchNorm1d(in_ch)
         
         conv_layers = []
-        for out_ch in conv_channels:
+        for i, out_ch in enumerate(conv_channels):
             conv_layers += [
                 nn.Conv1d(in_ch, out_ch, kernel_size, padding=kernel_size // 2, padding_mode="circular"),
                 nn.BatchNorm1d(out_ch), nn.GELU(), nn.Dropout(dropout),
             ]
+            if i < len(conv_channels) - 1:
+                conv_layers.append(nn.MaxPool1d(2)) # Downsample spatial dim
             in_ch = out_ch
         self.conv_backbone = nn.Sequential(*conv_layers)
 
-        fc_in = conv_channels[-1]
+        # After len(conv_channels)-1 MaxPool1d(2) ops, spatial dim is downsampled
+        downsample_factor = 2 ** (len(conv_channels) - 1)
+        spatial_dim = nx // downsample_factor
+        fc_in = conv_channels[-1] * spatial_dim
+        
         fc_layers = []
         for fc_dim in fc_dims:
-            fc_layers += [nn.Linear(fc_in, fc_dim), nn.LayerNorm(fc_dim), nn.GELU(), nn.Dropout(dropout)]
+            fc_layers.append(SkipLinear(fc_in, fc_dim, activation="gelu", norm="layer", dropout=dropout))
             fc_in = fc_dim
         fc_layers.append(nn.Linear(fc_in, n_wavelengths))
         self.fc_head = nn.Sequential(*fc_layers)
@@ -242,7 +248,7 @@ class SpatialCNN(nn.Module):
         x = torch.cat(x_list, dim=1)
         x = self.input_norm(x)
         x = self.conv_backbone(x)
-        x = x.mean(dim=-1)
+        x = x.view(B, -1) # Flatten instead of mean()!
         return self.fc_head(x)
 
 
@@ -647,7 +653,6 @@ def train_forward_model(
             mse_loss = criterion(pred, target)
             wl = target.shape[-1] // 2
             
-            # Spectral Loss (FFT Magnitude) - insensitive to small peak shifts
             fft_pred_p = torch.fft.rfft(pred[:, :wl], dim=-1).abs()
             fft_pred_s = torch.fft.rfft(pred[:, wl:], dim=-1).abs()
             fft_target_p = torch.fft.rfft(target[:, :wl], dim=-1).abs()
@@ -665,6 +670,8 @@ def train_forward_model(
 
         model.eval()
         val_loss_accum = 0.0
+        val_mae_accum = 0.0
+        val_max_err_accum = 0.0
         with torch.no_grad():
             for batch in val_loader:
                 geo, mat, target = (batch["geometry"].to(device),
@@ -674,7 +681,6 @@ def train_forward_model(
                 mse_loss = criterion(pred, target)
                 wl = target.shape[-1] // 2
                 
-                # Spectral Loss
                 fft_pred_p = torch.fft.rfft(pred[:, :wl], dim=-1).abs()
                 fft_pred_s = torch.fft.rfft(pred[:, wl:], dim=-1).abs()
                 fft_target_p = torch.fft.rfft(target[:, :wl], dim=-1).abs()
@@ -683,8 +689,14 @@ def train_forward_model(
                 spectral_loss = (criterion(fft_pred_p, fft_target_p) + criterion(fft_pred_s, fft_target_s)) / wl
                 
                 val_loss_accum += (mse_loss + 0.5 * spectral_loss).item()
+                
+                abs_err = torch.abs(pred - target)
+                val_mae_accum += abs_err.mean().item()
+                val_max_err_accum = max(val_max_err_accum, abs_err.max().item())
 
         avg_val = val_loss_accum / len(val_loader)
+        avg_mae = val_mae_accum / len(val_loader)
+        
         history["val_loss"].append(avg_val)
         scheduler.step(avg_val)
 
@@ -698,8 +710,9 @@ def train_forward_model(
                 pbar.write(f"Early stopping at epoch {epoch} (best val={best_val:.6e})")
                 break
 
-        pbar.set_postfix(train=f"{avg_train:.3e}", val=f"{avg_val:.3e}",
-                         lr=f"{optimizer.param_groups[0]['lr']:.1e}", best=f"{best_val:.3e}")
+        pbar.set_postfix(train=f"{avg_train:.3f}", val=f"{avg_val:.3f}", 
+                         vMAE=f"{avg_mae:.3f}", vMaxE=f"{val_max_err_accum:.3f}",
+                         lr=f"{optimizer.param_groups[0]['lr']:.1e}", best=f"{best_val:.3f}")
 
     if best_state is not None:
         model.load_state_dict(best_state)
