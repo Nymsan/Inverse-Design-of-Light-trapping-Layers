@@ -23,7 +23,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from Utils.models import (
-    MATERIAL_LIBRARY, N_MATERIALS, ForwardMLP, SpatialCNN, ForwardSIREN,
+    MATERIAL_LIBRARY, N_MATERIALS, ForwardMLP, SpatialCNN, SkipCNN, SIREN,
     GratingDataset,
     train_forward_model,
 )
@@ -146,15 +146,14 @@ def main():
 
         save_checkpoint(model, hist, str(ckpt_dir / "spatial_cnn.pt"))
 
-    if "siren" not in args.skip:
+    if "skipcnn" not in args.skip:
         print("\n" + "=" * 60)
-        print("Training: ForwardSIREN")
+        print("Training: SkipCNN")
         print("=" * 60)
-        model = ForwardSIREN(
-            n_harmonics=n_harmonics, nx=128,
-            n_continuous=n_continuous, n_wavelengths=n_wavelengths,
+        model = SkipCNN(
+            n_harmonics=n_harmonics, nx=128, n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
-            hidden_dims=(256, 512, 512, 256),
+            grating_period=1000.0, conv_channels=(32, 64, 128, 64), fc_dims=(256, 512, 256),
         )
         n_params = sum(p.numel() for p in model.parameters())
         print(f"  Parameters: {n_params:,}")
@@ -166,11 +165,36 @@ def main():
             device=device,
         )
         elapsed = time.time() - t0
-        timings["forward_siren"] = elapsed
-        all_history["forward_siren"] = hist
+        timings["skip_cnn"] = elapsed
+        all_history["skip_cnn"] = hist
         print(f"  Time: {elapsed / 60:.1f} min")
 
-        save_checkpoint(model, hist, str(ckpt_dir / "forward_siren.pt"))
+        save_checkpoint(model, hist, str(ckpt_dir / "skip_cnn.pt"))
+
+    if "siren" not in args.skip:
+        print("\n" + "=" * 60)
+        print("Training: SIREN")
+        print("=" * 60)
+        model = SIREN(
+            n_harmonics=n_harmonics, nx=128, n_continuous=n_continuous, n_wavelengths=n_wavelengths // 2,
+            n_materials=N_MATERIALS, embed_dim=8,
+            conv_channels=(32, 64, 128, 64), kernel_size=7, dropout=0.05, siren_hidden=(256, 256, 256), latent_dim=128, omega_0=10.0
+        )
+        n_params = sum(p.numel() for p in model.parameters())
+        print(f"  Parameters: {n_params:,}")
+
+        t0 = time.time()
+        hist = train_forward_model(
+            model, train_loader, val_loader,
+            epochs=args.epochs, lr=args.lr, patience=args.patience,
+            device=device,
+        )
+        elapsed = time.time() - t0
+        timings["siren"] = elapsed
+        all_history["siren"] = hist
+        print(f"  Time: {elapsed / 60:.1f} min")
+
+        save_checkpoint(model, hist, str(ckpt_dir / "siren.pt"))
 
     history_path = ckpt_dir / "forward_history.json"
     with open(history_path, "w") as f:

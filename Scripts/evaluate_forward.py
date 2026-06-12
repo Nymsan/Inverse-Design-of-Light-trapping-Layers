@@ -26,8 +26,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from Utils.models import (
-    N_MATERIALS,
-    ForwardMLP, SpatialCNN, ForwardSIREN,
+    MATERIAL_LIBRARY, N_MATERIALS,
+    ForwardMLP, SpatialCNN, SkipCNN, SIREN,
     GratingDataset,
 )
 
@@ -92,11 +92,7 @@ def plot_forward_parity(models: dict[str, nn.Module], val_loader, save_path: str
         for batch in val_loader:
             geo, px, mat, target = (batch["geometry"], batch["params_x"],
                                     batch["material_id"], batch["target"])
-            if "cnn" in name.lower() or "mamba" in name.lower():
-                h_val = geo[:, -1:]
-                pred = model(px, h_val, mat)
-            else:
-                pred = model(geo, mat)
+            pred = model(geo, mat)
             all_pred.append(pred)
             all_true.append(target)
 
@@ -132,10 +128,7 @@ def plot_spectrum_samples(models: dict[str, nn.Module], val_loader, save_path: s
     for i in range(n_samples):
         preds = {}
         for name, model in models.items():
-            if "cnn" in name.lower() or "mamba" in name.lower():
-                pred = model(px[i:i+1], geo[i:i+1, -1:], mat[i:i+1])
-            else:
-                pred = model(geo[i:i+1], mat[i:i+1])
+            pred = model(geo[i:i+1], mat[i:i+1])
             preds[name] = pred
 
         for pol_idx, pol_label in enumerate(["p-pol", "s-pol"]):
@@ -184,10 +177,7 @@ def compute_metrics(models: dict[str, nn.Module], val_loader, n_wavelengths: int
         all_pred, all_true = [], []
         for batch in val_loader:
             geo, px, mat, target = batch["geometry"], batch["params_x"], batch["material_id"], batch["target"]
-            if "cnn" in name.lower() or "mamba" in name.lower():
-                pred = model(px, geo[:, -1:], mat)
-            else:
-                pred = model(geo, mat)
+            pred = model(geo, mat)
             all_pred.append(pred)
             all_true.append(target)
 
@@ -265,6 +255,35 @@ def main():
         forward_models["spatial_cnn"] = model
         all_history["spatial_cnn"] = hist
         print("Loaded: spatial_cnn")
+
+    skipcnn_path = ckpt_dir / "skip_cnn.pt"
+    if skipcnn_path.exists():
+        model = SkipCNN(
+            n_harmonics=n_harmonics, nx=128,
+            n_continuous=n_continuous, n_wavelengths=n_wavelengths,
+            n_materials=N_MATERIALS, embed_dim=8,
+            grating_period=1000.0, conv_channels=(32, 64, 128, 64),
+            fc_dims=(256, 512, 256),
+        )
+        hist, model = load_checkpoint(skipcnn_path, model)
+        forward_models["skip_cnn"] = model
+        all_history["skip_cnn"] = hist
+        print("Loaded: skip_cnn")
+
+
+
+    siren_path = ckpt_dir / "siren.pt"
+    if siren_path.exists():
+        model = SIREN(
+            n_harmonics=n_harmonics, nx=128,
+            n_continuous=n_continuous, n_wavelengths=n_wavelengths // 2,
+            n_materials=N_MATERIALS, embed_dim=8,
+            conv_channels=(32, 64, 128, 64), kernel_size=7, dropout=0.05, siren_hidden=(256, 256, 256), latent_dim=128, omega_0=10.0
+        )
+        hist, model = load_checkpoint(siren_path, model)
+        forward_models["siren"] = model
+        all_history["siren"] = hist
+        print("Loaded: siren")
 
 
 
