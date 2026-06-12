@@ -19,7 +19,7 @@ export PYTHONUNBUFFERED=1
 echo "Job starting on $(hostname) at $(date)"
 nvidia-smi
 
-uv run python Scripts/train_forward.py \
+uv run python train_forward.py \
     --data_dir ../Data/LHS_Dataset_Si ../Data/LHS_Dataset_TiO2 ../Data/LHS_Dataset_Si3N4 \
     --materials Si TiO2 Si3N4 \
     --target_key all_film \
@@ -29,7 +29,7 @@ uv run python Scripts/train_forward.py \
     --patience 100 \
     --seed 42
 
-uv run python Scripts/train_inverse.py \
+uv run python train_inverse.py \
     --data_dir ../Data/LHS_Dataset_Si ../Data/LHS_Dataset_TiO2 ../Data/LHS_Dataset_Si3N4 \
     --materials Si TiO2 Si3N4 \
     --target_key all_film \

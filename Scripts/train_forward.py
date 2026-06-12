@@ -23,8 +23,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from Utils.models import (
-    MATERIAL_LIBRARY, N_MATERIALS,
-    ForwardMLP, SpatialCNN,
+    MATERIAL_LIBRARY, N_MATERIALS, ForwardMLP, SpatialCNN, ForwardSIREN,
     GratingDataset,
     train_forward_model,
 )
@@ -47,7 +46,7 @@ def get_args():
     p.add_argument("--target_key", type=str, default="all_film")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--device", default=None)
-    p.add_argument("--skip", nargs="*", default=[], choices=["mlp", "cnn"])
+    p.add_argument("--skip", nargs="*", default=[], choices=["mlp", "cnn", "siren"])
     return p.parse_args()
 
 def main():
@@ -100,6 +99,7 @@ def main():
         print("Training: ForwardMLP")
         print("=" * 60)
         model = ForwardMLP(
+            n_harmonics=n_harmonics, nx=128,
             n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
             hidden_dims=(256, 512, 512, 256), activation="snake",
@@ -111,7 +111,7 @@ def main():
         hist = train_forward_model(
             model, train_loader, val_loader,
             epochs=args.epochs, lr=args.lr, patience=args.patience,
-            device=device, use_cnn=False,
+            device=device,
         )
         elapsed = time.time() - t0
         timings["forward_mlp"] = elapsed
@@ -125,9 +125,9 @@ def main():
         print("Training: SpatialCNN")
         print("=" * 60)
         model = SpatialCNN(
-            n_harmonics=n_harmonics, n_wavelengths=n_wavelengths,
+            n_harmonics=n_harmonics, nx=128, n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
-            n_pixels=256, conv_channels=(32, 64, 128, 64),
+            grating_period=1000.0, conv_channels=(32, 64, 128, 64),
             fc_dims=(256, 512, 256),
         )
         n_params = sum(p.numel() for p in model.parameters())
@@ -137,7 +137,7 @@ def main():
         hist = train_forward_model(
             model, train_loader, val_loader,
             epochs=args.epochs, lr=args.lr, patience=args.patience,
-            device=device, use_cnn=True,
+            device=device,
         )
         elapsed = time.time() - t0
         timings["spatial_cnn"] = elapsed
@@ -145,6 +145,32 @@ def main():
         print(f"  Time: {elapsed / 60:.1f} min")
 
         save_checkpoint(model, hist, str(ckpt_dir / "spatial_cnn.pt"))
+
+    if "siren" not in args.skip:
+        print("\n" + "=" * 60)
+        print("Training: ForwardSIREN")
+        print("=" * 60)
+        model = ForwardSIREN(
+            n_harmonics=n_harmonics, nx=128,
+            n_continuous=n_continuous, n_wavelengths=n_wavelengths,
+            n_materials=N_MATERIALS, embed_dim=8,
+            hidden_dims=(256, 512, 512, 256),
+        )
+        n_params = sum(p.numel() for p in model.parameters())
+        print(f"  Parameters: {n_params:,}")
+
+        t0 = time.time()
+        hist = train_forward_model(
+            model, train_loader, val_loader,
+            epochs=args.epochs, lr=args.lr, patience=args.patience,
+            device=device,
+        )
+        elapsed = time.time() - t0
+        timings["forward_siren"] = elapsed
+        all_history["forward_siren"] = hist
+        print(f"  Time: {elapsed / 60:.1f} min")
+
+        save_checkpoint(model, hist, str(ckpt_dir / "forward_siren.pt"))
 
     history_path = ckpt_dir / "forward_history.json"
     with open(history_path, "w") as f:

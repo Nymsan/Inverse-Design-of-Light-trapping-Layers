@@ -85,7 +85,7 @@ def plot_inverse_performance(inverse_models, forward_model, val_loader, save_pat
     n_show = min(4, target.shape[0])
     n_wl_half = n_wavelengths // 2
 
-    fig, axes = plt.subplots(n_show, 2, figsize=(10, 3 * n_show), squeeze=False, layout="constrained")
+    fig, axes = plt.subplots(n_show, 2, figsize=(14, 4 * n_show), squeeze=False, layout="constrained")
     colors = plt.cm.tab10(np.linspace(0, 1, len(inverse_models)))
 
     for i in range(n_show):
@@ -129,16 +129,26 @@ def plot_inverse_performance(inverse_models, forward_model, val_loader, save_pat
 
 
 def _run_forward(forward_model, pred_geo, mat_oh):
-    if hasattr(forward_model, "_build_profile"): # CNN
-        return forward_model(pred_geo[:, :-1].view(pred_geo.shape[0], -1, 2), pred_geo[:, -1:], mat_oh.argmax(dim=-1))
-    else:
-        return forward_model(pred_geo, mat_oh.argmax(dim=-1))
+    return forward_model(pred_geo, mat_oh.argmax(dim=-1))
 
 
 @torch.no_grad()
-def plot_candidate_designs(inv_model, forward_model, val_loader, save_path: str, n_wavelengths: int, stats: dict):
-    batch = next(iter(val_loader))
-    curve = batch["target"][0:1] # (1, N)
+def plot_candidate_designs(inv_model, forward_model, val_loader, save_path: str, n_wavelengths: int, stats: dict, target_curve=None):
+    from Utils.utils import get_absorptance_curve, RCWAConfig
+    mat_name = list(stats["materials"].keys())[0]
+    from pathlib import Path
+    first_batch_file = Path("Data") / f"LHS_Dataset_{mat_name}" / "batch_0000.pt"
+    if first_batch_file.exists():
+        import torch
+        batch_data = torch.load(first_batch_file, map_location="cpu", weights_only=False)
+        rcwa_config_dict = batch_data.get("metadata", {}).get("config", {})
+    else:
+        rcwa_config_dict = {}
+    if target_curve is not None:
+        curve = target_curve.to(next(inv_model.parameters()).device)
+    else:
+        batch = next(iter(val_loader))
+        curve = batch["target"][0:1].to(next(inv_model.parameters()).device)
     
     n_samples = 5
     if hasattr(inv_model, "sample_diverse_designs"):
@@ -156,7 +166,32 @@ def plot_candidate_designs(inv_model, forward_model, val_loader, save_path: str,
 
     preds = _run_forward(forward_model, pred_geo, mat_oh)
     
-    fig, axes = plt.subplots(n_samples, 2, figsize=(10, 2.5 * n_samples), squeeze=False, layout="constrained")
+    # Denormalize and save to CSV
+    import csv
+    csv_path = save_path.replace(".png", ".csv")
+    real_geo = pred_geo
+    
+    n_harmonics = stats["n_harmonics"]
+    mat_names = list(stats["materials"].keys())
+    
+    headers = ["Material"]
+    for j in range(1, n_harmonics + 1):
+        headers.extend([f"Amp_{j}", f"Phase_{j}"])
+    headers.append("Thickness_nm")
+    if real_geo.shape[1] > n_harmonics * 2 + 1:
+        headers.append("IncidenceAngle_deg")
+        
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(headers)
+        for i in range(n_samples):
+            mat_idx = mat_oh[i].argmax().item()
+            mat_name = mat_names[mat_idx] if mat_idx < len(mat_names) else f"Untrained_{mat_idx}"
+            row = [mat_name] + real_geo[i].tolist()
+            writer.writerow(row)
+    print(f"  Saved: {csv_path}")
+    
+    fig, axes = plt.subplots(n_samples, 2, figsize=(14, 4 * n_samples), squeeze=False, layout="constrained")
     n_wl_half = n_wavelengths // 2
     mat_names = list(stats["materials"].keys())
     
@@ -181,12 +216,40 @@ def plot_candidate_designs(inv_model, forward_model, val_loader, save_path: str,
             
         # Right column: Geometry profile
         ax = axes[i, 1]
-        mat_idx = mat_oh[i].argmax().item()
-        mat_name = mat_names[mat_idx]
-        h = pred_geo[i, -1].item()
         
-        # Build 1D profile manually
-        px = pred_geo[i, :-1].view(-1, 2)
+        # --- Torcwa Physics Validation ---
+        n_fourier = n_harmonics * 2
+        px = pred_geo[i, :n_fourier].view(-1, 2)
+        h = pred_geo[i, n_fourier].item()
+        h_nm = h
+        
+        inc_ang_deg = pred_geo[i, n_fourier+1].item() if pred_geo.shape[1] > n_fourier+1 else 0.0
+        
+        base_config = RCWAConfig(**rcwa_config_dict)
+        base_config.h = float(h_nm)
+        base_config.inc_ang = (float(inc_ang_deg) + 1e-3) * np.pi/180
+        base_config.azi_ang = 1e-3 * np.pi/180
+        
+        # Only simulate normal incidence for the plot to save time
+        A_film, _ = get_absorptance_curve(
+            params_x=px.unsqueeze(0),
+            params_y=None,
+            wavelengths=torch.from_numpy(WAVELENGTHS).double(),
+            config=base_config,
+            show_progress=False
+        )
+        
+        axes[i, 0].plot(WAVELENGTHS, A_film[0, :n_wl_half].numpy(), "g-", lw=2.0, label="Torcwa Physics (p-pol)")
+        axes[i, 0].plot(WAVELENGTHS, A_film[0, n_wl_half:].numpy(), "g:", lw=2.0, label="Torcwa Physics (s-pol)")
+        axes[i, 0].legend(fontsize=7, ncol=2)
+        # ---------------------------------
+
+        mat_idx = mat_oh[i].argmax().item()
+        mat_name = mat_names[mat_idx] if mat_idx < len(mat_names) else f"Untrained_Mat_{mat_idx}"
+        n_harmonics = stats["n_harmonics"]
+        n_fourier = n_harmonics * 2
+        px = pred_geo[i, :n_fourier].view(-1, 2)
+        h = pred_geo[i, n_fourier].item()
         amps = px[:, 0].numpy()
         phases = px[:, 1].numpy()
         
@@ -201,7 +264,7 @@ def plot_candidate_designs(inv_model, forward_model, val_loader, save_path: str,
         # Denormalize geometry to nm
         geo_min = stats["geo_min"].numpy()
         geo_max = stats["geo_max"].numpy()
-        h_nm = h * (geo_max[-1] - geo_min[-1]) + geo_min[-1]
+        h_nm = h * (geo_max[n_fourier] - geo_min[n_fourier]) + geo_min[n_fourier]
         
         ax.fill_between(r_grid, 0, prof * h_nm, color="gray", alpha=0.5)
         ax.set_ylim(0, max(600, h_nm * 1.2))
@@ -221,7 +284,7 @@ def plot_unit_absorptance(inverse_models, forward_model, save_path: str, n_wavel
     curve = torch.ones(1, n_wavelengths)
     n_wl_half = n_wavelengths // 2
 
-    fig, axes = plt.subplots(1, 2, figsize=(12, 4.5), squeeze=False, layout="constrained")
+    fig, axes = plt.subplots(1, 2, figsize=(16, 6), squeeze=False, layout="constrained")
     colors = plt.cm.tab10(np.linspace(0, 1, len(inverse_models)))
     mat_names = list(stats["materials"].keys())
 
@@ -403,11 +466,11 @@ def main():
         
         if "cvae" in inverse_models:
             plot_candidate_designs(inverse_models["cvae"], forward_model, val_loader,
-                                   str(eval_dir / "candidate_designs_cvae.png"), n_wavelengths, stats)
+                                   str(eval_dir / "candidate_designs_cvae_unit.png"), n_wavelengths, stats, target_curve=torch.ones(1, n_wavelengths))
                                    
         if "cvae_wishful" in inverse_models:
             plot_candidate_designs(inverse_models["cvae_wishful"], forward_model, val_loader,
-                                   str(eval_dir / "candidate_designs_cvae_wishful.png"), n_wavelengths, stats)
+                                   str(eval_dir / "candidate_designs_cvae_wishful_unit.png"), n_wavelengths, stats, target_curve=torch.ones(1, n_wavelengths))
             
         plot_unit_absorptance(inverse_models, forward_model,
                               str(eval_dir / "unit_absorptance.png"), n_wavelengths, stats)

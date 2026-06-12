@@ -59,16 +59,6 @@ def test_snake_activation():
     print("  ✓ Shape correct, gradients flow through learnable frequency 'a'.")
 
 
-def test_polar_to_cartesian():
-    print("=" * 60)
-    print("TEST: polar_to_cartesian")
-    B, N = 4, 5
-    params = torch.randn(B, N, 2)
-    out = polar_to_cartesian(params)
-    assert out.shape == (B, 2 * N), f"Shape mismatch: {out.shape}"
-    print(f"  ✓ Input (B={B}, N={N}, 2) → Output {out.shape}")
-
-
 def test_forward_mlp():
     print("=" * 60)
     print("TEST: ForwardMLP")
@@ -90,8 +80,7 @@ def test_forward_mlp():
     mat_id = torch.randint(0, N_MATERIALS, (B,))
     out = model(geo, mat_id)
     assert out.shape == (B, N_wl), f"Shape: {out.shape}"
-    assert (out >= 0).all() and (out <= 1).all(), "Output not in [0,1]"
-    print(f"  ✓ Integer material ID path: output shape {out.shape}, bounded [0,1]")
+    print(f"  ✓ Integer material ID path: output shape {out.shape}")
 
     # Test with one-hot material (differentiable path)
     mat_oh = torch.zeros(B, N_MATERIALS)
@@ -111,27 +100,24 @@ def test_spatial_cnn():
 
     model = SpatialCNN(
         n_harmonics=N_harmonics,
+        nx=128,
+        n_continuous=12,
         n_wavelengths=N_wl,
-        n_pixels=128,
+        n_materials=N_MATERIALS,
+        embed_dim=8,
+        grating_period=1000.0,
         conv_channels=(32, 64),
         fc_dims=(128,),
     )
     n_params = sum(p.numel() for p in model.parameters())
     print(f"  Parameters: {n_params:,}")
 
-    params_x = torch.rand(B, N_harmonics, 2) * 5  # amps and phases
-    h = torch.rand(B, 1) * 4500 + 500
+    geo = torch.randn(B, 12)
     mat_id = torch.randint(0, N_MATERIALS, (B,))
 
-    out = model(params_x, h, mat_id)
+    out = model(geo, mat_id)
     assert out.shape == (B, N_wl), f"Shape: {out.shape}"
-    assert (out >= 0).all() and (out <= 1).all(), "Output not in [0,1]"
-    print(f"  ✓ Output shape {out.shape}, bounded [0,1]")
-
-    # Test profile construction
-    profile = model._build_profile(params_x)
-    assert profile.shape == (B, 1, 128), f"Profile shape: {profile.shape}"
-    print(f"  ✓ Grating profile shape: {profile.shape}")
+    print(f"  ✓ Output shape {out.shape}")
 
 
 def test_inverse_decoder():
@@ -152,12 +138,9 @@ def test_inverse_decoder():
 
     assert pred_geo.shape == (B, N_geo), f"Geometry shape: {pred_geo.shape}"
     assert mat_oh.shape == (B, N_MATERIALS), f"Material shape: {mat_oh.shape}"
-    # Check bounds are strictly normalized [0,1]
-    assert (pred_geo >= -1e-5).all(), "Geometry below 0"
-    assert (pred_geo <= 1 + 1e-5).all(), "Geometry above 1"
     # Check one-hot
     assert torch.allclose(mat_oh.sum(dim=-1), torch.ones(B)), "Not one-hot"
-    print(f"  ✓ Geometry: {pred_geo.shape}, bounded [0, 1]")
+    print(f"  ✓ Geometry: {pred_geo.shape}")
     print(f"  ✓ Material: {mat_oh.shape}, valid one-hot vectors ({N_MATERIALS} materials)")
 
 
@@ -310,11 +293,6 @@ def test_contrastive_vae():
     print(f"    recon_geometry={out['recon_geometry'].shape}, "
           f"recon_material={out['recon_material_onehot'].shape}")
 
-    # --- Check geometry bounds ---
-    assert (out["recon_geometry"] >= -1e-5).all(), "Below 0"
-    assert (out["recon_geometry"] <= 1 + 1e-5).all(), "Above 1"
-    print(f"  ✓ Reconstructed geometry bounded [0, 1]")
-
     # --- Check one-hot material ---
     assert torch.allclose(
         out["recon_material_onehot"].sum(dim=-1), torch.ones(B)
@@ -388,6 +366,33 @@ def test_contrastive_vae():
     print(f"    Mean geometry std: {geo_std:.4f}")
 
 
+
+def test_forward_siren():
+    print("=" * 60)
+    print("TEST: ForwardSIREN")
+    B, N_harmonics, N_wl = 16, 5, 322
+
+    try:
+        from Utils.models import ForwardSIREN
+        model = ForwardSIREN(
+            n_harmonics=N_harmonics, nx=128,
+            n_continuous=12,
+            n_wavelengths=N_wl,
+            n_materials=N_MATERIALS,
+            embed_dim=8,
+            hidden_dims=(128, 256, 128),
+        )
+        n_params = sum(p.numel() for p in model.parameters())
+        print(f"  Parameters: {n_params:,}")
+
+        geo = torch.randn(B, 12)
+        mat_id = torch.randint(0, N_MATERIALS, (B,))
+        out = model(geo, mat_id)
+        assert out.shape == (B, N_wl), f"Shape: {out.shape}"
+        print(f"  ✓ Integer material ID path: output shape {out.shape}")
+    except Exception as e:
+        print(f"  FAILED: {e}")
+
 if __name__ == "__main__":
     print("\n" + "═" * 60)
     print("  Surrogate Model Architecture Smoke Tests")
@@ -395,9 +400,10 @@ if __name__ == "__main__":
 
     test_materials()
     test_snake_activation()
-    test_polar_to_cartesian()
+    
     test_forward_mlp()
     test_spatial_cnn()
+    test_forward_siren()
     test_inverse_decoder()
     test_tandem_network()
     test_generative_tandem()

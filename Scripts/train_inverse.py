@@ -25,7 +25,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from Utils.models import (
     MATERIAL_LIBRARY, N_MATERIALS,
-    ForwardMLP, SpatialCNN,
+    ForwardMLP, SpatialCNN, ForwardSIREN,
     InverseDecoder, TandemNetwork, GenerativeTandemNetwork,
     GeometryEncoder, GeometryDecoder, SpectrumEncoder, ContrastiveVAE,
     GratingDataset,
@@ -47,6 +47,7 @@ def get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics):
     p = ckpt_dir / "forward_mlp.pt"
     if p.exists():
         model = ForwardMLP(
+            n_harmonics=n_harmonics, nx=128,
             n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
             hidden_dims=(256, 512, 512, 256), activation="snake",
@@ -65,9 +66,10 @@ def get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics):
     p = ckpt_dir / "spatial_cnn.pt"
     if p.exists():
         model = SpatialCNN(
-            n_harmonics=n_harmonics, n_wavelengths=n_wavelengths,
+            n_harmonics=n_harmonics, nx=128,
+            n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
-            n_pixels=256, conv_channels=(32, 64, 128, 64),
+            grating_period=1000.0, conv_channels=(32, 64, 128, 64),
             fc_dims=(256, 512, 256),
         )
         ckpt = torch.load(p, map_location="cpu", weights_only=False)
@@ -79,6 +81,25 @@ def get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics):
                 best_name = "spatial_cnn"
                 model.load_state_dict(ckpt["model_state_dict"])
                 best_model = model
+
+    # ForwardSIREN
+    p = ckpt_dir / "forward_siren.pt"
+    if p.exists():
+        model = ForwardSIREN(
+            n_harmonics=n_harmonics, nx=128,
+            n_continuous=n_continuous, n_wavelengths=n_wavelengths,
+            n_materials=N_MATERIALS, embed_dim=8,
+            hidden_dims=(256, 512, 512, 256),
+        )
+        ckpt = torch.load(p, map_location="cpu", weights_only=False)
+        hist = ckpt.get("history", {})
+        if "val_loss" in hist and len(hist["val_loss"]) > 0:
+            val_loss = min(hist["val_loss"])
+            if val_loss < best_loss:
+                best_loss = val_loss
+                best_name = "forward_siren"
+                best_model = model
+                best_model.load_state_dict(ckpt["model_state_dict"])
 
     return best_model, best_name, best_loss
 

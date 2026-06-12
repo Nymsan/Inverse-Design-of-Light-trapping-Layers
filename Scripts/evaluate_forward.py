@@ -27,7 +27,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from Utils.models import (
     N_MATERIALS,
-    ForwardMLP, SpatialCNN,
+    ForwardMLP, SpatialCNN, ForwardSIREN,
     GratingDataset,
 )
 
@@ -126,7 +126,7 @@ def plot_spectrum_samples(models: dict[str, nn.Module], val_loader, save_path: s
     n_samples = min(6, target.shape[0])
     n_wl_half = n_wavelengths // 2
 
-    fig, axes = plt.subplots(n_samples, 2, figsize=(10, 2.5 * n_samples), squeeze=False, layout="constrained")
+    fig, axes = plt.subplots(n_samples, 4, figsize=(20, 3 * n_samples), squeeze=False, layout="constrained")
     colors = plt.cm.tab10(np.linspace(0, 1, len(models)))
 
     for i in range(n_samples):
@@ -157,6 +157,20 @@ def plot_spectrum_samples(models: dict[str, nn.Module], val_loader, save_path: s
                 ax.legend(fontsize=9)
             if i == n_samples - 1:
                 ax.set_xlabel("Wavelength (nm)")
+                
+            # Plot Errors
+            ax_err = axes[i, pol_idx + 2]
+            for (name, pred), c in zip(preds.items(), colors):
+                error = target[i, start:end] - pred[0, start:end]
+                ax_err.plot(WAVELENGTHS, error.numpy(), "-", color=c, lw=1.5, label=name.replace("_", " ").title())
+            
+            ax_err.axhline(0, color='k', linestyle='--', lw=1.0)
+            ax_err.set_xlim(300, 1100)
+            ax_err.set_ylabel("Error (True - Pred)")
+            if i == 0:
+                ax_err.set_title(f"Errors ({pol_label})")
+            if i == n_samples - 1:
+                ax_err.set_xlabel("Wavelength (nm)")
 
     plt.savefig(save_path)
     plt.close()
@@ -228,6 +242,7 @@ def main():
     mlp_path = ckpt_dir / "forward_mlp.pt"
     if mlp_path.exists():
         model = ForwardMLP(
+            n_harmonics=n_harmonics, nx=128,
             n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
             hidden_dims=(256, 512, 512, 256), activation="snake",
@@ -240,9 +255,10 @@ def main():
     cnn_path = ckpt_dir / "spatial_cnn.pt"
     if cnn_path.exists():
         model = SpatialCNN(
-            n_harmonics=n_harmonics, n_wavelengths=n_wavelengths,
+            n_harmonics=n_harmonics, nx=128,
+            n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
-            n_pixels=256, conv_channels=(32, 64, 128, 64),
+            grating_period=1000.0, conv_channels=(32, 64, 128, 64),
             fc_dims=(256, 512, 256),
         )
         hist, model = load_checkpoint(cnn_path, model)

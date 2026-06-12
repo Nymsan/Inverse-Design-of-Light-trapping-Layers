@@ -30,11 +30,16 @@ for mat in ["Si", "TiO2", "Si3N4"]:
                             "max_absorptance": curve.max().item(),
                             "bad_wavelengths": bad_wls,
                             "file": f.name,
-                            "key": key
+                            "key": key,
+                            "h": data["h"][i].item(),
+                            "inc_ang": data.get("inc_ang", torch.zeros_like(data["h"]))[i].item(),
+                            "params_x": data["params_x"][i].tolist()
                         })
 
 exploded_details.sort(key=lambda x: x["max_absorptance"], reverse=True)
 for d in exploded_details:
     wls = ", ".join([f"{w:.1f}" for w in d['bad_wavelengths']])
     print(f"[{d['material']}] {d['key']} in {d['file']} (Max: {d['max_absorptance']:.4f})")
+    print(f"  h: {d['h']:.2f} nm, inc_ang: {d['inc_ang']:.4f} rad")
+    print(f"  params_x: {d['params_x']}")
     print(f"  Exploded Wavelengths (nm): {wls}\n")

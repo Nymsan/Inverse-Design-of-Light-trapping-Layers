@@ -16,3 +16,8 @@ Instead of doing convergence for entire curves, also do a check where both order
 Explain the numerical integration scheme, comparing rectangle rule, trapezoidal rule and simpsons rule. Antigravity cli has a conversation "3D utils refactor" detailing some of the math
 
 Explain the skin depth/pec/Ag choice for the conductor, and sanity check of FEM.
+
+
+Siren activations - look at absorptance curves as a function of effective wavelength. SiREN might learn this implicitly with more layers, minimum of 2.
+
+Fano resonances in absorptance curves
