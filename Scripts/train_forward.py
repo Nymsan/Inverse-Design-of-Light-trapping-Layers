@@ -46,7 +46,7 @@ def get_args():
     p.add_argument("--target_key", type=str, default="all_film")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--device", default=None)
-    p.add_argument("--skip", nargs="*", default=[], choices=["mlp", "cnn", "siren"])
+    p.add_argument("--skip", nargs="*", default=[], choices=["mlp", "cnn", "skipcnn", "siren"])
     return p.parse_args()
 
 def main():
