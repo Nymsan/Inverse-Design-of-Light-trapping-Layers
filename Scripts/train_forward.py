@@ -42,7 +42,7 @@ def get_args():
     p.add_argument("--epochs", type=int, default=500)
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--patience", type=int, default=100)
-    p.add_argument("--val_split", type=float, default=0.05)
+    p.add_argument("--val_split", type=float, default=0.01)
     p.add_argument("--target_key", type=str, default="all_film")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--device", default=None)
@@ -65,7 +65,7 @@ def main():
     dataset = GratingDataset(data_dirs, target_key=args.target_key)
     print(f"Dataset loaded: {len(dataset)} samples in {time.time() - t0:.1f} s")
 
-    n_val = int(len(dataset) * args.val_split)
+    n_val = max(1, int(len(dataset) * args.val_split))
     n_train = len(dataset) - n_val
     train_set, val_set = random_split(dataset, [n_train, n_val])
 

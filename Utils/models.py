@@ -931,7 +931,7 @@ def train_forward_model(
     epochs: int = 500, lr: float = 1e-3, weight_decay: float = 1e-5,
     patience: int = 100, device: torch.device = torch.device("cpu"),
 ) -> dict[str, list[float]]:
-    """Train Forward models (MLP, CNN, SIREN)."""
+    """Train Forward models (MLP, CNN, skipCNN, SIREN)."""
     model = model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=patience // 5)

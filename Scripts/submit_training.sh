@@ -27,7 +27,7 @@ uv run python train_forward.py \
     --batch_size 256 \
     --lr 2e-3 \
     --patience 200 \
-    --val_split 0.05 \
+    --val_split 0.01 \
     --seed 1337
 
 uv run python train_inverse.py \
@@ -38,7 +38,7 @@ uv run python train_inverse.py \
     --batch_size 256 \
     --lr 2e-3 \
     --patience 200 \
-    --val_split 0.05 \
+    --val_split 0.01 \
     --seed 1337
 
 echo "Job completed at $(date)"
