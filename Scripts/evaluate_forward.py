@@ -41,7 +41,7 @@ WAVELENGTHS = np.linspace(300, 1100, 161)
 
 def load_checkpoint(path, model):
     ckpt = torch.load(path, map_location="cpu", weights_only=False)
-    model.load_state_dict(ckpt["model_state_dict"])
+    model.load_state_dict(ckpt["model_state_dict"], strict=False)
     model.eval()
     return ckpt.get("history", {}), model
 
@@ -73,7 +73,8 @@ def plot_loss_curves(all_history: dict, save_path: str):
         ax.legend()
         ax.grid(True, alpha=0.3)
 
-    plt.suptitle("Forward Training Loss Curves", fontsize=15, y=1.02)
+    plt.suptitle("Forward Training Loss Curves", fontsize=15)
+    plt.tight_layout()
     plt.savefig(save_path)
     plt.close()
     print(f"  Saved: {save_path}")
@@ -119,23 +120,42 @@ def plot_spectrum_samples(models: dict[str, nn.Module], val_loader, save_path: s
         return
     batch = next(iter(val_loader))
     geo, px, mat, target = batch["geometry"], batch["params_x"], batch["material_id"], batch["target"]
-    n_samples = min(6, target.shape[0])
+    
+    selected_indices = []
+    mat_counts = {}
+    for idx, m_id in enumerate(mat.numpy()):
+        m_id = m_id.item()
+        if mat_counts.get(m_id, 0) < 2:
+            selected_indices.append(idx)
+            mat_counts[m_id] = mat_counts.get(m_id, 0) + 1
+        if len(selected_indices) >= 6:
+            break
+            
+    # Sort indices so the materials appear in order (e.g. 0, 0, 1, 1, 2, 2)
+    selected_indices.sort(key=lambda idx: mat[idx].item())
+            
+    n_samples = len(selected_indices)
+    n_wl_half = n_wavelengths // 2
+    mat_names = list(MATERIAL_LIBRARY.keys())
     n_wl_half = n_wavelengths // 2
 
     fig, axes = plt.subplots(n_samples, 4, figsize=(20, 3 * n_samples), squeeze=False, layout="constrained")
     colors = plt.cm.tab10(np.linspace(0, 1, len(models)))
 
-    for i in range(n_samples):
+    for i, idx in enumerate(selected_indices):
         preds = {}
         for name, model in models.items():
-            pred = model(geo[i:i+1], mat[i:i+1])
+            pred = model(geo[idx:idx+1], mat[idx:idx+1])
             preds[name] = pred
+
+        mat_idx = mat[idx].item()
+        mat_name = mat_names[mat_idx] if mat_idx < len(mat_names) else f"Mat_{mat_idx}"
 
         for pol_idx, pol_label in enumerate(["p-pol", "s-pol"]):
             ax = axes[i, pol_idx]
             start = pol_idx * n_wl_half
             end = start + n_wl_half
-            ax.plot(WAVELENGTHS, target[i, start:end].numpy(), "k-", lw=2.5, label="Truth", alpha=0.5)
+            ax.plot(WAVELENGTHS, target[idx, start:end].numpy(), "k-", lw=2.5, label="Truth", alpha=0.5)
 
             for (name, pred), c in zip(preds.items(), colors):
                 ax.plot(WAVELENGTHS, pred[0, start:end].numpy(),
@@ -143,7 +163,7 @@ def plot_spectrum_samples(models: dict[str, nn.Module], val_loader, save_path: s
             
             ax.set_xlim(300, 1100)
             ax.set_ylim(-0.05, 1.05)
-            ax.set_ylabel("Absorptance")
+            ax.set_ylabel(f"Absorptance ({mat_name})")
             if i == 0:
                 ax.set_title(f"Predictions ({pol_label})")
             if i == 0 and pol_idx == 0:
@@ -154,14 +174,14 @@ def plot_spectrum_samples(models: dict[str, nn.Module], val_loader, save_path: s
             # Plot Errors
             ax_err = axes[i, pol_idx + 2]
             for (name, pred), c in zip(preds.items(), colors):
-                error = target[i, start:end] - pred[0, start:end]
+                error = target[idx, start:end] - pred[0, start:end]
                 ax_err.plot(WAVELENGTHS, error.numpy(), "-", color=c, lw=1.5, label=name.replace("_", " ").title())
             
             ax_err.axhline(0, color='k', linestyle='--', lw=1.0)
             ax_err.set_xlim(300, 1100)
-            ax_err.set_ylabel("Error (True - Pred)")
+            ax_err.set_ylabel(f"Error ({mat_name})")
             if i == 0:
-                ax_err.set_title(f"Errors ({pol_label})")
+                ax_err.set_title(f"Error ({pol_label})")
             if i == n_samples - 1:
                 ax_err.set_xlabel("Wavelength (nm)")
 

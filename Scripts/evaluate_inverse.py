@@ -137,36 +137,63 @@ def plot_candidate_designs(inv_model, forward_model, val_loader, save_path: str,
     from Utils.utils import get_absorptance_curve, RCWAConfig
     mat_name = list(stats["materials"].keys())[0]
     from pathlib import Path
-    first_batch_file = Path("Data") / f"LHS_Dataset_{mat_name}" / "batch_0000.pt"
+    first_batch_file = PROJECT_ROOT / "Data" / f"LHS_Dataset_{mat_name}" / "batch_0000.pt"
     if first_batch_file.exists():
-        import torch
         batch_data = torch.load(first_batch_file, map_location="cpu", weights_only=False)
         rcwa_config_dict = batch_data.get("metadata", {}).get("config", {})
     else:
         rcwa_config_dict = {}
-    if target_curve is not None:
-        curve = target_curve.to(next(inv_model.parameters()).device)
-    else:
-        batch = next(iter(val_loader))
-        curve = batch["target"][0:1].to(next(inv_model.parameters()).device)
+    batch = next(iter(val_loader))
+    device = next(inv_model.parameters()).device
     
-    n_samples = 5
+    geo = batch["geometry"]
+    mat = batch["material_id"]
+    target = batch["target"]
+    
+    selected_indices = []
+    mat_counts = {}
+    for idx, m_id in enumerate(mat.numpy()):
+        m_id = m_id.item()
+        if mat_counts.get(m_id, 0) < 2:
+            selected_indices.append(idx)
+            mat_counts[m_id] = mat_counts.get(m_id, 0) + 1
+        if len(selected_indices) >= 6:
+            break
+            
+    # Sort indices so the materials appear in order (e.g. 0, 0, 1, 1, 2, 2)
+    selected_indices.sort(key=lambda idx: mat[idx].item())
+            
+    n_samples = len(selected_indices)
+    curve = target[selected_indices].to(device)
+    if target_curve is not None:
+        curve = target_curve.to(device).expand(n_samples, -1)
+    real_geo = geo[selected_indices].to(device)
+    
     if hasattr(inv_model, "sample_diverse_designs"):
         # Generative Tandem
-        designs = inv_model.sample_diverse_designs(curve, n_samples=n_samples, tau=0.1)
-        pred_geo = designs["pred_geometry"] # (5, 12)
-        mat_oh = designs["material_onehot"] # (5, 3)
+        designs = inv_model(curve, z=torch.randn(n_samples, inv_model.latent_dim, device=device))
+        pred_geo = designs["pred_geometry"] # (n_samples, 12)
+        mat_oh = designs["material_onehot"] # (n_samples, 3)
     elif hasattr(inv_model, "spectrum_encoder"):
-        # Contrastive VAE: Add noise to z_y to sample the latent space
+        # Contrastive VAE
         z_y = inv_model.spectrum_encoder(curve)
-        z_noisy = z_y.expand(n_samples, -1) + torch.randn(n_samples, z_y.shape[1], device=z_y.device) * 0.5
+        z_noisy = z_y + torch.randn_like(z_y) * 0.5
         pred_geo, mat_oh, _ = inv_model.geometry_decoder(z_noisy, tau=0.1, hard=True)
+    elif hasattr(inv_model, "inverse_decoder"):
+        # Tandem Network
+        pred_geo, mat_oh, _ = inv_model.inverse_decoder(curve, tau=0.1, hard=True)
     else:
-        return
+        # Fallback
+        pred_geo, mat_oh, _ = inv_model(curve)
 
+    # Run generated designs through Forward model to get the physical prediction
     preds = _run_forward(forward_model, pred_geo, mat_oh)
     
-    # Denormalize and save to CSV
+    # Save CSV
+    headers = ["Material_Target"] + [f"Amp_{i+1}" for i in range(5)] + [f"Phase_{i+1}" for i in range(5)]
+    headers.append("Thickness_nm")
+    if real_geo.shape[1] > 11:
+        headers.append("IncidenceAngle_deg")
     import csv
     csv_path = save_path.replace(".png", ".csv")
     real_geo = pred_geo
@@ -201,15 +228,19 @@ def plot_candidate_designs(inv_model, forward_model, val_loader, save_path: str,
     harmonic_idx = np.arange(1, n_harmonics + 1)
     
     for i in range(n_samples):
+        idx = selected_indices[i]
+        target_mat_idx = mat[idx].item()
+        target_mat_name = mat_names[target_mat_idx] if target_mat_idx < len(mat_names) else f"Mat_{target_mat_idx}"
+        
         # Left column: Curves
         ax = axes[i, 0]
-        ax.plot(WAVELENGTHS, curve[0, :n_wl_half].numpy(), "k-", lw=2.5, label="Target p-pol", zorder=10)
+        ax.plot(WAVELENGTHS, curve[i, :n_wl_half].numpy(), "k-", lw=2.5, label="Target p-pol", zorder=10)
         ax.plot(WAVELENGTHS, preds[i, :n_wl_half].numpy(), "r--", lw=2.0, label="Pred p-pol")
-        ax.plot(WAVELENGTHS, curve[0, n_wl_half:].numpy(), "k:", lw=2.5, label="Target s-pol", zorder=10)
+        ax.plot(WAVELENGTHS, curve[i, n_wl_half:].numpy(), "k:", lw=2.5, label="Target s-pol", zorder=10)
         ax.plot(WAVELENGTHS, preds[i, n_wl_half:].numpy(), "b--", lw=2.0, label="Pred s-pol")
         ax.set_xlim(300, 1100)
         ax.set_ylim(-0.05, 1.05)
-        ax.set_ylabel("Absorptance")
+        ax.set_ylabel(f"Absorptance ({target_mat_name})")
         if i == 0:
             ax.set_title("Target vs Candidate Spectra")
             ax.legend(fontsize=8, ncol=2)
@@ -220,8 +251,7 @@ def plot_candidate_designs(inv_model, forward_model, val_loader, save_path: str,
         # --- Torcwa Physics Validation ---
         n_fourier = n_harmonics * 2
         px = pred_geo[i, :n_fourier].view(-1, 2)
-        h = pred_geo[i, n_fourier].item()
-        h_nm = h
+        h_nm = pred_geo[i, n_fourier].item()
         
         inc_ang_deg = pred_geo[i, n_fourier+1].item() if pred_geo.shape[1] > n_fourier+1 else 0.0
         
@@ -232,15 +262,15 @@ def plot_candidate_designs(inv_model, forward_model, val_loader, save_path: str,
         
         # Only simulate normal incidence for the plot to save time
         A_film, _ = get_absorptance_curve(
-            params_x=px.unsqueeze(0),
+            params_x=px,
             params_y=None,
             wavelengths=torch.from_numpy(WAVELENGTHS).double(),
             config=base_config,
             show_progress=False
         )
         
-        axes[i, 0].plot(WAVELENGTHS, A_film[0, :n_wl_half].numpy(), "g-", lw=2.0, label="Torcwa Physics (p-pol)")
-        axes[i, 0].plot(WAVELENGTHS, A_film[0, n_wl_half:].numpy(), "g:", lw=2.0, label="Torcwa Physics (s-pol)")
+        axes[i, 0].plot(WAVELENGTHS, A_film[:, 0].numpy(), "g-", lw=2.0, label="Torcwa Physics (p-pol)")
+        axes[i, 0].plot(WAVELENGTHS, A_film[:, 1].numpy(), "g:", lw=2.0, label="Torcwa Physics (s-pol)")
         axes[i, 0].legend(fontsize=7, ncol=2)
         # ---------------------------------
 
@@ -248,8 +278,8 @@ def plot_candidate_designs(inv_model, forward_model, val_loader, save_path: str,
         mat_name = mat_names[mat_idx] if mat_idx < len(mat_names) else f"Untrained_Mat_{mat_idx}"
         n_harmonics = stats["n_harmonics"]
         n_fourier = n_harmonics * 2
+        
         px = pred_geo[i, :n_fourier].view(-1, 2)
-        h = pred_geo[i, n_fourier].item()
         amps = px[:, 0].numpy()
         phases = px[:, 1].numpy()
         
@@ -260,11 +290,6 @@ def plot_candidate_designs(inv_model, forward_model, val_loader, save_path: str,
         p_min = prof.min()
         p_max = prof.max()
         prof = (prof - p_min) / (p_max - p_min + 1e-9)
-        
-        # Denormalize geometry to nm
-        geo_min = stats["geo_min"].numpy()
-        geo_max = stats["geo_max"].numpy()
-        h_nm = h * (geo_max[n_fourier] - geo_min[n_fourier]) + geo_min[n_fourier]
         
         ax.fill_between(r_grid, 0, prof * h_nm, color="gray", alpha=0.5)
         ax.set_ylim(0, max(600, h_nm * 1.2))
@@ -383,7 +408,7 @@ def main():
         )
         tandem = TandemNetwork(inverse_decoder=dec, forward_model=forward_model)
         ckpt = torch.load(tandem_path, map_location="cpu", weights_only=False)
-        tandem.load_state_dict(ckpt["model_state_dict"])
+        tandem.load_state_dict(ckpt["model_state_dict"], strict=False)
         tandem.eval()
         inverse_models["tandem"] = tandem
         print("Loaded: tandem")
@@ -397,7 +422,7 @@ def main():
         )
         gen_tandem = GenerativeTandemNetwork(inverse_decoder=dec, forward_model=forward_model, latent_dim=32)
         ckpt = torch.load(gen_path, map_location="cpu", weights_only=False)
-        gen_tandem.load_state_dict(ckpt["model_state_dict"])
+        gen_tandem.load_state_dict(ckpt["model_state_dict"], strict=False)
         gen_tandem.eval()
         inverse_models["generative_tandem"] = gen_tandem
         print("Loaded: generative_tandem")
@@ -422,7 +447,7 @@ def main():
             beta=1e-3, gamma=1.0,
         )
         ckpt = torch.load(cvae_path, map_location="cpu", weights_only=False)
-        cvae.load_state_dict(ckpt["model_state_dict"])
+        cvae.load_state_dict(ckpt["model_state_dict"], strict=False)
         cvae.eval()
         inverse_models["cvae"] = cvae
         print("Loaded: cvae")
@@ -447,7 +472,7 @@ def main():
             beta=1e-3, gamma=1.0,
         )
         ckpt = torch.load(cvae_wishful_path, map_location="cpu", weights_only=False)
-        cvae_wishful.load_state_dict(ckpt["model_state_dict"])
+        cvae_wishful.load_state_dict(ckpt["model_state_dict"], strict=False)
         cvae_wishful.eval()
         inverse_models["cvae_wishful"] = cvae_wishful
         print("Loaded: cvae_wishful")

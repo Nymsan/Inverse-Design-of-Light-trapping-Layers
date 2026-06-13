@@ -59,7 +59,7 @@ def get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics):
             if val_loss < best_loss:
                 best_loss = val_loss
                 best_name = "forward_mlp"
-                model.load_state_dict(ckpt["model_state_dict"])
+                model.load_state_dict(ckpt["model_state_dict"], strict=False)
                 best_model = model
 
     # SpatialCNN
@@ -79,7 +79,7 @@ def get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics):
             if val_loss < best_loss:
                 best_loss = val_loss
                 best_name = "spatial_cnn"
-                model.load_state_dict(ckpt["model_state_dict"])
+                model.load_state_dict(ckpt["model_state_dict"], strict=False)
                 best_model = model
 
     # SkipCNN
@@ -99,7 +99,7 @@ def get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics):
             if val_loss < best_loss:
                 best_loss = val_loss
                 best_name = "skip_cnn"
-                model.load_state_dict(ckpt["model_state_dict"])
+                model.load_state_dict(ckpt["model_state_dict"], strict=False)
                 best_model = model
 
     # SIREN
@@ -117,7 +117,7 @@ def get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics):
             if val_loss < best_loss:
                 best_loss = val_loss
                 best_name = "siren"
-                model.load_state_dict(ckpt["model_state_dict"])
+                model.load_state_dict(ckpt["model_state_dict"], strict=False)
                 best_model = model
 
 
@@ -170,6 +170,15 @@ def main():
     n_wavelengths = dataset.target.shape[-1]
 
     print(f"n_continuous={n_continuous}  n_wavelengths={n_wavelengths}  materials={args.materials}")
+    
+    stats_path = ckpt_dir / "dataset_stats.pt"
+    if stats_path.exists():
+        stats = torch.load(stats_path, map_location="cpu", weights_only=False)
+        geo_min = stats["geo_min"]
+        geo_max = stats["geo_max"]
+    else:
+        geo_min = dataset.geometry.min(dim=0).values
+        geo_max = dataset.geometry.max(dim=0).values
 
     # Find the best forward model
     forward_model, fwd_name, fwd_loss = get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics)
@@ -263,6 +272,7 @@ def main():
             geometry_encoder=geo_enc, geometry_decoder=geo_dec,
             spectrum_encoder=spec_enc, margin_radius=1.0,
             beta=1e-3, gamma=1.0,
+            geo_min=geo_min, geo_max=geo_max,
         )
         n_params = sum(p.numel() for p in cvae.parameters())
         print(f"  Parameters: {n_params:,}")
