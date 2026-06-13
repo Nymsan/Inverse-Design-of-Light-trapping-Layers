@@ -21,3 +21,5 @@ Explain the skin depth/pec/Ag choice for the conductor, and sanity check of FEM.
 Siren activations - look at absorptance curves as a function of effective wavelength. SiREN might learn this implicitly with more layers, minimum of 2.
 
 Fano resonances in absorptance curves
+
+choice of loss - fft for the peaks, mse for the shape. Discuss the ortho norm weigthing and so on. Discuss the implicit assumptions of SIREN. Discuss how this is unavailable in 3d data.

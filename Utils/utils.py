@@ -580,6 +580,81 @@ def plot_fields(sim, x_plot, z_plot, wavelength, polarization, params_x, params_
     cbar2 = fig.colorbar(cbars_ims[2], ax=axes[2, :], location='right', shrink=0.9, pad=0.02)
     cbar2.set_label('S (A.U.)')
     
+    
     fig.suptitle(title_base, fontsize=16)
     
     return fig, axes
+
+def generate_eval_batch(stats, n_samples_per_mat=2):
+    import json
+    from pathlib import Path
+    from scipy.stats.qmc import LatinHypercube
+    
+    n_continuous = stats["n_continuous"]
+    materials = list(stats["materials"].keys())
+    n_mat = len(materials)
+    n_total = n_samples_per_mat * n_mat
+
+    # Read config from dataset_args.json
+    first_mat_dir = Path(__file__).resolve().parent.parent / "Data" / Path(list(stats["materials"].values())[0]).name
+    with open(first_mat_dir / "dataset_args.json", "r") as f:
+        ds_args = json.load(f)
+
+    sampler = LatinHypercube(d=n_continuous)
+    lhs_samples = sampler.random(n=n_total)
+
+    geo_min = stats["geo_min"].numpy()
+    geo_max = stats["geo_max"].numpy()
+    geo_np = geo_min + lhs_samples * (geo_max - geo_min)
+    geo = torch.tensor(geo_np, dtype=geo_dtype)
+
+    mat_id = torch.repeat_interleave(torch.arange(n_mat), n_samples_per_mat)
+
+    n_fourier = stats["n_harmonics"] * 2
+    px = geo[:, :n_fourier].view(n_total, -1, 2)
+    h_arr = geo[:, n_fourier]
+    inc_ang_arr = geo[:, n_fourier + 1]
+
+    wavelengths = np.linspace(300, 1100, stats["n_wavelengths"] // 2)
+    
+    targets = []
+    print("Generating exact physics via torcwa for evaluation...")
+    for i in tqdm(range(n_total), desc="Evaluating physics"):
+        config = RCWAConfig(
+            grating_period=ds_args.get("grating_period", 1000.0),
+            h=float(h_arr[i]),
+            order_N=ds_args.get("order_N", 15),
+            n_layers=ds_args.get("num_layers", 10),
+            height_per_layer=ds_args.get("height_per_layer", 50.0),
+            nx=ds_args.get("nx", 128),
+            ny=1,
+            add_reflector=not ds_args.get("no_reflector", False),
+            reflector_type=ds_args.get("reflector_type", "pec"),
+            subpixel=not ds_args.get("no_subpixel", False),
+            grating_material=materials[mat_id[i].item()]
+        )
+        
+        config.inc_ang = (inc_ang_arr[i].item() + 1e-3) * np.pi/180
+        config.azi_ang = 1e-3 * np.pi/180
+        
+        # Target key logic: we just simulate oblique incidence which corresponds to the sampled inc_ang
+        A_film, A_grat = get_absorptance_curve(
+            params_x=px[i], params_y=None, wavelengths=wavelengths, config=config
+        )
+        
+        target_key = stats["target_key"]
+        if "grating" in target_key.lower():
+            t = torch.cat([A_grat[:, 0].float(), A_grat[:, 1].float()], dim=-1)
+        else:
+            t = torch.cat([A_film[:, 0].float(), A_film[:, 1].float()], dim=-1)
+            
+        targets.append(t.unsqueeze(0))
+        
+    target = torch.cat(targets, dim=0)
+
+    return {
+        "geometry": geo,
+        "params_x": px,
+        "material_id": mat_id,
+        "target": target
+    }

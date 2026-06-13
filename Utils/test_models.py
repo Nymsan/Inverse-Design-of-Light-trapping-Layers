@@ -159,7 +159,7 @@ def test_inverse_decoder():
         n_geometry=N_geo,
         n_materials=N_MATERIALS,
         latent_dim=0,
-        hidden_dims=(128, 128),
+        fc_dims=(128, 128),
     )
 
     target = torch.rand(B, N_wl)
@@ -190,7 +190,7 @@ def test_tandem_network():
         n_wavelengths=N_wl,
         n_geometry=N_geo,
         latent_dim=0,
-        hidden_dims=(128, 128),
+        fc_dims=(128, 128),
     )
 
     tandem = TandemNetwork(inverse_decoder=decoder, forward_model=forward)
@@ -240,7 +240,7 @@ def test_generative_tandem():
         n_wavelengths=N_wl,
         n_geometry=N_geo,
         latent_dim=latent_dim,
-        hidden_dims=(128, 128),
+        fc_dims=(128, 128),
     )
 
     gen_tandem = GenerativeTandemNetwork(
@@ -283,13 +283,13 @@ def test_contrastive_vae():
     margin_radius = 1.0
 
     geo_enc = GeometryEncoder(
-        n_continuous=N_geo, latent_dim=latent_dim, hidden_dims=(128, 128)
+        n_continuous=N_geo, latent_dim=latent_dim, fc_dims=(128,)
     )
     geo_dec = GeometryDecoder(
         latent_dim=latent_dim, n_geometry=N_geo, hidden_dims=(128, 128)
     )
     spec_enc = SpectrumEncoder(
-        n_wavelengths=N_wl, latent_dim=latent_dim, hidden_dims=(128, 128)
+        n_wavelengths=N_wl, latent_dim=latent_dim, fc_dims=(128, 128)
     )
 
     cvae = ContrastiveVAE(
@@ -406,7 +406,7 @@ def test_siren():
         model = SIREN(
             n_harmonics=N_harmonics, nx=128,
             n_continuous=N_geo,
-            n_wavelengths=N_wl // 2,
+            n_wavelengths=N_wl,
             n_materials=N_MATERIALS,
             embed_dim=8,
             conv_channels=(32, 64), kernel_size=7, dropout=0.05,
@@ -425,6 +425,72 @@ def test_siren():
     except Exception as e:
         print(f"  FAILED: {e}")
 
+def test_training_loops():
+    print("=" * 60)
+    print("TEST: End-to-End Training Loops")
+    import tempfile
+    from pathlib import Path
+    from torch.utils.data import DataLoader
+    from Utils.models import (
+        train_forward_model, train_tandem, train_cvae, GratingDataset
+    )
+
+    B = 32
+    N_wl = 322
+    N_geo = 12
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        data_dir = Path(tmpdir) / "LHS_Dataset_Si"
+        data_dir.mkdir(parents=True)
+
+        dummy_data = {
+            "h": torch.rand(B),
+            "inc_ang": torch.rand(B),
+            "params_x": torch.rand(B, 5, 2),
+            "A_film_normal": torch.rand(B, N_wl // 2, 2),
+            "A_film_oblique": torch.rand(B, N_wl // 2, 2)
+        }
+        torch.save(dummy_data, data_dir / "batch_0.pt")
+
+        dataset = GratingDataset(
+            data_dirs={"Si": str(data_dir)},
+            target_key="all_film",
+            geo_min=torch.zeros(N_geo),
+            geo_max=torch.ones(N_geo)
+        )
+        loader = DataLoader(dataset, batch_size=16)
+
+        # 1. Test ForwardMLP training loop
+        print("  Testing train_forward_model...")
+        forward_model = ForwardMLP(n_continuous=N_geo, n_wavelengths=N_wl, hidden_dims=(64,))
+        hist = train_forward_model(
+            forward_model, loader, loader, epochs=1, device=torch.device("cpu")
+        )
+        assert len(hist["train_loss"]) == 1
+        print("  ✓ train_forward_model passed.")
+
+        # 2. Test TandemNetwork training loop
+        print("  Testing train_tandem...")
+        dec = InverseDecoder(n_wavelengths=N_wl, n_geometry=N_geo, fc_dims=(64,))
+        tandem = TandemNetwork(inverse_decoder=dec, forward_model=forward_model)
+        hist = train_tandem(
+            tandem, loader, loader, epochs=1, tau_start=1.0, tau_end=1.0, device=torch.device("cpu")
+        )
+        assert len(hist["train_loss"]) == 1
+        print("  ✓ train_tandem passed.")
+
+        # 3. Test CVAE training loop
+        print("  Testing train_cvae...")
+        geo_enc = GeometryEncoder(n_continuous=N_geo, fc_dims=(64,))
+        geo_dec = GeometryDecoder(n_geometry=N_geo, hidden_dims=(64, 64))
+        spec_enc = SpectrumEncoder(n_wavelengths=N_wl, fc_dims=(64,))
+        cvae = ContrastiveVAE(geo_enc, geo_dec, spec_enc)
+        hist = train_cvae(
+            cvae, loader, loader, epochs=1, tau_start=1.0, tau_end=1.0, device=torch.device("cpu")
+        )
+        assert len(hist["train_loss"]) == 1
+        print("  ✓ train_cvae passed.")
+
 if __name__ == "__main__":
     print("\n" + "═" * 60)
     print("  Surrogate Model Architecture Smoke Tests")
@@ -441,6 +507,7 @@ if __name__ == "__main__":
     test_tandem_network()
     test_generative_tandem()
     test_contrastive_vae()
+    test_training_loops()
 
     print("\n" + "═" * 60)
     print("  ALL TESTS PASSED ✓")
