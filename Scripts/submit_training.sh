@@ -28,7 +28,23 @@ uv run python train_forward.py \
     --lr 2e-3 \
     --patience 200 \
     --val_split 0.01 \
+    --skip \
     --seed 1337
+
+RUN_IMPLICIT_SIREN=true
+if [ "$RUN_IMPLICIT_SIREN" = true ]; then
+    echo "Running train_implicit_forward.py..."
+    uv run python train_implicit_forward.py \
+        --data_dir ../Data/LHS_Dataset_Si ../Data/LHS_Dataset_TiO2 ../Data/LHS_Dataset_Si3N4 \
+        --materials Si TiO2 Si3N4 \
+        --target_key all_film \
+        --epochs 2000 \
+        --batch_size 256 \
+        --lr 2e-3 \
+        --patience 200 \
+        --val_split 0.01 \
+        --seed 1337
+fi
 
 uv run python train_inverse.py \
     --data_dir ../Data/LHS_Dataset_Si ../Data/LHS_Dataset_TiO2 ../Data/LHS_Dataset_Si3N4 \

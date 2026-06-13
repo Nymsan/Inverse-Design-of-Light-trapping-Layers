@@ -65,20 +65,22 @@ def test_forward_mlp():
     print("=" * 60)
     print("TEST: ForwardMLP")
     B, N_harmonics, N_wl = 16, 5, 322
+    N_geo = 2 * N_harmonics + 2
 
     model = ForwardMLP(
-        n_continuous=2 * N_harmonics + 2,  # cartesian + h + inc_ang
+        n_continuous=N_geo,
         n_wavelengths=N_wl,
         n_materials=N_MATERIALS,
-        embed_dim=8,
-        hidden_dims=(128, 256, 128),
+        hidden_dims=(256, 512, 512, 256),
         activation="snake",
     )
+    if hasattr(torch, "compile"):
+        model = torch.compile(model)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"  Parameters: {n_params:,}")
 
     # Test with integer material IDs
-    geo = torch.randn(B, 2 * N_harmonics + 2)
+    geo = torch.randn(B, N_geo)
     mat_id = torch.randint(0, N_MATERIALS, (B,))
     out = model(geo, mat_id)
     assert out.shape == (B, N_wl), f"Shape: {out.shape}"
@@ -108,9 +110,11 @@ def test_spatial_cnn():
         n_materials=N_MATERIALS,
         embed_dim=8,
         grating_period=1000.0,
-        conv_channels=(32, 64),
-        fc_dims=(128,),
+        conv_channels=(32, 64, 128, 64),
+        fc_dims=(256, 512, 256),
     )
+    if hasattr(torch, "compile"):
+        model = torch.compile(model)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"  Parameters: {n_params:,}")
 
@@ -135,9 +139,11 @@ def test_skip_cnn():
         n_materials=N_MATERIALS,
         embed_dim=8,
         grating_period=1000.0,
-        conv_channels=(32, 64),
-        fc_dims=(128,),
+        conv_channels=(32, 64, 128, 64),
+        fc_dims=(256, 512, 256),
     )
+    if hasattr(torch, "compile"):
+        model = torch.compile(model)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"  Parameters: {n_params:,}")
 
@@ -404,16 +410,21 @@ def test_siren():
     try:
         from Utils.models import SIREN
         model = SIREN(
-            n_harmonics=N_harmonics, nx=128,
-            n_continuous=N_geo,
+            n_harmonics=5,
+            nx=128,
+            n_continuous=12,
             n_wavelengths=N_wl,
             n_materials=N_MATERIALS,
             embed_dim=8,
-            conv_channels=(32, 64), kernel_size=7, dropout=0.05,
-            siren_hidden=(128, 128),
-            latent_dim=64,
-            omega_0=10.0
+            conv_channels=(32, 64, 128, 64),
+            kernel_size=7,
+            dropout=0.05,
+            siren_hidden=(256, 256, 256),
+            latent_dim=128,
+            omega_0=10.0,
         )
+        if hasattr(torch, "compile"):
+            model = torch.compile(model)
         n_params = sum(p.numel() for p in model.parameters())
         print(f"  Parameters: {n_params:,}")
 

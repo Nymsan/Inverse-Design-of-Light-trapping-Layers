@@ -147,6 +147,9 @@ def main():
     torch.manual_seed(args.seed)
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
+    
+    if torch.cuda.is_available():
+        torch.backends.cudnn.benchmark = True
 
     data_dirs = {mat: d for mat, d in zip(args.materials, args.data_dir)}
     run_name = "_".join(args.materials)
@@ -202,10 +205,12 @@ def main():
                 n_wavelengths=n_wavelengths, n_geometry=n_continuous,
                 n_materials=N_MATERIALS, latent_dim=0,
                 geo_min=geo_min, geo_max=geo_max,
-                hidden_dims=(256, 512, 512, 256),
+                conv_channels=(32, 64, 128, 64), fc_dims=(256, 512, 256),
             )
             tandem = TandemNetwork(inverse_decoder=decoder, forward_model=forward_model)
             n_params = sum(p.numel() for p in tandem.inverse_decoder.parameters())
+            if hasattr(torch, "compile"):
+                tandem = torch.compile(tandem)
             print(f"  Trainable parameters (decoder only): {n_params:,}")
 
             t0 = time.time()
@@ -232,13 +237,15 @@ def main():
                 n_wavelengths=n_wavelengths, n_geometry=n_continuous,
                 n_materials=N_MATERIALS, latent_dim=latent_dim,
                 geo_min=geo_min, geo_max=geo_max,
-                hidden_dims=(256, 512, 512, 256),
+                conv_channels=(32, 64, 128, 64), fc_dims=(256, 512, 256),
             )
             gen_tandem = GenerativeTandemNetwork(
                 inverse_decoder=decoder, forward_model=forward_model,
                 latent_dim=latent_dim,
             )
             n_params = sum(p.numel() for p in gen_tandem.inverse_decoder.parameters())
+            if hasattr(torch, "compile"):
+                gen_tandem = torch.compile(gen_tandem)
             print(f"  Trainable parameters (decoder only): {n_params:,}")
 
             t0 = time.time()
@@ -269,7 +276,7 @@ def main():
         )
         spec_enc = SpectrumEncoder(
             n_wavelengths=n_wavelengths, latent_dim=latent_dim,
-            hidden_dims=(128, 256, 128),
+            conv_channels=(32, 64, 128, 64), fc_dims=(256, 256),
         )
         cvae = ContrastiveVAE(
             geometry_encoder=geo_enc, geometry_decoder=geo_dec,
@@ -277,6 +284,8 @@ def main():
             beta=1e-3, gamma=1.0,
         )
         n_params = sum(p.numel() for p in cvae.parameters())
+        if hasattr(torch, "compile"):
+            cvae = torch.compile(cvae)
         print(f"  Parameters: {n_params:,}")
 
         t0 = time.time()

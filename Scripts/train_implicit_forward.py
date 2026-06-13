@@ -23,9 +23,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from Utils.models import (
-    MATERIAL_LIBRARY, N_MATERIALS, ForwardMLP, SpatialCNN, SkipCNN, SIREN,
-    GratingDataset,
-    train_forward_model,
+    MATERIAL_LIBRARY, N_MATERIALS, SIREN,
+    GratingDataset, GratingWavelengthDataset,
+    train_implicit_forward,
 )
 
 def save_checkpoint(model, history: dict, path: str):
@@ -46,7 +46,7 @@ def get_args():
     p.add_argument("--target_key", type=str, default="all_film")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--device", default=None)
-    p.add_argument("--skip", nargs="*", default=[], choices=["mlp", "cnn", "skipcnn", "siren"])
+    p.add_argument("--skip", nargs="*", default=[])
     return p.parse_args()
 
 def main():
@@ -97,93 +97,18 @@ def main():
     timings = {}
     all_history = {}
 
-    if "mlp" not in args.skip:
+    if "siren" not in [s.lower() for s in args.skip]:
         print("\n" + "=" * 60)
-        print("Training: ForwardMLP")
+        print("Training: Implicit SIREN")
         print("=" * 60)
-        model = ForwardMLP(
-            n_harmonics=n_harmonics, nx=128,
-            n_continuous=n_continuous, n_wavelengths=n_wavelengths,
-            n_materials=N_MATERIALS, embed_dim=8,
-            hidden_dims=(256, 512, 512, 256), activation="snake",
-        )
-        n_params = sum(p.numel() for p in model.parameters())
-        if hasattr(torch, "compile"):
-            model = torch.compile(model)
-        print(f"  Parameters: {n_params:,}")
+        
+        train_wl_set = GratingWavelengthDataset(train_set, n_wavelengths=n_wavelengths)
+        val_wl_set = GratingWavelengthDataset(val_set, n_wavelengths=n_wavelengths)
+        
+        bs = args.batch_size * (n_wavelengths // 2)
+        train_wl_loader = DataLoader(train_wl_set, batch_size=bs, shuffle=True, num_workers=4, drop_last=True)
+        val_wl_loader = DataLoader(val_wl_set, batch_size=bs, shuffle=False, num_workers=4)
 
-        t0 = time.time()
-        hist = train_forward_model(
-            model, train_loader, val_loader,
-            epochs=args.epochs, lr=args.lr, patience=args.patience,
-            device=device,
-        )
-        elapsed = time.time() - t0
-        timings["forward_mlp"] = elapsed
-        all_history["forward_mlp"] = hist
-        print(f"  Time: {elapsed / 60:.1f} min")
-
-        save_checkpoint(model, hist, str(ckpt_dir / "forward_mlp.pt"))
-
-    if "cnn" not in args.skip:
-        print("\n" + "=" * 60)
-        print("Training: SpatialCNN")
-        print("=" * 60)
-        model = SpatialCNN(
-            n_harmonics=n_harmonics, nx=128, n_continuous=n_continuous, n_wavelengths=n_wavelengths,
-            n_materials=N_MATERIALS, embed_dim=8,
-            grating_period=1000.0, conv_channels=(32, 64, 128, 64),
-            fc_dims=(256, 512, 256),
-        )
-        n_params = sum(p.numel() for p in model.parameters())
-        if hasattr(torch, "compile"):
-            model = torch.compile(model)
-        print(f"  Parameters: {n_params:,}")
-
-        t0 = time.time()
-        hist = train_forward_model(
-            model, train_loader, val_loader,
-            epochs=args.epochs, lr=args.lr, patience=args.patience,
-            device=device,
-        )
-        elapsed = time.time() - t0
-        timings["spatial_cnn"] = elapsed
-        all_history["spatial_cnn"] = hist
-        print(f"  Time: {elapsed / 60:.1f} min")
-
-        save_checkpoint(model, hist, str(ckpt_dir / "spatial_cnn.pt"))
-
-    if "skipcnn" not in args.skip:
-        print("\n" + "=" * 60)
-        print("Training: SkipCNN")
-        print("=" * 60)
-        model = SkipCNN(
-            n_harmonics=n_harmonics, nx=128, n_continuous=n_continuous, n_wavelengths=n_wavelengths,
-            n_materials=N_MATERIALS, embed_dim=8,
-            grating_period=1000.0, conv_channels=(32, 64, 128, 64), fc_dims=(256, 512, 256),
-        )
-        n_params = sum(p.numel() for p in model.parameters())
-        if hasattr(torch, "compile"):
-            model = torch.compile(model)
-        print(f"  Parameters: {n_params:,}")
-
-        t0 = time.time()
-        hist = train_forward_model(
-            model, train_loader, val_loader,
-            epochs=args.epochs, lr=args.lr, patience=args.patience,
-            device=device,
-        )
-        elapsed = time.time() - t0
-        timings["skip_cnn"] = elapsed
-        all_history["skip_cnn"] = hist
-        print(f"  Time: {elapsed / 60:.1f} min")
-
-        save_checkpoint(model, hist, str(ckpt_dir / "skip_cnn.pt"))
-
-    if "siren" not in args.skip:
-        print("\n" + "=" * 60)
-        print("Training: SIREN")
-        print("=" * 60)
         model = SIREN(
             n_harmonics=n_harmonics, nx=128, n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
@@ -195,19 +120,19 @@ def main():
         print(f"  Parameters: {n_params:,}")
 
         t0 = time.time()
-        hist = train_forward_model(
-            model, train_loader, val_loader,
+        hist = train_implicit_forward(
+            model, train_wl_loader, val_wl_loader,
             epochs=args.epochs, lr=args.lr, patience=args.patience,
             device=device,
         )
         elapsed = time.time() - t0
-        timings["siren"] = elapsed
-        all_history["siren"] = hist
+        timings["implicit_siren"] = elapsed
+        all_history["implicit_siren"] = hist
         print(f"  Time: {elapsed / 60:.1f} min")
 
-        save_checkpoint(model, hist, str(ckpt_dir / "siren.pt"))
+        save_checkpoint(model, hist, str(ckpt_dir / "implicit_siren.pt"))
 
-    history_path = ckpt_dir / "forward_history.json"
+    history_path = ckpt_dir / "implicit_forward_history.json"
     with open(history_path, "w") as f:
         json.dump(all_history, f, indent=2)
     print(f"\nTraining history: {history_path}")
