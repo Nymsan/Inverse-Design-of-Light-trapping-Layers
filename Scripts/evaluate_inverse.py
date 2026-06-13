@@ -28,10 +28,9 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from Utils.models import (
     MATERIAL_LIBRARY, N_MATERIALS,
     ForwardMLP, SpatialCNN,
-    InverseDecoder, TandemNetwork, GenerativeTandemNetwork,
-    GeometryEncoder, GeometryDecoder, SpectrumEncoder, ContrastiveVAE,
-    GratingDataset,
+    TandemNetwork, GenerativeTandemNetwork, ContrastiveVAE,
 )
+from Utils.utils import generate_eval_batch
 
 from Scripts.train_inverse import get_best_forward_model
 
@@ -46,8 +45,6 @@ WAVELENGTHS = np.linspace(300, 1100, 161)
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--ckpt_dir", required=True, help="Path to checkpoint directory")
-    p.add_argument("--n_eval", type=int, default=2000, help="Max samples for evaluation")
-    p.add_argument("--seed", type=int, default=42)
     return p.parse_args()
 
 
@@ -65,7 +62,7 @@ def plot_loss_curves(all_history: dict, save_path: str):
         ax.semilogy(epochs, hist["train_loss"], label="Train", alpha=0.8)
         ax.semilogy(epochs, hist["val_loss"], label="Val", alpha=0.8)
         ax.set_xlabel("Epoch")
-        ax.set_ylabel("MSE Loss")
+        ax.set_ylabel("Combined Loss")
         ax.set_title(name.replace("_", " ").title())
         ax.legend()
         ax.grid(True, alpha=0.3)
@@ -107,10 +104,10 @@ def plot_inverse_performance(inverse_models, forward_model, val_loader, save_pat
             ax = axes[i, pol_idx]
             start = pol_idx * n_wl_half
             end = start + n_wl_half
-            ax.plot(WAVELENGTHS, curve[0, start:end].numpy(), "k-", lw=2.5, label="Target", zorder=10)
+            ax.plot(WAVELENGTHS, curve[0, start:end].cpu().numpy(), "k-", lw=2.5, label="Target", zorder=10)
             
             for (name, pred), c in zip(preds.items(), colors):
-                ax.plot(WAVELENGTHS, pred[0, start:end].numpy(),
+                ax.plot(WAVELENGTHS, pred[0, start:end].cpu().numpy(),
                         "--", color=c, lw=2.0, label=name.replace("_", " ").title())
                 
             ax.set_xlim(300, 1100)
@@ -152,7 +149,7 @@ def plot_candidate_designs(inv_model, forward_model, val_loader, save_path: str,
     
     selected_indices = []
     mat_counts = {}
-    for idx, m_id in enumerate(mat.numpy()):
+    for idx, m_id in enumerate(mat.cpu().numpy()):
         m_id = m_id.item()
         if mat_counts.get(m_id, 0) < 2:
             selected_indices.append(idx)
@@ -234,15 +231,15 @@ def plot_candidate_designs(inv_model, forward_model, val_loader, save_path: str,
         
         # Left column: Curves
         ax = axes[i, 0]
-        ax.plot(WAVELENGTHS, curve[i, :n_wl_half].numpy(), "k-", lw=2.5, label="Target p-pol", zorder=10)
-        ax.plot(WAVELENGTHS, preds[i, :n_wl_half].numpy(), "r--", lw=2.0, label="Pred p-pol")
-        ax.plot(WAVELENGTHS, curve[i, n_wl_half:].numpy(), "k:", lw=2.5, label="Target s-pol", zorder=10)
-        ax.plot(WAVELENGTHS, preds[i, n_wl_half:].numpy(), "b--", lw=2.0, label="Pred s-pol")
+        ax.plot(WAVELENGTHS, curve[i, :n_wl_half].cpu().numpy(), "k-", lw=2.5, label="Target p-pol", zorder=10)
+        ax.plot(WAVELENGTHS, preds[i, :n_wl_half].cpu().numpy(), "r--", lw=2.0, label="Pred p-pol")
+        ax.plot(WAVELENGTHS, curve[i, n_wl_half:].cpu().numpy(), "k:", lw=2.5, label="Target s-pol", zorder=10)
+        ax.plot(WAVELENGTHS, preds[i, n_wl_half:].cpu().numpy(), "b--", lw=2.0, label="Pred s-pol")
         ax.set_xlim(300, 1100)
         ax.set_ylim(-0.05, 1.05)
         ax.set_ylabel(f"Absorptance ({target_mat_name})")
         if i == 0:
-            ax.set_title("Target vs Candidate Spectra")
+            ax.set_title("Neural Surrogate vs. Target Spectra")
             ax.legend(fontsize=8, ncol=2)
             
         # Right column: Geometry profile
@@ -260,6 +257,11 @@ def plot_candidate_designs(inv_model, forward_model, val_loader, save_path: str,
         base_config.inc_ang = (float(inc_ang_deg) + 1e-3) * np.pi/180
         base_config.azi_ang = 1e-3 * np.pi/180
         
+        # VERY IMPORTANT: The base_config material must be set to the PREDICTED material!
+        pred_mat_idx = mat_oh[i].argmax().item()
+        pred_mat_name = mat_names[pred_mat_idx] if pred_mat_idx < len(mat_names) else "Si"
+        base_config.material = pred_mat_name
+        
         # Only simulate normal incidence for the plot to save time
         A_film, _ = get_absorptance_curve(
             params_x=px,
@@ -269,9 +271,10 @@ def plot_candidate_designs(inv_model, forward_model, val_loader, save_path: str,
             show_progress=False
         )
         
-        axes[i, 0].plot(WAVELENGTHS, A_film[:, 0].numpy(), "g-", lw=2.0, label="Torcwa Physics (p-pol)")
-        axes[i, 0].plot(WAVELENGTHS, A_film[:, 1].numpy(), "g:", lw=2.0, label="Torcwa Physics (s-pol)")
+        axes[i, 0].plot(WAVELENGTHS, A_film[:, 0].cpu().numpy(), "g-", lw=2.0, label="True Physics (p-pol)")
+        axes[i, 0].plot(WAVELENGTHS, A_film[:, 1].cpu().numpy(), "g:", lw=2.0, label="True Physics (s-pol)")
         axes[i, 0].legend(fontsize=7, ncol=2)
+        axes[i, 0].set_title(f"Target ({target_mat_name}) vs. Inverse Design ({pred_mat_name})")
         # ---------------------------------
 
         mat_idx = mat_oh[i].argmax().item()
@@ -280,8 +283,8 @@ def plot_candidate_designs(inv_model, forward_model, val_loader, save_path: str,
         n_fourier = n_harmonics * 2
         
         px = pred_geo[i, :n_fourier].view(-1, 2)
-        amps = px[:, 0].numpy()
-        phases = px[:, 1].numpy()
+        amps = px[:, 0].cpu().numpy()
+        phases = px[:, 1].cpu().numpy()
         
         grating_height = 2.0 * amps.sum() + 1e-9
         arg = 2.0 * np.pi * harmonic_idx[:, None] * r_grid[None, :] / 1000.0 - phases[:, None]
@@ -332,10 +335,10 @@ def plot_unit_absorptance(inverse_models, forward_model, save_path: str, n_wavel
         start = pol_idx * n_wl_half
         end = start + n_wl_half
         
-        ax.plot(WAVELENGTHS, curve[0, start:end].numpy(), "k-", lw=2.5, label="Target (100%)", zorder=10)
+        ax.plot(WAVELENGTHS, curve[0, start:end].cpu().numpy(), "k-", lw=2.5, label="Target (100%)", zorder=10)
         
         for (name, pred), c in zip(obtained_curves.items(), colors):
-            ax.plot(WAVELENGTHS, pred[0, start:end].numpy(), "--", color=c, lw=2.0, label=name.replace("_", " ").title())
+            ax.plot(WAVELENGTHS, pred[0, start:end].cpu().numpy(), "--", color=c, lw=2.0, label=name.replace("_", " ").title())
             
         ax.set_xlim(300, 1100)
         ax.set_ylim(-0.05, 1.05)
@@ -352,7 +355,6 @@ def plot_unit_absorptance(inverse_models, forward_model, save_path: str, n_wavel
 
 def main():
     args = parse_args()
-    torch.manual_seed(args.seed)
     ckpt_dir = Path(args.ckpt_dir)
     eval_dir = ckpt_dir / "evaluation"
     eval_dir.mkdir(parents=True, exist_ok=True)
@@ -366,21 +368,8 @@ def main():
     target_key = stats["target_key"]
     print(f"n_continuous={n_continuous}  n_wavelengths={n_wavelengths}  materials={list(mat_dirs.keys())}")
 
-    full_dataset = GratingDataset(
-        data_dirs=mat_dirs, target_key=target_key,
-        geo_min=stats["geo_min"], geo_max=stats["geo_max"],
-    )
-    n_val = int(len(full_dataset) * 0.15)
-    n_train = len(full_dataset) - n_val
-    _, val_ds = random_split(
-        full_dataset, [n_train, n_val],
-        generator=torch.Generator().manual_seed(42),
-    )
-    if args.n_eval < len(val_ds):
-        val_ds, _ = random_split(val_ds, [args.n_eval, len(val_ds) - args.n_eval],
-                                 generator=torch.Generator().manual_seed(args.seed))
-    val_loader = DataLoader(val_ds, batch_size=256, shuffle=False)
-    print(f"Validation samples: {len(val_ds)}")
+    batch = generate_eval_batch(stats, n_samples_per_mat=2)
+    val_loader = [batch]
 
     forward_model, fwd_name, fwd_loss = get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics)
     if forward_model is not None:
@@ -404,7 +393,7 @@ def main():
         dec = InverseDecoder(
             n_wavelengths=n_wavelengths, n_geometry=n_continuous,
             n_materials=N_MATERIALS, latent_dim=0,
-            hidden_dims=(256, 512, 512, 256),
+            geo_min=stats["geo_min"], geo_max=stats["geo_max"],
         )
         tandem = TandemNetwork(inverse_decoder=dec, forward_model=forward_model)
         ckpt = torch.load(tandem_path, map_location="cpu", weights_only=False)
@@ -418,7 +407,7 @@ def main():
         dec = InverseDecoder(
             n_wavelengths=n_wavelengths, n_geometry=n_continuous,
             n_materials=N_MATERIALS, latent_dim=32,
-            hidden_dims=(256, 512, 512, 256),
+            geo_min=stats["geo_min"], geo_max=stats["geo_max"],
         )
         gen_tandem = GenerativeTandemNetwork(inverse_decoder=dec, forward_model=forward_model, latent_dim=32)
         ckpt = torch.load(gen_path, map_location="cpu", weights_only=False)
@@ -431,15 +420,16 @@ def main():
     if cvae_path.exists():
         geo_enc = GeometryEncoder(
             n_continuous=n_continuous, n_materials=N_MATERIALS, embed_dim=8,
-            latent_dim=64, hidden_dims=(256, 256),
+            latent_dim=64, fc_dims=(256,),
         )
         geo_dec = GeometryDecoder(
             latent_dim=64, n_geometry=n_continuous,
             n_materials=N_MATERIALS, hidden_dims=(256, 256),
+            geo_min=stats["geo_min"], geo_max=stats["geo_max"],
         )
         spec_enc = SpectrumEncoder(
             n_wavelengths=n_wavelengths, latent_dim=64,
-            hidden_dims=(128, 256, 128),
+            fc_dims=(256,),
         )
         cvae = ContrastiveVAE(
             geometry_encoder=geo_enc, geometry_decoder=geo_dec,
@@ -456,15 +446,16 @@ def main():
     if cvae_wishful_path.exists():
         geo_enc = GeometryEncoder(
             n_continuous=n_continuous, n_materials=N_MATERIALS, embed_dim=8,
-            latent_dim=64, hidden_dims=(256, 256),
+            latent_dim=64, fc_dims=(256,),
         )
         geo_dec = GeometryDecoder(
             latent_dim=64, n_geometry=n_continuous,
             n_materials=N_MATERIALS, hidden_dims=(256, 256),
+            geo_min=stats["geo_min"], geo_max=stats["geo_max"],
         )
         spec_enc = SpectrumEncoder(
             n_wavelengths=n_wavelengths, latent_dim=64,
-            hidden_dims=(128, 256, 128),
+            fc_dims=(256,),
         )
         cvae_wishful = ContrastiveVAE(
             geometry_encoder=geo_enc, geometry_decoder=geo_dec,

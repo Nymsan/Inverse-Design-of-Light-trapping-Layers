@@ -42,7 +42,7 @@ def get_args():
     p.add_argument("--epochs", type=int, default=500)
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--patience", type=int, default=100)
-    p.add_argument("--val_split", type=float, default=0.1)
+    p.add_argument("--val_split", type=float, default=0.05)
     p.add_argument("--target_key", type=str, default="all_film")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--device", default=None)
@@ -69,8 +69,8 @@ def main():
     n_train = len(dataset) - n_val
     train_set, val_set = random_split(dataset, [n_train, n_val])
 
-    train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, drop_last=True)
-    val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False)
+    train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, drop_last=True, pin_memory=True, num_workers=4)
+    val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, pin_memory=True, num_workers=4)
 
     n_continuous = dataset.geometry.shape[-1]
     n_harmonics = dataset.params_x.shape[1]
@@ -176,7 +176,7 @@ def main():
         print("Training: SIREN")
         print("=" * 60)
         model = SIREN(
-            n_harmonics=n_harmonics, nx=128, n_continuous=n_continuous, n_wavelengths=n_wavelengths // 2,
+            n_harmonics=n_harmonics, nx=128, n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
             conv_channels=(32, 64, 128, 64), kernel_size=7, dropout=0.05, siren_hidden=(256, 256, 256), latent_dim=128, omega_0=10.0
         )

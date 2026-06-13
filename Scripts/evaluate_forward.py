@@ -28,8 +28,8 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from Utils.models import (
     MATERIAL_LIBRARY, N_MATERIALS,
     ForwardMLP, SpatialCNN, SkipCNN, SIREN,
-    GratingDataset,
 )
+from Utils.utils import generate_eval_batch
 
 plt.rcParams.update({
     "font.size": 11, "axes.titlesize": 13, "axes.labelsize": 12,
@@ -49,8 +49,6 @@ def load_checkpoint(path, model):
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--ckpt_dir", required=True, help="Path to checkpoint directory")
-    p.add_argument("--n_eval", type=int, default=2000, help="Max samples for evaluation")
-    p.add_argument("--seed", type=int, default=42)
     return p.parse_args()
 
 
@@ -68,7 +66,7 @@ def plot_loss_curves(all_history: dict, save_path: str):
         ax.semilogy(epochs, hist["train_loss"], label="Train", alpha=0.8)
         ax.semilogy(epochs, hist["val_loss"], label="Val", alpha=0.8)
         ax.set_xlabel("Epoch")
-        ax.set_ylabel("MSE Loss")
+        ax.set_ylabel("Combined Loss")
         ax.set_title(name.replace("_", " ").title())
         ax.legend()
         ax.grid(True, alpha=0.3)
@@ -208,7 +206,7 @@ def compute_metrics(models: dict[str, nn.Module], val_loader, n_wavelengths: int
         metrics[name] = {
             "mse": float(torch.mean(diff ** 2)),
             "mae": float(torch.mean(torch.abs(diff))),
-            "max_abs_error": float(torch.max(torch.abs(diff))),
+            "max_abs_error": float(torch.mean(torch.max(torch.abs(diff), dim=1).values)),
             "r2": float(1 - torch.sum(diff ** 2) / torch.sum((true - true.mean()) ** 2)),
         }
     return metrics
@@ -216,7 +214,6 @@ def compute_metrics(models: dict[str, nn.Module], val_loader, n_wavelengths: int
 
 def main():
     args = parse_args()
-    torch.manual_seed(args.seed)
     ckpt_dir = Path(args.ckpt_dir)
     eval_dir = ckpt_dir / "evaluation"
     eval_dir.mkdir(parents=True, exist_ok=True)
@@ -230,21 +227,8 @@ def main():
     target_key = stats["target_key"]
     print(f"n_continuous={n_continuous}  n_wavelengths={n_wavelengths}  materials={list(mat_dirs.keys())}")
 
-    full_dataset = GratingDataset(
-        data_dirs=mat_dirs, target_key=target_key,
-        geo_min=stats["geo_min"], geo_max=stats["geo_max"],
-    )
-    n_val = int(len(full_dataset) * 0.15)
-    n_train = len(full_dataset) - n_val
-    _, val_ds = random_split(
-        full_dataset, [n_train, n_val],
-        generator=torch.Generator().manual_seed(42),
-    )
-    if args.n_eval < len(val_ds):
-        val_ds, _ = random_split(val_ds, [args.n_eval, len(val_ds) - args.n_eval],
-                                 generator=torch.Generator().manual_seed(args.seed))
-    val_loader = DataLoader(val_ds, batch_size=256, shuffle=False)
-    print(f"Validation samples: {len(val_ds)}")
+    batch = generate_eval_batch(stats, n_samples_per_mat=2)
+    val_loader = [batch]
 
     all_history = {}
     forward_models = {}
@@ -296,7 +280,7 @@ def main():
     if siren_path.exists():
         model = SIREN(
             n_harmonics=n_harmonics, nx=128,
-            n_continuous=n_continuous, n_wavelengths=n_wavelengths // 2,
+            n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
             conv_channels=(32, 64, 128, 64), kernel_size=7, dropout=0.05, siren_hidden=(256, 256, 256), latent_dim=128, omega_0=10.0
         )

@@ -24,19 +24,21 @@ uv run python train_forward.py \
     --materials Si TiO2 Si3N4 \
     --target_key all_film \
     --epochs 2000 \
-    --batch_size 512 \
+    --batch_size 256 \
     --lr 2e-3 \
     --patience 200 \
-    --seed 42
+    --val_split 0.05 \
+    --seed 1337
 
 uv run python train_inverse.py \
     --data_dir ../Data/LHS_Dataset_Si ../Data/LHS_Dataset_TiO2 ../Data/LHS_Dataset_Si3N4 \
     --materials Si TiO2 Si3N4 \
     --target_key all_film \
     --epochs 2000 \
-    --batch_size 512 \
+    --batch_size 256 \
     --lr 2e-3 \
     --patience 200 \
-    --seed 42
+    --val_split 0.05 \
+    --seed 1337
 
 echo "Job completed at $(date)"

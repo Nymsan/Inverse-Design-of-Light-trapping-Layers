@@ -106,7 +106,7 @@ def get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics):
     p = ckpt_dir / "siren.pt"
     if p.exists():
         model = SIREN(
-            n_harmonics=n_harmonics, nx=128, n_continuous=n_continuous, n_wavelengths=n_wavelengths // 2,
+            n_harmonics=n_harmonics, nx=128, n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
             conv_channels=(32, 64, 128, 64), kernel_size=7, dropout=0.05, siren_hidden=(256, 256, 256), latent_dim=128, omega_0=10.0
         )
@@ -133,7 +133,7 @@ def get_args():
     p.add_argument("--epochs", type=int, default=500)
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--patience", type=int, default=100)
-    p.add_argument("--val_split", type=float, default=0.1)
+    p.add_argument("--val_split", type=float, default=0.05)
     p.add_argument("--latent_dim_gen", type=int, default=32)
     p.add_argument("--latent_dim_cvae", type=int, default=64)
     p.add_argument("--target_key", type=str, default="all_film")
@@ -162,8 +162,8 @@ def main():
     n_train = len(dataset) - n_val
     train_set, val_set = random_split(dataset, [n_train, n_val])
 
-    train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, drop_last=True)
-    val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False)
+    train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, drop_last=True, pin_memory=True, num_workers=4)
+    val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, pin_memory=True, num_workers=4)
 
     n_continuous = dataset.geometry.shape[-1]
     n_harmonics = dataset.params_x.shape[1]
@@ -201,6 +201,7 @@ def main():
             decoder = InverseDecoder(
                 n_wavelengths=n_wavelengths, n_geometry=n_continuous,
                 n_materials=N_MATERIALS, latent_dim=0,
+                geo_min=geo_min, geo_max=geo_max,
                 hidden_dims=(256, 512, 512, 256),
             )
             tandem = TandemNetwork(inverse_decoder=decoder, forward_model=forward_model)
@@ -230,6 +231,7 @@ def main():
             decoder = InverseDecoder(
                 n_wavelengths=n_wavelengths, n_geometry=n_continuous,
                 n_materials=N_MATERIALS, latent_dim=latent_dim,
+                geo_min=geo_min, geo_max=geo_max,
                 hidden_dims=(256, 512, 512, 256),
             )
             gen_tandem = GenerativeTandemNetwork(
@@ -258,11 +260,12 @@ def main():
         latent_dim = args.latent_dim_cvae
         geo_enc = GeometryEncoder(
             n_continuous=n_continuous, n_materials=N_MATERIALS, embed_dim=8,
-            latent_dim=latent_dim, hidden_dims=(256, 256),
+            latent_dim=latent_dim, fc_dims=(256,),
         )
         geo_dec = GeometryDecoder(
             latent_dim=latent_dim, n_geometry=n_continuous,
-            n_materials=N_MATERIALS, hidden_dims=(256, 256),
+            n_materials=N_MATERIALS, geo_min=geo_min, geo_max=geo_max,
+            hidden_dims=(256, 256),
         )
         spec_enc = SpectrumEncoder(
             n_wavelengths=n_wavelengths, latent_dim=latent_dim,
@@ -272,7 +275,6 @@ def main():
             geometry_encoder=geo_enc, geometry_decoder=geo_dec,
             spectrum_encoder=spec_enc, margin_radius=1.0,
             beta=1e-3, gamma=1.0,
-            geo_min=geo_min, geo_max=geo_max,
         )
         n_params = sum(p.numel() for p in cvae.parameters())
         print(f"  Parameters: {n_params:,}")
