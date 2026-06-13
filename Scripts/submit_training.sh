@@ -1,6 +1,6 @@
 #!/bin/sh
 #BSUB -J train_surrogates
-#BSUB -q gpuv100
+#BSUB -q gpul40s
 #BSUB -gpu "num=1:mode=exclusive_process"
 #BSUB -n 4
 #BSUB -R "rusage[mem=8GB]"
