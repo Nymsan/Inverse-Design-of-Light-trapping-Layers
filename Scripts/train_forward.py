@@ -105,7 +105,7 @@ def main():
             n_harmonics=n_harmonics, nx=128,
             n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
-            hidden_dims=(256, 512, 512, 256), activation="snake",
+            hidden_dims=(256, 512, 512, 256), activation="gelu",
         )
         n_params = sum(p.numel() for p in model.parameters())
         if hasattr(torch, "compile"):

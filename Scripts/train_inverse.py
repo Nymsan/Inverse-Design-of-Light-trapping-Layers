@@ -50,7 +50,7 @@ def get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics):
             n_harmonics=n_harmonics, nx=128,
             n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
-            hidden_dims=(256, 512, 512, 256), activation="snake",
+            hidden_dims=(256, 512, 512, 256), activation="gelu",
         )
         ckpt = torch.load(p, map_location="cpu", weights_only=False)
         hist = ckpt.get("history", {})

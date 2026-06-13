@@ -105,7 +105,7 @@ def main():
         train_wl_set = GratingWavelengthDataset(train_set, n_wavelengths=n_wavelengths)
         val_wl_set = GratingWavelengthDataset(val_set, n_wavelengths=n_wavelengths)
         
-        bs = args.batch_size * (n_wavelengths // 2)
+        bs = args.batch_size
         train_wl_loader = DataLoader(train_wl_set, batch_size=bs, shuffle=True, num_workers=4, drop_last=True)
         val_wl_loader = DataLoader(val_wl_set, batch_size=bs, shuffle=False, num_workers=4)
 

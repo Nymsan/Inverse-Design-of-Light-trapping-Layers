@@ -368,7 +368,7 @@ def main():
     target_key = stats["target_key"]
     print(f"n_continuous={n_continuous}  n_wavelengths={n_wavelengths}  materials={list(mat_dirs.keys())}")
 
-    batch = generate_eval_batch(stats, n_samples_per_mat=2)
+    batch = generate_eval_batch(stats)
     val_loader = [batch]
 
     forward_model, fwd_name, fwd_loss = get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics)

@@ -72,7 +72,7 @@ def test_forward_mlp():
         n_wavelengths=N_wl,
         n_materials=N_MATERIALS,
         hidden_dims=(256, 512, 512, 256),
-        activation="snake",
+        activation="gelu",
     )
     if hasattr(torch, "compile"):
         model = torch.compile(model)

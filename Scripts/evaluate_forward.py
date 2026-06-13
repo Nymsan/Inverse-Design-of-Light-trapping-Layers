@@ -227,7 +227,7 @@ def main():
     target_key = stats["target_key"]
     print(f"n_continuous={n_continuous}  n_wavelengths={n_wavelengths}  materials={list(mat_dirs.keys())}")
 
-    batch = generate_eval_batch(stats, n_samples_per_mat=2)
+    batch = generate_eval_batch(stats)
     val_loader = [batch]
 
     all_history = {}

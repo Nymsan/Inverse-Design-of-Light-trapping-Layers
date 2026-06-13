@@ -225,13 +225,11 @@ class ResBlock1D(nn.Module):
 
 class SIREN(nn.Module):
     """
-    A Hybrid 'Conditioned Implicit Neural Representation'.
-    1. A CNN encodes the global 1D physical parameters into a latent vector.
-    2. A SIREN decoder takes (latent_vector, normalized_wavelength) -> (P_abs, S_abs)
-    This breaks the Spectral Bias trap, learning both global mappings and infinite-resolution sharp peaks.
+    A purely dense 'Conditioned Implicit Neural Representation'.
+    Flattens the structural profile and concatenates it with wavelength.
     """
     def __init__(self, n_harmonics=5, nx=128, n_continuous=12, n_wavelengths=322, n_materials=3, embed_dim=8, 
-                 conv_channels=(32, 64, 128, 64), kernel_size=7, dropout=0.05, siren_hidden=(256, 256, 256), latent_dim=128, omega_0=10.0):
+                 siren_hidden=(256, 512, 512, 256), omega_0=10.0, **kwargs):
         super().__init__()
         self.n_harmonics = n_harmonics
         self.nx = nx
@@ -240,32 +238,11 @@ class SIREN(nn.Module):
         self.seq_len = n_wavelengths // 2
         self.dispersion = MaterialDispersion(n_materials, embed_dim, omega_0=omega_0)
         
-        in_ch = 1 + 1 + embed_dim + 1
-        self.input_norm = nn.BatchNorm1d(in_ch)
+        geo_mat_dim = nx + 1 + 1 + embed_dim
+        self.input_norm = nn.BatchNorm1d(geo_mat_dim)
         
-        # 1. CNN Encoder (Learns the global bulk physics mapping from the spatial profile)
-        conv_layers = []
-        for i, out_ch in enumerate(conv_channels):
-            conv_layers.append(ResBlock1D(in_ch, out_ch, kernel_size, dropout))
-            if i < len(conv_channels) - 1:
-                conv_layers.append(nn.MaxPool1d(2)) # Downsample spatial dim
-            in_ch = out_ch
-        self.encoder_cnn = nn.Sequential(*conv_layers)
-        
-        downsample_factor = 2 ** (len(conv_channels) - 1)
-        spatial_dim = nx // downsample_factor
-        fc_in = conv_channels[-1] * spatial_dim
-        
-        # Project CNN output to latent vector
-        self.encoder_proj = nn.Sequential(
-            SkipLinear(fc_in, 256, activation="gelu", norm="layer", dropout=dropout),
-            nn.Linear(256, latent_dim),
-            nn.Tanh()
-        )
-        
-        # 2. SIREN Decoder (Learns the high-frequency continuous optical spectrum)
+        self.geo_proj = nn.Linear(geo_mat_dim, siren_hidden[0])
         self.wl_siren = SineLayer(1, siren_hidden[0], is_first=True, omega_0=omega_0)
-        self.latent_proj = nn.Linear(latent_dim, siren_hidden[0])
         self.disp_proj = nn.Linear(embed_dim, siren_hidden[0])
         
         siren_layers = []
@@ -273,12 +250,20 @@ class SIREN(nn.Module):
         for h_dim in siren_hidden[1:]:
             siren_layers.append(SineLayer(siren_in_dim, h_dim, is_first=False, omega_0=omega_0))
             siren_in_dim = h_dim
-        
+            
         self.siren_decoder = nn.Sequential(*siren_layers)
-        self.head = nn.Linear(siren_in_dim, 2) # Outputs (P_absorptance, S_absorptance)
-
+        self.head = nn.Linear(siren_in_dim, 2)
+        
     def forward(self, geometry, material_id, wls=None):
         B = geometry.shape[0]
+        
+        profile, h, inc_ang = build_profile(geometry, self.n_harmonics, self.nx)
+        mat_base = self.dispersion.get_base_embedding(material_id)
+        
+        geo_mat = torch.cat([profile, h, mat_base, inc_ang], dim=-1)
+        geo_mat = self.input_norm(geo_mat)
+        geo_embed = self.geo_proj(geo_mat)
+        
         if wls is None:
             wls_eval = torch.linspace(300, 1100, self.seq_len, device=geometry.device) + 1e-3
             W = self.seq_len
@@ -294,47 +279,22 @@ class SIREN(nn.Module):
                 wls_expanded = wls.unsqueeze(-1)
             return_flat = False
             
-        profile, h, inc_ang = build_profile(geometry, self.n_harmonics, self.nx)
-        mat_base = self.dispersion.get_base_embedding(material_id)
-        
-        B_prof, L = profile.shape
-        h_spatial = h.unsqueeze(2).expand(B_prof, 1, L)
-        mat_spatial = mat_base.unsqueeze(2).expand(B_prof, -1, L)
-        inc_ang_spatial = inc_ang.unsqueeze(2).expand(B_prof, 1, L)
-        
-        x_list = [profile.unsqueeze(1), h_spatial, mat_spatial, inc_ang_spatial]
-        x = torch.cat(x_list, dim=1)
-        
-        x = self.input_norm(x)
-        x = self.encoder_cnn(x)
-        x = x.view(B_prof, -1)
-        latent = self.encoder_proj(x)
-        
-        # Wavelength features
         wls_embed = self.wl_siren(wls_expanded)
         
-        # Latent features
-        latent_expanded = latent.unsqueeze(1).expand(B, W, -1)
-        latent_embed = self.latent_proj(latent_expanded)
-        
-        # Dispersion features
         disp_embed = self.dispersion(material_id, wls_expanded)
+        disp_embed = self.disp_proj(disp_embed)
         
-        # SIREN Input: combine and pass through remaining layers
-        siren_in = wls_embed + latent_embed + self.disp_proj(disp_embed)
+        geo_expanded = geo_embed.unsqueeze(1).expand(-1, W, -1)
+        siren_in = wls_embed + geo_expanded + disp_embed
         
-        # Output: [B, W, 2]
         out = self.head(self.siren_decoder(siren_in))
         
-        # Separate into P and S polarizations: [B, W]
         if return_flat:
-            p_pol = out[..., 0]
-            s_pol = out[..., 1]
-            return torch.cat([p_pol, s_pol], dim=1)
+            return torch.cat([out[..., 0], out[..., 1]], dim=1)
         return out
 
 class ForwardMLP(nn.Module):
-    def __init__(self, n_harmonics=5, nx=128, n_continuous=12, n_wavelengths=161, n_materials=3, embed_dim=8, hidden_dims=(256, 512, 512, 256), activation="snake", norm="layer", dropout=0.05, grating_period=1000.0):
+    def __init__(self, n_harmonics=5, nx=128, n_continuous=12, n_wavelengths=161, n_materials=3, embed_dim=8, hidden_dims=(256, 512, 512, 256), activation="gelu", norm="layer", dropout=0.05, grating_period=1000.0):
         super().__init__()
         self.n_harmonics = n_harmonics
         self.nx = nx

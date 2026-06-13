@@ -585,76 +585,50 @@ def plot_fields(sim, x_plot, z_plot, wavelength, polarization, params_x, params_
     
     return fig, axes
 
-def generate_eval_batch(stats, n_samples_per_mat=2):
-    import json
+def generate_eval_batch(stats, n_samples_per_mat=100):
     from pathlib import Path
-    from scipy.stats.qmc import LatinHypercube
+    import torch
     
-    n_continuous = stats["n_continuous"]
     materials = list(stats["materials"].keys())
-    n_mat = len(materials)
-    n_total = n_samples_per_mat * n_mat
-
-    # Read config from dataset_args.json
-    first_mat_dir = Path(__file__).resolve().parent.parent / "Data" / Path(list(stats["materials"].values())[0]).name
-    with open(first_mat_dir / "dataset_args.json", "r") as f:
-        ds_args = json.load(f)
-
-    sampler = LatinHypercube(d=n_continuous)
-    lhs_samples = sampler.random(n=n_total)
-
-    geo_min = stats["geo_min"].numpy()
-    geo_max = stats["geo_max"].numpy()
-    geo_np = geo_min + lhs_samples * (geo_max - geo_min)
-    geo = torch.tensor(geo_np, dtype=geo_dtype)
-
-    mat_id = torch.repeat_interleave(torch.arange(n_mat), n_samples_per_mat)
-
-    n_fourier = stats["n_harmonics"] * 2
-    px = geo[:, :n_fourier].view(n_total, -1, 2)
-    h_arr = geo[:, n_fourier]
-    inc_ang_arr = geo[:, n_fourier + 1]
-
-    wavelengths = np.linspace(300, 1100, stats["n_wavelengths"] // 2)
+    target_key = stats["target_key"]
     
-    targets = []
-    print("Generating exact physics via torcwa for evaluation...")
-    for i in tqdm(range(n_total), desc="Evaluating physics"):
-        config = RCWAConfig(
-            grating_period=ds_args.get("grating_period", 1000.0),
-            h=float(h_arr[i]),
-            order_N=ds_args.get("order_N", 15),
-            n_layers=ds_args.get("num_layers", 10),
-            height_per_layer=ds_args.get("height_per_layer", 50.0),
-            nx=ds_args.get("nx", 128),
-            ny=1,
-            add_reflector=not ds_args.get("no_reflector", False),
-            reflector_type=ds_args.get("reflector_type", "pec"),
-            subpixel=not ds_args.get("no_subpixel", False),
-            grating_material=materials[mat_id[i].item()]
-        )
-        
-        config.inc_ang = (inc_ang_arr[i].item() + 1e-3) * np.pi/180
-        config.azi_ang = 1e-3 * np.pi/180
-        
-        # Target key logic: we just simulate oblique incidence which corresponds to the sampled inc_ang
-        A_film, A_grat = get_absorptance_curve(
-            params_x=px[i], params_y=None, wavelengths=wavelengths, config=config
-        )
-        
-        target_key = stats["target_key"]
-        if "grating" in target_key.lower():
-            t = torch.cat([A_grat[:, 0].float(), A_grat[:, 1].float()], dim=-1)
-        else:
-            t = torch.cat([A_film[:, 0].float(), A_film[:, 1].float()], dim=-1)
+    test_dir = Path(__file__).resolve().parent.parent / "Data" / "Test_Data"
+    
+    all_geo, all_px, all_mat, all_target = [], [], [], []
+    for mat_id, mat_name in enumerate(materials):
+        batch_path = test_dir / f"{mat_name}_batch_0099.pt"
+        if not batch_path.exists():
+            print(f"Warning: Test batch not found: {batch_path}")
+            continue
             
-        targets.append(t.unsqueeze(0))
+        data = torch.load(batch_path, map_location="cpu", weights_only=False)
         
-    target = torch.cat(targets, dim=0)
-
+        px = data["params_x"][:n_samples_per_mat]
+        h = data["h"][:n_samples_per_mat].unsqueeze(-1)
+        inc_ang = data["inc_ang"][:n_samples_per_mat].unsqueeze(-1)
+        
+        geo = torch.cat([px.flatten(start_dim=1), h, inc_ang], dim=1)
+        
+        mat = torch.full((geo.shape[0],), mat_id, dtype=torch.long)
+        
+        if "grating" in target_key.lower():
+            target = torch.cat([data["A_grating_oblique"][:n_samples_per_mat, ..., 0], 
+                                data["A_grating_oblique"][:n_samples_per_mat, ..., 1]], dim=-1)
+        else:
+            target = torch.cat([data["A_film_oblique"][:n_samples_per_mat, ..., 0], 
+                                data["A_film_oblique"][:n_samples_per_mat, ..., 1]], dim=-1)
+                                
+        all_geo.append(geo)
+        all_px.append(px)
+        all_mat.append(mat)
+        all_target.append(target)
+        
+    if not all_geo:
+        raise FileNotFoundError(f"No test batches found in {test_dir}. Did you run the generation script and move them?")
+        
     return {
-        "geometry": geo,
-        "params_x": px,
-        "material_id": mat_id,
-        "target": target
+        "geometry": torch.cat(all_geo),
+        "params_x": torch.cat(all_px),
+        "material_id": torch.cat(all_mat),
+        "target": torch.cat(all_target).float()
     }
