@@ -10,6 +10,7 @@ from tqdm import tqdm
 import math
 from typing import Optional
 from dataclasses import dataclass  # noqa: E402
+from pathlib import Path
 
 # Hardware
 # If GPU support TF32 tensor core, the matmul operation is faster than FP32 but with less precision.
@@ -586,8 +587,6 @@ def plot_fields(sim, x_plot, z_plot, wavelength, polarization, params_x, params_
     return fig, axes
 
 def generate_eval_batch(stats, n_samples_per_mat=100):
-    from pathlib import Path
-    import torch
     
     materials = list(stats["materials"].keys())
     target_key = stats["target_key"]
@@ -603,25 +602,35 @@ def generate_eval_batch(stats, n_samples_per_mat=100):
             
         data = torch.load(batch_path, map_location="cpu", weights_only=False)
         
-        px = data["params_x"][:n_samples_per_mat]
-        h = data["h"][:n_samples_per_mat].unsqueeze(-1)
-        inc_ang = data["inc_ang"][:n_samples_per_mat].unsqueeze(-1)
-        
-        geo = torch.cat([px.flatten(start_dim=1), h, inc_ang], dim=1)
-        
-        mat = torch.full((geo.shape[0],), mat_id, dtype=torch.long)
-        
-        if "grating" in target_key.lower():
-            target = torch.cat([data["A_grating_oblique"][:n_samples_per_mat, ..., 0], 
-                                data["A_grating_oblique"][:n_samples_per_mat, ..., 1]], dim=-1)
+        def process_target(key, override_inc_ang=None):
+            target = data[key][:n_samples_per_mat].float()
+            if target.dim() == 2 and target.shape[1] == 2:
+                target = torch.cat([target[:, 0], target[:, 1]], dim=-1)
+            elif target.dim() == 3:
+                target = torch.cat([target[:, :, 0], target[:, :, 1]], dim=-1)
+                
+            valid_mask = (target.max(dim=-1).values <= 1.0) & (target.min(dim=-1).values >= 0.0)
+            
+            if valid_mask.any():
+                px = data["params_x"][:n_samples_per_mat].float()[valid_mask]
+                all_px.append(px)
+                
+                geo_parts = [px.view(px.shape[0], -1)]
+                geo_parts.append(data["h"][:n_samples_per_mat].float()[valid_mask].unsqueeze(-1))
+                if override_inc_ang is not None:
+                    geo_parts.append(torch.full((valid_mask.sum().item(), 1), override_inc_ang, dtype=torch.float32))
+                else:
+                    geo_parts.append(data["inc_ang"][:n_samples_per_mat].float()[valid_mask].unsqueeze(-1))
+                all_geo.append(torch.cat(geo_parts, dim=-1))
+                
+                all_mat.append(torch.full((valid_mask.sum().item(),), mat_id, dtype=torch.long))
+                all_target.append(target[valid_mask])
+                
+        if target_key == "all_film":
+            process_target("A_film_normal", override_inc_ang=0.0)
+            process_target("A_film_oblique", override_inc_ang=None)
         else:
-            target = torch.cat([data["A_film_oblique"][:n_samples_per_mat, ..., 0], 
-                                data["A_film_oblique"][:n_samples_per_mat, ..., 1]], dim=-1)
-                                
-        all_geo.append(geo)
-        all_px.append(px)
-        all_mat.append(mat)
-        all_target.append(target)
+            process_target(target_key, override_inc_ang=None)
         
     if not all_geo:
         raise FileNotFoundError(f"No test batches found in {test_dir}. Did you run the generation script and move them?")

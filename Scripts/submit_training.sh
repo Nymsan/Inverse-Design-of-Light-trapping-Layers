@@ -24,7 +24,7 @@ uv run python train_forward.py \
     --materials Si TiO2 Si3N4 \
     --target_key all_film \
     --epochs 2000 \
-    --batch_size 256 \
+    --batch_size 1024 \
     --lr 2e-3 \
     --patience 200 \
     --val_split 0.01 \
@@ -39,7 +39,7 @@ if [ "$RUN_IMPLICIT_SIREN" = true ]; then
         --materials Si TiO2 Si3N4 \
         --target_key all_film \
         --epochs 2000 \
-        --batch_size 256 \
+        --batch_size 1024 \
         --lr 2e-3 \
         --patience 200 \
         --val_split 0.01 \
@@ -51,7 +51,7 @@ uv run python train_inverse.py \
     --materials Si TiO2 Si3N4 \
     --target_key all_film \
     --epochs 2000 \
-    --batch_size 256 \
+    --batch_size 1024 \
     --lr 2e-3 \
     --patience 200 \
     --val_split 0.01 \

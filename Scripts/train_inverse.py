@@ -43,6 +43,15 @@ def get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics):
     best_name = None
     best_model = None
 
+    def _clean_state_dict(sd):
+        clean_sd = {}
+        for k, v in sd.items():
+            if k.startswith("_orig_mod."):
+                clean_sd[k[len("_orig_mod."):]] = v
+            else:
+                clean_sd[k] = v
+        return clean_sd
+
     # ForwardMLP
     p = ckpt_dir / "forward_mlp.pt"
     if p.exists():
@@ -59,7 +68,7 @@ def get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics):
             if val_loss < best_loss:
                 best_loss = val_loss
                 best_name = "forward_mlp"
-                model.load_state_dict(ckpt["model_state_dict"], strict=False)
+                model.load_state_dict(_clean_state_dict(ckpt["model_state_dict"]), strict=True)
                 best_model = model
 
     # SpatialCNN
@@ -79,7 +88,7 @@ def get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics):
             if val_loss < best_loss:
                 best_loss = val_loss
                 best_name = "spatial_cnn"
-                model.load_state_dict(ckpt["model_state_dict"], strict=False)
+                model.load_state_dict(_clean_state_dict(ckpt["model_state_dict"]), strict=True)
                 best_model = model
 
     # SkipCNN
@@ -99,7 +108,7 @@ def get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics):
             if val_loss < best_loss:
                 best_loss = val_loss
                 best_name = "skip_cnn"
-                model.load_state_dict(ckpt["model_state_dict"], strict=False)
+                model.load_state_dict(_clean_state_dict(ckpt["model_state_dict"]), strict=True)
                 best_model = model
 
     # SIREN
@@ -117,7 +126,7 @@ def get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics):
             if val_loss < best_loss:
                 best_loss = val_loss
                 best_name = "siren"
-                model.load_state_dict(ckpt["model_state_dict"], strict=False)
+                model.load_state_dict(_clean_state_dict(ckpt["model_state_dict"]), strict=True)
                 best_model = model
 
 
@@ -158,19 +167,32 @@ def main():
 
     print(f"Loading data from: {list(data_dirs.values())}")
     t0 = time.time()
-    dataset = GratingDataset(data_dirs, target_key=args.target_key)
-    print(f"Dataset loaded: {len(dataset)} samples in {time.time() - t0:.1f} s")
-
-    n_val = max(1, int(len(dataset) * args.val_split))
-    n_train = len(dataset) - n_val
-    train_set, val_set = random_split(dataset, [n_train, n_val])
+    
+    train_files = {mat: [] for mat in args.materials}
+    val_files = {mat: [] for mat in args.materials}
+    
+    import glob
+    import random
+    for mat_name, data_dir in data_dirs.items():
+        batch_files = sorted(glob.glob(f"{data_dir}/batch_*.pt"))
+        if not batch_files:
+            raise FileNotFoundError(f"No batch_*.pt files in {data_dir}")
+        random.shuffle(batch_files)
+        n_val = max(1, int(len(batch_files) * args.val_split))
+        val_files[mat_name] = batch_files[:n_val]
+        train_files[mat_name] = batch_files[n_val:]
+        
+    train_set = GratingDataset(train_files, target_key=args.target_key)
+    val_set = GratingDataset(val_files, target_key=args.target_key, geo_min=train_set.geo_min, geo_max=train_set.geo_max)
+    
+    print(f"Datasets loaded: Train {len(train_set)} samples, Val {len(val_set)} samples in {time.time() - t0:.1f} s")
 
     train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, drop_last=True, pin_memory=True, num_workers=4)
     val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, pin_memory=True, num_workers=4)
 
-    n_continuous = dataset.geometry.shape[-1]
-    n_harmonics = dataset.params_x.shape[1]
-    n_wavelengths = dataset.target.shape[-1]
+    n_continuous = train_set.geometry.shape[-1]
+    n_harmonics = train_set.params_x.shape[1]
+    n_wavelengths = train_set.target.shape[-1]
 
     print(f"n_continuous={n_continuous}  n_wavelengths={n_wavelengths}  materials={args.materials}")
     

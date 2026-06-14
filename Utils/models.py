@@ -147,53 +147,13 @@ class SineLayer(nn.Module):
         return torch.sin(self.omega_0 * self.linear(x))
 
 
-class MaterialDispersion(nn.Module):
-    """Encodes material ID and wavelength into a dynamic dispersion embedding."""
-    def __init__(self, n_materials=3, embed_dim=8, hidden_dim=32, omega_0=10.0):
-        super().__init__()
-        self.mat_embed = nn.Embedding(n_materials, embed_dim)
-        self.wl_net = SineLayer(1, hidden_dim, is_first=True, omega_0=omega_0)
-        self.proj = nn.Sequential(
-            SkipLinear(embed_dim + hidden_dim, hidden_dim, activation="gelu", norm="layer"),
-            nn.Linear(hidden_dim, embed_dim)
-        )
-
-    def get_base_embedding(self, material_id: torch.Tensor) -> torch.Tensor:
-        if material_id.dim() == 2:
-            return torch.matmul(material_id.float(), self.mat_embed.weight)
-        return self.mat_embed(material_id.long())
-
-    def forward(self, material_id: torch.Tensor, wls: torch.Tensor) -> torch.Tensor:
-        """
-        material_id: (B,)
-        wls: (W,) or (B, W) or (B, W, 1)
-        Returns: (B, W, embed_dim)
-        """
-        B = material_id.shape[0]
-        if wls.dim() == 1:
-            wls = wls.view(1, -1, 1).expand(B, -1, -1)
-        elif wls.dim() == 2:
-            wls = wls.unsqueeze(-1)
-            if wls.shape[0] == 1:
-                wls = wls.expand(B, -1, -1)
-        
-        W = wls.shape[1]
-        
-        base_m = self.get_base_embedding(material_id) # (B, embed_dim)
-        base_m = base_m.unsqueeze(1).expand(B, W, -1) # (B, W, embed_dim)
-        
-        w_embed = self.wl_net(wls) # (B, W, hidden_dim)
-        
-        x = torch.cat([base_m, w_embed], dim=-1)
-        return self.proj(x) # (B, W, embed_dim)
-
-
-
 class ResBlock1D(nn.Module):
-    def __init__(self, in_ch, out_ch, kernel_size=7, dropout=0.05):
+    def __init__(self, in_ch, out_ch, kernel_size=7, dropout=0.05, downsample=False):
         super().__init__()
+        stride = 2 if downsample else 1
+        pad_mode = "zeros" if downsample else "circular"
         
-        self.conv1 = nn.Conv1d(in_ch, out_ch, kernel_size, stride=1, padding=kernel_size // 2, padding_mode="circular")
+        self.conv1 = nn.Conv1d(in_ch, out_ch, kernel_size, stride=stride, padding=kernel_size // 2, padding_mode=pad_mode)
         self.norm1 = nn.BatchNorm1d(out_ch)
         self.act1 = nn.GELU()
         self.drop1 = nn.Dropout1d(dropout)
@@ -201,9 +161,9 @@ class ResBlock1D(nn.Module):
         self.conv2 = nn.Conv1d(out_ch, out_ch, kernel_size, stride=1, padding=kernel_size // 2, padding_mode="circular")
         self.norm2 = nn.BatchNorm1d(out_ch)
         
-        if in_ch != out_ch:
+        if in_ch != out_ch or downsample:
             self.skip = nn.Sequential(
-                nn.Conv1d(in_ch, out_ch, kernel_size=1, stride=1),
+                nn.Conv1d(in_ch, out_ch, kernel_size=1, stride=stride),
                 nn.BatchNorm1d(out_ch)
             )
         else:
@@ -225,44 +185,73 @@ class ResBlock1D(nn.Module):
 
 class SIREN(nn.Module):
     """
-    A purely dense 'Conditioned Implicit Neural Representation'.
-    Flattens the structural profile and concatenates it with wavelength.
+    A Hybrid 'Conditioned Implicit Neural Representation'.
+    1. A CNN encodes the global 1D physical parameters into a latent vector.
+    2. A SIREN decoder takes (latent_vector, normalized_wavelength) -> (P_abs, S_abs)
+    This breaks the Spectral Bias trap, learning both global mappings and infinite-resolution sharp peaks.
     """
     def __init__(self, n_harmonics=5, nx=128, n_continuous=12, n_wavelengths=322, n_materials=3, embed_dim=8, 
-                 siren_hidden=(256, 512, 512, 256), omega_0=10.0, **kwargs):
+                 conv_channels=(32, 64, 128, 64), kernel_size=7, dropout=0.05, siren_hidden=(256, 256, 256), latent_dim=128, omega_0=30.0, **kwargs):
         super().__init__()
         self.n_harmonics = n_harmonics
         self.nx = nx
         self.n_continuous = n_continuous
         self.n_wavelengths = n_wavelengths
         self.seq_len = n_wavelengths // 2
-        self.dispersion = MaterialDispersion(n_materials, embed_dim, omega_0=omega_0)
+        self.material_embedding = nn.Embedding(n_materials, embed_dim)
         
-        geo_mat_dim = nx + 1 + 1 + embed_dim
-        self.input_norm = nn.BatchNorm1d(geo_mat_dim)
+        in_ch = 1 + 1 + embed_dim + 1
+        self.input_norm = nn.BatchNorm1d(in_ch)
         
-        self.geo_proj = nn.Linear(geo_mat_dim, siren_hidden[0])
-        self.wl_siren = SineLayer(1, siren_hidden[0], is_first=True, omega_0=omega_0)
-        self.disp_proj = nn.Linear(embed_dim, siren_hidden[0])
+        # 1. CNN Encoder (matching SpatialCNN)
+        conv_layers = []
+        for i, out_ch in enumerate(conv_channels):
+            conv_layers += [
+                nn.Conv1d(in_ch, out_ch, kernel_size, padding=kernel_size // 2, padding_mode="circular"),
+                nn.BatchNorm1d(out_ch), nn.GELU(), nn.Dropout1d(dropout),
+            ]
+            if i < len(conv_channels) - 1:
+                conv_layers.append(nn.MaxPool1d(2))
+            in_ch = out_ch
+        self.encoder_cnn = nn.Sequential(*conv_layers)
         
+        downsample_factor = 2 ** (len(conv_channels) - 1)
+        spatial_dim = nx // downsample_factor
+        fc_in = conv_channels[-1] * spatial_dim
+        
+        # Project CNN output to latent vector
+        self.encoder_proj = nn.Sequential(
+            SkipLinear(fc_in, 256, activation="gelu", norm="layer", dropout=dropout),
+            nn.Linear(256, latent_dim)
+        )
+        
+        # 2. SIREN Decoder
+        siren_in_dim = latent_dim + 1 # latent_vector + 1D normalized wavelength
         siren_layers = []
-        siren_in_dim = siren_hidden[0]
-        for h_dim in siren_hidden[1:]:
-            siren_layers.append(SineLayer(siren_in_dim, h_dim, is_first=False, omega_0=omega_0))
+        for i, h_dim in enumerate(siren_hidden):
+            siren_layers.append(SineLayer(siren_in_dim, h_dim, is_first=(i==0), omega_0=omega_0))
             siren_in_dim = h_dim
             
         self.siren_decoder = nn.Sequential(*siren_layers)
         self.head = nn.Linear(siren_in_dim, 2)
-        
+
     def forward(self, geometry, material_id, wls=None):
         B = geometry.shape[0]
-        
         profile, h, inc_ang = build_profile(geometry, self.n_harmonics, self.nx)
-        mat_base = self.dispersion.get_base_embedding(material_id)
+        mat_embed = _embed_material(material_id, self.material_embedding)
         
-        geo_mat = torch.cat([profile, h, mat_base, inc_ang], dim=-1)
-        geo_mat = self.input_norm(geo_mat)
-        geo_embed = self.geo_proj(geo_mat)
+        L = profile.shape[1]
+        h_spatial = h.unsqueeze(2).expand(B, 1, L)
+        mat_spatial = mat_embed.unsqueeze(2).expand(B, -1, L)
+        inc_ang_spatial = inc_ang.unsqueeze(2).expand(B, 1, L)
+        
+        x_list = [profile.unsqueeze(1), h_spatial, mat_spatial, inc_ang_spatial]
+        x = torch.cat(x_list, dim=1)
+        
+        x = self.input_norm(x)
+        x = self.encoder_cnn(x)
+        x = x.view(B, -1)
+        latent = self.encoder_proj(x)
         
         if wls is None:
             wls_eval = torch.linspace(300, 1100, self.seq_len, device=geometry.device) + 1e-3
@@ -279,18 +268,17 @@ class SIREN(nn.Module):
                 wls_expanded = wls.unsqueeze(-1)
             return_flat = False
             
-        wls_embed = self.wl_siren(wls_expanded)
+        # Normalize to [-1, 1] across [300, 1100]
+        wls_norm = (wls_expanded - 700.0) / 400.0
         
-        disp_embed = self.dispersion(material_id, wls_expanded)
-        disp_embed = self.disp_proj(disp_embed)
-        
-        geo_expanded = geo_embed.unsqueeze(1).expand(-1, W, -1)
-        siren_in = wls_embed + geo_expanded + disp_embed
-        
+        latent_expanded = latent.unsqueeze(1).expand(B, W, -1)
+        siren_in = torch.cat([latent_expanded, wls_norm], dim=-1)
         out = self.head(self.siren_decoder(siren_in))
         
         if return_flat:
-            return torch.cat([out[..., 0], out[..., 1]], dim=1)
+            p_pol = out[..., 0]
+            s_pol = out[..., 1]
+            return torch.cat([p_pol, s_pol], dim=1)
         return out
 
 class ForwardMLP(nn.Module):
@@ -818,7 +806,7 @@ class GratingDataset(torch.utils.data.Dataset):
     """
 
     def __init__(
-        self, data_dirs: Dict[str, str], target_key: str = "A_film_normal",
+        self, data_files: Dict[str, list[str]], target_key: str = "A_film_normal",
         geo_min: Optional[torch.Tensor] = None, geo_max: Optional[torch.Tensor] = None,
     ):
         super().__init__()
@@ -827,12 +815,10 @@ class GratingDataset(torch.utils.data.Dataset):
         all_material: list[torch.Tensor] = []
         all_target: list[torch.Tensor] = []
 
-        for mat_name, data_dir in data_dirs.items():
+        for mat_name, batch_files in data_files.items():
             mat_id = MATERIAL_LIBRARY[mat_name]
-            import glob
-            batch_files = sorted(glob.glob(f"{data_dir}/batch_*.pt"))
             if not batch_files:
-                raise FileNotFoundError(f"No batch_*.pt files in {data_dir}")
+                raise FileNotFoundError(f"No batch_*.pt files provided for {mat_name}")
             for bf in batch_files:
                 data = torch.load(bf, map_location="cpu", weights_only=False)
                 B = data["h"].shape[0]
@@ -934,7 +920,7 @@ def train_forward_model(
     """Train Forward models (MLP, CNN, skipCNN, SIREN)."""
     model = model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=patience // 5)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=50, T_mult=2, eta_min=1e-6)
     criterion = nn.MSELoss()
     best_val, best_state, patience_ctr = float("inf"), None, 0
     history: dict[str, list[float]] = {"train_loss": [], "val_loss": [], "val_mae": [], "val_max_err": []}
@@ -1007,7 +993,7 @@ def train_forward_model(
         history["val_loss"].append(avg_val)
         history["val_mae"].append(avg_mae)
         history["val_max_err"].append(avg_max_err)
-        scheduler.step(avg_val)
+        scheduler.step()
 
         if avg_val < best_val:
             best_val = avg_val
@@ -1037,7 +1023,7 @@ def train_tandem(
     """Train tandem. Only InverseDecoder params are optimised; forward model stays frozen."""
     tandem = tandem.to(device)
     optimizer = torch.optim.AdamW(tandem.inverse_decoder.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=patience // 5)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=50, T_mult=2, eta_min=1e-6)
     criterion = nn.MSELoss()
     best_val, best_state, patience_ctr = float("inf"), None, 0
     history: dict[str, list[float]] = {"train_loss": [], "val_loss": [], "val_mae": [], "val_max_err": []}
@@ -1105,7 +1091,7 @@ def train_tandem(
         history["val_loss"].append(avg_val)
         history["val_mae"].append(avg_mae)
         history["val_max_err"].append(avg_max_err)
-        scheduler.step(avg_val)
+        scheduler.step()
 
         if avg_val < best_val:
             best_val = avg_val
@@ -1135,7 +1121,7 @@ def train_cvae(
     """Train C-VAE. All sub-networks trained jointly. Loss = recon + CE + β·KL + γ·margin."""
     cvae = cvae.to(device)
     optimizer = torch.optim.AdamW(cvae.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=patience // 5)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=50, T_mult=2, eta_min=1e-6)
     best_val, best_state, patience_ctr = float("inf"), None, 0
     history: dict[str, list[float]] = {
         "train_loss": [], "val_loss": [],
@@ -1173,7 +1159,7 @@ def train_cvae(
 
         avg_val = val_accum / len(val_loader)
         history["val_loss"].append(avg_val)
-        scheduler.step(avg_val)
+        scheduler.step()
 
         if avg_val < best_val:
             best_val = avg_val
@@ -1203,7 +1189,7 @@ def train_cvae_wishful(
     """Wishful thinking finetuning: select top quantile of curves and gradually pull them to 1.0."""
     cvae = cvae.to(device)
     optimizer = torch.optim.AdamW(cvae.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=patience // 5)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=50, T_mult=2, eta_min=1e-6)
     best_val, best_state, patience_ctr = float("inf"), None, 0
     history: dict[str, list[float]] = {
         "train_loss": [], "val_loss": [],
@@ -1266,7 +1252,7 @@ def train_cvae_wishful(
         if n_val == 0: continue
         avg_val = val_accum / n_val
         history["val_loss"].append(avg_val)
-        scheduler.step(avg_val)
+        scheduler.step()
 
         if avg_val < best_val:
             best_val = avg_val
@@ -1294,7 +1280,7 @@ def train_implicit_forward(
     """Train SIREN implicitly directly on individual physical wavelengths."""
     model = model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=patience // 5)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=50, T_mult=2, eta_min=1e-6)
     criterion = nn.MSELoss()
     best_val, best_state, patience_ctr = float("inf"), None, 0
     history: dict[str, list[float]] = {"train_loss": [], "val_loss": [], "val_mae": [], "val_max_err": []}
@@ -1346,7 +1332,7 @@ def train_implicit_forward(
         history["val_loss"].append(avg_val)
         history["val_mae"].append(avg_mae)
         history["val_max_err"].append(avg_max_err)
-        scheduler.step(avg_val)
+        scheduler.step()
 
         if avg_val < best_val:
             best_val = avg_val

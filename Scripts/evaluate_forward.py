@@ -41,7 +41,16 @@ WAVELENGTHS = np.linspace(300, 1100, 161)
 
 def load_checkpoint(path, model):
     ckpt = torch.load(path, map_location="cpu", weights_only=False)
-    model.load_state_dict(ckpt["model_state_dict"], strict=False)
+    state_dict = ckpt["model_state_dict"]
+    
+    clean_state_dict = {}
+    for k, v in state_dict.items():
+        if k.startswith("_orig_mod."):
+            clean_state_dict[k[len("_orig_mod."):]] = v
+        else:
+            clean_state_dict[k] = v
+            
+    model.load_state_dict(clean_state_dict, strict=True)
     model.eval()
     return ckpt.get("history", {}), model
 
@@ -95,17 +104,17 @@ def plot_forward_parity(models: dict[str, nn.Module], val_loader, save_path: str
             all_pred.append(pred)
             all_true.append(target)
 
-        pred = torch.cat(all_pred).numpy().flatten()
-        true = torch.cat(all_true).numpy().flatten()
+        pred = torch.cat(all_pred).mean(dim=1).numpy()
+        true = torch.cat(all_true).mean(dim=1).numpy()
 
-        ax.hexbin(true, pred, gridsize=80, cmap="inferno", mincnt=1)
-        ax.plot([0, 1], [0, 1], "w--", lw=1.5, alpha=0.8)
-        ax.set_xlabel("True Absorptance")
-        ax.set_ylabel("Predicted Absorptance")
+        ax.scatter(true, pred, alpha=0.6, s=15, c="blue", edgecolors="none")
+        ax.plot([0, 1], [0, 1], "k--", lw=1.5, alpha=0.8)
+        ax.set_xlabel("True Average Absorptance")
+        ax.set_ylabel("Pred Average Absorptance")
         ax.set_xlim(0, 1)
         ax.set_ylim(0, 1)
         ax.set_aspect("equal")
-        ax.set_title(f"Parity: {name.replace('_', ' ').title()}", fontsize=12)
+        ax.set_title(f"{name.replace('_', ' ').title()}", fontsize=12)
 
     plt.savefig(save_path)
     plt.close()
@@ -239,7 +248,7 @@ def main():
             n_harmonics=n_harmonics, nx=128,
             n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
-            hidden_dims=(256, 512, 512, 256), activation="snake",
+            hidden_dims=(256, 512, 512, 256), activation="gelu",
         )
         hist, model = load_checkpoint(mlp_path, model)
         forward_models["forward_mlp"] = model
