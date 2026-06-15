@@ -1,8 +1,8 @@
 #!/bin/sh
 #BSUB -J generate_dataset_Ag[1-300]
-#BSUB -q milan
+#BSUB -q hpc
 #BSUB -n 4
-#BSUB -R "rusage[mem=16GB]"
+#BSUB -R "rusage[mem=4GB]"
 #BSUB -R "span[hosts=1]"
 #BSUB -W 02:00
 #BSUB -o logs/generate_dataset_Ag/%J_%I.out
