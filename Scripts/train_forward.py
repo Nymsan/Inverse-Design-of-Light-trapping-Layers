@@ -13,9 +13,12 @@ import json
 import os
 import sys
 import time
+import glob
+import random
 from pathlib import Path
 
 import torch
+torch.set_float32_matmul_precision("high")
 from torch.utils.data import DataLoader, random_split
 
 # Resolve project root
@@ -23,7 +26,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from Utils.models import (
-    MATERIAL_LIBRARY, N_MATERIALS, ForwardMLP, SpatialCNN, SkipCNN, SIREN,
+    MATERIAL_LIBRARY, N_MATERIALS, ForwardMLP, SpatialCNN, SkipCNN, SIREN, TransformerForward,
     GratingDataset,
     train_forward_model,
 )
@@ -46,7 +49,7 @@ def get_args():
     p.add_argument("--target_key", type=str, default="all_film")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--device", default=None)
-    p.add_argument("--skip", nargs="*", default=[], choices=["mlp", "cnn", "skipcnn", "siren"])
+    p.add_argument("--skip", nargs="*", default=[], choices=["mlp", "cnn", "skipcnn", "siren", "transformer"])
     return p.parse_args()
 
 def main():
@@ -69,8 +72,6 @@ def main():
     train_files = {mat: [] for mat in args.materials}
     val_files = {mat: [] for mat in args.materials}
     
-    import glob
-    import random
     for mat_name, data_dir in data_dirs.items():
         batch_files = sorted(glob.glob(f"{data_dir}/batch_*.pt"))
         if not batch_files:
@@ -118,7 +119,7 @@ def main():
             n_harmonics=n_harmonics, nx=128,
             n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
-            hidden_dims=(256, 512, 512, 256), activation="gelu",
+            
         )
         n_params = sum(p.numel() for p in model.parameters())
         if hasattr(torch, "compile"):
@@ -145,8 +146,7 @@ def main():
         model = SpatialCNN(
             n_harmonics=n_harmonics, nx=128, n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
-            grating_period=1000.0, conv_channels=(32, 64, 128, 64),
-            fc_dims=(256, 512, 256),
+            grating_period=1000.0, 
         )
         n_params = sum(p.numel() for p in model.parameters())
         if hasattr(torch, "compile"):
@@ -173,7 +173,7 @@ def main():
         model = SkipCNN(
             n_harmonics=n_harmonics, nx=128, n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
-            grating_period=1000.0, conv_channels=(32, 64, 128, 64), fc_dims=(256, 512, 256),
+            grating_period=1000.0, 
         )
         n_params = sum(p.numel() for p in model.parameters())
         if hasattr(torch, "compile"):
@@ -200,7 +200,7 @@ def main():
         model = SIREN(
             n_harmonics=n_harmonics, nx=128, n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
-            conv_channels=(32, 64, 128, 64), kernel_size=7, dropout=0.05, siren_hidden=(256, 256, 256), latent_dim=128, omega_0=10.0
+            conv_channels=(32, 64, 128), kernel_size=7, dropout=0.0, siren_hidden=(256, 256, 256), latent_dim=64, omega_0=30.0
         )
         n_params = sum(p.numel() for p in model.parameters())
         if hasattr(torch, "compile"):
@@ -219,6 +219,33 @@ def main():
         print(f"  Time: {elapsed / 60:.1f} min")
 
         save_checkpoint(model, hist, str(ckpt_dir / "siren.pt"))
+
+    if "transformer" not in args.skip:
+        print("\n" + "=" * 60)
+        print("Training: TransformerForward")
+        print("=" * 60)
+        model = TransformerForward(
+            n_harmonics=n_harmonics, nx=128, n_continuous=n_continuous, n_wavelengths=n_wavelengths,
+            n_materials=N_MATERIALS, embed_dim=8,
+            d_model=128, nhead=4, num_layers=4, dim_feedforward=512, dropout=0.0, grating_period=1000.0
+        )
+        n_params = sum(p.numel() for p in model.parameters())
+        if hasattr(torch, "compile"):
+            model = torch.compile(model)
+        print(f"  Parameters: {n_params:,}")
+
+        t0 = time.time()
+        hist = train_forward_model(
+            model, train_loader, val_loader,
+            epochs=args.epochs, lr=args.lr, patience=args.patience,
+            device=device,
+        )
+        elapsed = time.time() - t0
+        timings["transformer"] = elapsed
+        all_history["transformer"] = hist
+        print(f"  Time: {elapsed / 60:.1f} min")
+
+        save_checkpoint(model, hist, str(ckpt_dir / "transformer_forward.pt"))
 
     history_path = ckpt_dir / "forward_history.json"
     with open(history_path, "w") as f:

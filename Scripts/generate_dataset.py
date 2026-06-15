@@ -61,21 +61,16 @@ def process_sample(i, h_arr, inc_ang_arr, amps_arr, phases_arr, wavelengths, arg
 from scipy.stats.qmc import LatinHypercube
 
 def get_lhs_samples(num_samples, seed=42):
-    # 10 dimensions: h, inc_ang, 4x amps, 4x phases
-    sampler = LatinHypercube(d=10, seed=seed)
+    # 12 dimensions: h, inc_ang, 5x amps, 5x phases
+    sampler = LatinHypercube(d=12, seed=seed)
     sample = sampler.random(n=num_samples)
     
     # Map from [0, 1] to physical bounds
-    h = 500 + 4500 * sample[:, 0]            # 500 nm to 5000 nm
+    h = 500 + 2500 * sample[:, 0]            # 500 nm to 3000 nm
     inc_ang = 0 + 30 * sample[:, 1]          # 0 to 30 degrees
     
-    amps = 0 + 10 * sample[:, 2:6]           # 0 to 10 nm max for a_1 to a_4
-    # Ensure a_0 is not mutated (keeps 0 offset)
-    amps = np.hstack((np.zeros((num_samples, 1)), amps)) # Shape (N, 5)
-    
-    phases = 0 + 2 * np.pi * sample[:, 6:10] # 0 to 2*pi for p_1 to p_4
-    # p_0 is 0
-    phases = np.hstack((np.zeros((num_samples, 1)), phases)) # Shape (N, 5)
+    amps = 0 + 10 * sample[:, 2:7]           # 0 to 10 nm max for all 5 harmonics
+    phases = 0 + 2 * np.pi * sample[:, 7:12] # 0 to 2*pi for all 5 phases
     
     return h, inc_ang, amps, phases
 

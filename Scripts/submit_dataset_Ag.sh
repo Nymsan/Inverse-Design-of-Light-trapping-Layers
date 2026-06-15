@@ -1,7 +1,7 @@
 #!/bin/sh
 #BSUB -J generate_dataset_Ag[1-3]
 #BSUB -q hpc
-#BSUB -n 32
+#BSUB -n 64
 #BSUB -R "rusage[mem=16GB]"
 #BSUB -R "span[hosts=1]"
 #BSUB -W 24:00

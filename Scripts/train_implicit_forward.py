@@ -16,6 +16,7 @@ import time
 from pathlib import Path
 
 import torch
+torch.set_float32_matmul_precision("high")
 from torch.utils.data import DataLoader, random_split
 
 # Resolve project root

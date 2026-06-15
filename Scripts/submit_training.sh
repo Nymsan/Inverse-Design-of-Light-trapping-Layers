@@ -24,10 +24,10 @@ uv run python train_forward.py \
     --materials Si TiO2 Si3N4 \
     --target_key all_film \
     --epochs 2000 \
-    --batch_size 1024 \
+    --batch_size 256 \
     --lr 2e-3 \
     --patience 200 \
-    --val_split 0.01 \
+    --val_split 0.05 \
     --skip \
     --seed 1337
 
@@ -39,10 +39,10 @@ if [ "$RUN_IMPLICIT_SIREN" = true ]; then
         --materials Si TiO2 Si3N4 \
         --target_key all_film \
         --epochs 2000 \
-        --batch_size 1024 \
+        --batch_size 256 \
         --lr 2e-3 \
         --patience 200 \
-        --val_split 0.01 \
+        --val_split 0.05 \
         --seed 1337
 fi
 
@@ -51,10 +51,10 @@ uv run python train_inverse.py \
     --materials Si TiO2 Si3N4 \
     --target_key all_film \
     --epochs 2000 \
-    --batch_size 1024 \
+    --batch_size 256 \
     --lr 2e-3 \
     --patience 200 \
-    --val_split 0.01 \
+    --val_split 0.05 \
     --seed 1337
 
 echo "Job completed at $(date)"

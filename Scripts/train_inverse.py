@@ -14,9 +14,12 @@ import json
 import os
 import sys
 import time
+import glob
+import random
 from pathlib import Path
 
 import torch
+torch.set_float32_matmul_precision("high")
 from torch.utils.data import DataLoader, random_split
 
 # Resolve project root
@@ -59,7 +62,7 @@ def get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics):
             n_harmonics=n_harmonics, nx=128,
             n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
-            hidden_dims=(256, 512, 512, 256), activation="gelu",
+            
         )
         ckpt = torch.load(p, map_location="cpu", weights_only=False)
         hist = ckpt.get("history", {})
@@ -78,8 +81,7 @@ def get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics):
             n_harmonics=n_harmonics, nx=128,
             n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
-            grating_period=1000.0, conv_channels=(32, 64, 128, 64),
-            fc_dims=(256, 512, 256),
+            grating_period=1000.0, 
         )
         ckpt = torch.load(p, map_location="cpu", weights_only=False)
         hist = ckpt.get("history", {})
@@ -98,8 +100,7 @@ def get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics):
             n_harmonics=n_harmonics, nx=128,
             n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
-            grating_period=1000.0, conv_channels=(32, 64, 128, 64),
-            fc_dims=(256, 512, 256),
+            grating_period=1000.0, 
         )
         ckpt = torch.load(p, map_location="cpu", weights_only=False)
         hist = ckpt.get("history", {})
@@ -171,8 +172,6 @@ def main():
     train_files = {mat: [] for mat in args.materials}
     val_files = {mat: [] for mat in args.materials}
     
-    import glob
-    import random
     for mat_name, data_dir in data_dirs.items():
         batch_files = sorted(glob.glob(f"{data_dir}/batch_*.pt"))
         if not batch_files:
@@ -227,12 +226,11 @@ def main():
                 n_wavelengths=n_wavelengths, n_geometry=n_continuous,
                 n_materials=N_MATERIALS, latent_dim=0,
                 geo_min=geo_min, geo_max=geo_max,
-                conv_channels=(32, 64, 128, 64), fc_dims=(256, 512, 256),
+                
             )
             tandem = TandemNetwork(inverse_decoder=decoder, forward_model=forward_model)
             n_params = sum(p.numel() for p in tandem.inverse_decoder.parameters())
-            if hasattr(torch, "compile"):
-                tandem = torch.compile(tandem)
+# Removed torch.compile due to dynamic tau parameter causing recompilation hangs
             print(f"  Trainable parameters (decoder only): {n_params:,}")
 
             t0 = time.time()
@@ -259,15 +257,14 @@ def main():
                 n_wavelengths=n_wavelengths, n_geometry=n_continuous,
                 n_materials=N_MATERIALS, latent_dim=latent_dim,
                 geo_min=geo_min, geo_max=geo_max,
-                conv_channels=(32, 64, 128, 64), fc_dims=(256, 512, 256),
+                
             )
             gen_tandem = GenerativeTandemNetwork(
                 inverse_decoder=decoder, forward_model=forward_model,
                 latent_dim=latent_dim,
             )
             n_params = sum(p.numel() for p in gen_tandem.inverse_decoder.parameters())
-            if hasattr(torch, "compile"):
-                gen_tandem = torch.compile(gen_tandem)
+# Removed torch.compile due to dynamic tau parameter causing recompilation hangs
             print(f"  Trainable parameters (decoder only): {n_params:,}")
 
             t0 = time.time()
@@ -289,7 +286,7 @@ def main():
         latent_dim = args.latent_dim_cvae
         geo_enc = GeometryEncoder(
             n_continuous=n_continuous, n_materials=N_MATERIALS, embed_dim=8,
-            latent_dim=latent_dim, fc_dims=(256,),
+            latent_dim=latent_dim, fc_dims=(256, 256),
         )
         geo_dec = GeometryDecoder(
             latent_dim=latent_dim, n_geometry=n_continuous,
@@ -306,8 +303,7 @@ def main():
             beta=1e-3, gamma=1.0,
         )
         n_params = sum(p.numel() for p in cvae.parameters())
-        if hasattr(torch, "compile"):
-            cvae = torch.compile(cvae)
+# Removed torch.compile due to dynamic tau parameter causing recompilation hangs
         print(f"  Parameters: {n_params:,}")
 
         t0 = time.time()
@@ -329,7 +325,7 @@ def main():
         # Finetune with lower lr and fewer epochs
         hist_ft = train_cvae_wishful(
             cvae, train_loader, val_loader,
-            epochs=max(10, args.epochs // 2), lr=args.lr * 0.1, patience=max(5, args.patience // 2),
+            epochs=args.epochs // 2 if args.epochs > 1 else 1, lr=args.lr * 0.1, patience=args.patience // 2 if args.patience > 1 else 1,
             device=device,
         )
         elapsed = time.time() - t0

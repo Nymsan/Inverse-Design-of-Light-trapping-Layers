@@ -36,8 +36,10 @@ from typing import Optional, Literal, Sequence, Dict
 from tqdm import tqdm
 
 import torch
+torch.set_float32_matmul_precision('high')
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
 
 # Ag is reflector-only and NOT available as a grating material.
 MATERIAL_LIBRARY: Dict[str, int] = {"Si": 0, "TiO2": 1, "Si3N4": 2}
@@ -51,16 +53,14 @@ class Snake(nn.Module):
         super().__init__()
         self.a = nn.Parameter(torch.full((in_features,), a_init))
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return x + (1.0 / self.a) * torch.sin(self.a * x) ** 2
+    def forward(self, x):
+        a = self.a
+        if x.dim() == 3:
+            a = a.unsqueeze(0).unsqueeze(2)
+        elif x.dim() == 2:
+            a = a.unsqueeze(0)
+        return x + (1.0 / a) * torch.sin(a * x) ** 2
 
-
-def polar_to_cartesian(params: torch.Tensor) -> torch.Tensor:
-    """(B, N, 2) [amp, phase] → (B, 2N) [a·cosφ, ..., a·sinφ, ...]."""
-    amps = params[:, :, 0]
-    phases = params[:, :, 1]
-    return torch.cat([amps * torch.cos(phases),
-                      amps * torch.sin(phases)], dim=1)
 
 
 def _make_activation(name: str, dim: int) -> nn.Module:
@@ -82,7 +82,6 @@ def _embed_material(material_id: torch.Tensor, embedding: nn.Embedding) -> torch
 
 
 def build_profile(geometry, n_harmonics, nx=128, grating_period=1000.0, r_grid=None, harmonic_idx=None):
-    import math
     n_fourier = n_harmonics * 2
     params_x = geometry[:, :n_fourier].view(-1, n_harmonics, 2)
     amps = params_x[:, :, 0]
@@ -134,11 +133,10 @@ class SineLayer(nn.Module):
         self.init_weights()
     
     def init_weights(self):
-        import numpy as np
         with torch.no_grad():
             if self.is_first:
-                self.linear.weight.uniform_(-1 / self.linear.in_features, 
-                                             1 / self.linear.in_features)
+                limit = np.sqrt(3 / self.linear.in_features)
+                self.linear.weight.uniform_(-limit, limit)
             else:
                 self.linear.weight.uniform_(-np.sqrt(6 / self.linear.in_features) / self.omega_0, 
                                              np.sqrt(6 / self.linear.in_features) / self.omega_0)
@@ -148,14 +146,14 @@ class SineLayer(nn.Module):
 
 
 class ResBlock1D(nn.Module):
-    def __init__(self, in_ch, out_ch, kernel_size=7, dropout=0.05, downsample=False):
+    def __init__(self, in_ch, out_ch, kernel_size=7, dropout=0.05, downsample=False, activation="gelu"):
         super().__init__()
         stride = 2 if downsample else 1
         pad_mode = "zeros" if downsample else "circular"
         
         self.conv1 = nn.Conv1d(in_ch, out_ch, kernel_size, stride=stride, padding=kernel_size // 2, padding_mode=pad_mode)
         self.norm1 = nn.BatchNorm1d(out_ch)
-        self.act1 = nn.GELU()
+        self.act1 = _make_activation(activation, out_ch)
         self.drop1 = nn.Dropout1d(dropout)
         
         self.conv2 = nn.Conv1d(out_ch, out_ch, kernel_size, stride=1, padding=kernel_size // 2, padding_mode="circular")
@@ -169,7 +167,7 @@ class ResBlock1D(nn.Module):
         else:
             self.skip = nn.Identity()
             
-        self.act2 = nn.GELU()
+        self.act2 = _make_activation(activation, out_ch)
         self.drop2 = nn.Dropout1d(dropout)
 
     def forward(self, x):
@@ -191,7 +189,7 @@ class SIREN(nn.Module):
     This breaks the Spectral Bias trap, learning both global mappings and infinite-resolution sharp peaks.
     """
     def __init__(self, n_harmonics=5, nx=128, n_continuous=12, n_wavelengths=322, n_materials=3, embed_dim=8, 
-                 conv_channels=(32, 64, 128, 64), kernel_size=7, dropout=0.05, siren_hidden=(256, 256, 256), latent_dim=128, omega_0=30.0, **kwargs):
+                 conv_channels=(32, 64, 128), kernel_size=7, dropout=0.0, siren_hidden=(256, 256, 256), latent_dim=64, omega_0=30.0, **kwargs):
         super().__init__()
         self.n_harmonics = n_harmonics
         self.nx = nx
@@ -215,13 +213,13 @@ class SIREN(nn.Module):
             in_ch = out_ch
         self.encoder_cnn = nn.Sequential(*conv_layers)
         
-        downsample_factor = 2 ** (len(conv_channels) - 1)
-        spatial_dim = nx // downsample_factor
-        fc_in = conv_channels[-1] * spatial_dim
-        
+        with torch.no_grad():
+            dummy = torch.zeros(1, 1 + 1 + embed_dim + 1, nx)
+            spatial_dim = self.encoder_cnn(dummy).shape[-1]
+        fc_in = conv_channels[-1] * spatial_dim        
         # Project CNN output to latent vector
         self.encoder_proj = nn.Sequential(
-            SkipLinear(fc_in, 256, activation="gelu", norm="layer", dropout=dropout),
+            SkipLinear(fc_in, 256, activation="snake", norm="layer", dropout=dropout),
             nn.Linear(256, latent_dim)
         )
         
@@ -273,7 +271,7 @@ class SIREN(nn.Module):
         
         latent_expanded = latent.unsqueeze(1).expand(B, W, -1)
         siren_in = torch.cat([latent_expanded, wls_norm], dim=-1)
-        out = self.head(self.siren_decoder(siren_in))
+        out = torch.sigmoid(self.head(self.siren_decoder(siren_in)))
         
         if return_flat:
             p_pol = out[..., 0]
@@ -282,7 +280,7 @@ class SIREN(nn.Module):
         return out
 
 class ForwardMLP(nn.Module):
-    def __init__(self, n_harmonics=5, nx=128, n_continuous=12, n_wavelengths=161, n_materials=3, embed_dim=8, hidden_dims=(256, 512, 512, 256), activation="gelu", norm="layer", dropout=0.05, grating_period=1000.0):
+    def __init__(self, n_harmonics=5, nx=128, n_continuous=12, n_wavelengths=161, n_materials=3, embed_dim=8, hidden_dims=(512, 512, 512), activation="gelu", norm="layer", dropout=0.0, grating_period=1000.0):
         super().__init__()
         self.n_harmonics = n_harmonics
         self.nx = nx
@@ -312,75 +310,78 @@ class ForwardMLP(nn.Module):
         x_list = [profile, h, mat_embed, inc_ang]
         x = torch.cat(x_list, dim=-1)
         x = self.input_norm(x)
-        return self.head(self.trunk(x))
-
+        return torch.sigmoid(self.head(self.trunk(x)))
 
 class SkipCNN(nn.Module):
-    def __init__(self, n_harmonics=5, nx=128, n_continuous=12, n_wavelengths=161, n_materials=3, embed_dim=8, grating_period=1000.0, conv_channels=(32, 64, 64), kernel_size=7, fc_dims=(256, 128), dropout=0.05):
+    def __init__(self, n_harmonics=5, nx=128, n_continuous=12, n_wavelengths=161, n_materials=3, embed_dim=8, grating_period=1000.0, conv_channels=(32, 64, 128, 64), kernel_size=7, fc_dims=(512, 256), dropout=0.0):
         super().__init__()
         self.n_harmonics = n_harmonics
         self.nx = nx
         self.n_continuous = n_continuous
         self.n_wavelengths = n_wavelengths
         self.grating_period = grating_period
-        self.material_embedding = nn.Embedding(n_materials, embed_dim)
         
+        self.material_embedding = nn.Embedding(n_materials, embed_dim)
         self.register_buffer("r_grid", torch.linspace(0, grating_period, nx + 1)[:-1])
         self.register_buffer("harmonic_idx", torch.arange(1, n_harmonics + 1, dtype=torch.float32))
 
-        in_ch = 1 + 1 + embed_dim + 1
+        in_ch = 1 + embed_dim + 1 # abs_profile + mat_embed + inc_ang
         self.input_norm = nn.BatchNorm1d(in_ch)
         
         conv_layers = []
         for i, out_ch in enumerate(conv_channels):
             conv_layers.append(ResBlock1D(in_ch, out_ch, kernel_size, dropout))
             if i < len(conv_channels) - 1:
-                conv_layers.append(nn.MaxPool1d(2)) # Downsample spatial dim
+                conv_layers.append(nn.MaxPool1d(2))
             in_ch = out_ch
         self.conv_backbone = nn.Sequential(*conv_layers)
 
-        # After len(conv_channels)-1 MaxPool1d(2) ops, spatial dim is downsampled
-        downsample_factor = 2 ** (len(conv_channels) - 1)
-        spatial_dim = nx // downsample_factor
-        fc_in = conv_channels[-1] * spatial_dim
-        
+        with torch.no_grad():
+            dummy = torch.zeros(1, 1 + embed_dim + 1, nx)
+            spatial_nx = self.conv_backbone(dummy).shape[-1]
+        fc_in = conv_channels[-1] * spatial_nx        
         fc_layers = []
         for fc_dim in fc_dims:
             fc_layers.append(SkipLinear(fc_in, fc_dim, activation="gelu", norm="layer", dropout=dropout))
             fc_in = fc_dim
         fc_layers.append(nn.Linear(fc_in, n_wavelengths))
+        fc_layers.append(nn.Sigmoid())
         self.fc_head = nn.Sequential(*fc_layers)
 
     def forward(self, geometry, material_id):
-        profile, h, inc_ang = build_profile(geometry, self.n_harmonics, self.nx, self.grating_period, self.r_grid, self.harmonic_idx)
+        profile, h, inc_ang = build_profile(
+            geometry, self.n_harmonics, self.nx, 
+            self.grating_period, self.r_grid, self.harmonic_idx
+        )
         mat_embed = _embed_material(material_id, self.material_embedding)
         
         B, L = profile.shape
-        h_spatial = h.unsqueeze(2).expand(B, 1, L)
-        mat_spatial = mat_embed.unsqueeze(2).expand(B, -1, L)
-        inc_ang_spatial = inc_ang.unsqueeze(2).expand(B, 1, L)
+        abs_profile = profile + h 
         
-        x_list = [profile.unsqueeze(1), h_spatial, mat_spatial, inc_ang_spatial]
-        x = torch.cat(x_list, dim=1)
+        x_prof = abs_profile.view(B, 1, L)
+        x_mat = mat_embed.view(B, -1, 1).expand(B, -1, L)
+        x_inc = inc_ang.view(B, 1, 1).expand(B, 1, L)
+        
+        x = torch.cat([x_prof, x_mat, x_inc], dim=1)
         x = self.input_norm(x)
         x = self.conv_backbone(x)
-        x = x.view(B, -1) # Flatten instead of mean()!
+        x = x.view(B, -1)
         return self.fc_head(x)
 
 class SpatialCNN(nn.Module):
-    def __init__(self, n_harmonics=5, nx=128, n_continuous=12, n_wavelengths=161, n_materials=3, embed_dim=8, grating_period=1000.0, conv_channels=(32, 64, 64), kernel_size=7, fc_dims=(256, 128), dropout=0.05):
+    def __init__(self, n_harmonics=5, nx=128, n_continuous=12, n_wavelengths=161, n_materials=3, embed_dim=8, grating_period=1000.0, conv_channels=(32, 64, 128, 64), kernel_size=7, fc_dims=(512, 256), dropout=0.0):
         super().__init__()
         self.n_harmonics = n_harmonics
         self.nx = nx
         self.n_continuous = n_continuous
         self.n_wavelengths = n_wavelengths
         self.grating_period = grating_period
-        self.material_embedding = nn.Embedding(n_materials, embed_dim)
         
+        self.material_embedding = nn.Embedding(n_materials, embed_dim)
         self.register_buffer("r_grid", torch.linspace(0, grating_period, nx + 1)[:-1])
         self.register_buffer("harmonic_idx", torch.arange(1, n_harmonics + 1, dtype=torch.float32))
 
-        in_ch = 1 + 1 + embed_dim + 1
+        in_ch = 1 + embed_dim + 1
         self.input_norm = nn.BatchNorm1d(in_ch)
         
         conv_layers = []
@@ -390,37 +391,110 @@ class SpatialCNN(nn.Module):
                 nn.BatchNorm1d(out_ch), nn.GELU(), nn.Dropout1d(dropout),
             ]
             if i < len(conv_channels) - 1:
-                conv_layers.append(nn.MaxPool1d(2)) # Downsample spatial dim
+                conv_layers += [
+                    nn.Conv1d(out_ch, out_ch, kernel_size=3, stride=2, padding=1),
+                    nn.BatchNorm1d(out_ch), nn.GELU(),
+                ]
             in_ch = out_ch
         self.conv_backbone = nn.Sequential(*conv_layers)
 
-        # After len(conv_channels)-1 MaxPool1d(2) ops, spatial dim is downsampled
-        downsample_factor = 2 ** (len(conv_channels) - 1)
-        spatial_dim = nx // downsample_factor
-        fc_in = conv_channels[-1] * spatial_dim
-        
+        with torch.no_grad():
+            dummy = torch.zeros(1, 1 + embed_dim + 1, nx)
+            spatial_nx = self.conv_backbone(dummy).shape[-1]
+        fc_in = conv_channels[-1] * spatial_nx        
         fc_layers = []
         for fc_dim in fc_dims:
             fc_layers.append(SkipLinear(fc_in, fc_dim, activation="gelu", norm="layer", dropout=dropout))
             fc_in = fc_dim
         fc_layers.append(nn.Linear(fc_in, n_wavelengths))
+        fc_layers.append(nn.Sigmoid())
         self.fc_head = nn.Sequential(*fc_layers)
 
     def forward(self, geometry, material_id):
-        profile, h, inc_ang = build_profile(geometry, self.n_harmonics, self.nx, self.grating_period, self.r_grid, self.harmonic_idx)
+        profile, h, inc_ang = build_profile(
+            geometry, self.n_harmonics, self.nx, 
+            self.grating_period, self.r_grid, self.harmonic_idx
+        )
         mat_embed = _embed_material(material_id, self.material_embedding)
         
         B, L = profile.shape
-        h_spatial = h.unsqueeze(2).expand(B, 1, L)
-        mat_spatial = mat_embed.unsqueeze(2).expand(B, -1, L)
-        inc_ang_spatial = inc_ang.unsqueeze(2).expand(B, 1, L)
+        abs_profile = profile + h 
         
-        x_list = [profile.unsqueeze(1), h_spatial, mat_spatial, inc_ang_spatial]
-        x = torch.cat(x_list, dim=1)
+        x_prof = abs_profile.view(B, 1, L)
+        x_mat = mat_embed.view(B, -1, 1).expand(B, -1, L)
+        x_inc = inc_ang.view(B, 1, 1).expand(B, 1, L)
+        
+        x = torch.cat([x_prof, x_mat, x_inc], dim=1)
         x = self.input_norm(x)
         x = self.conv_backbone(x)
-        x = x.view(B, -1) # Flatten instead of mean()!
+        x = x.view(B, -1)
         return self.fc_head(x)
+
+class TransformerForward(nn.Module):
+    def __init__(self, n_harmonics=5, nx=128, n_continuous=12, n_wavelengths=322, n_materials=3, 
+                 embed_dim=8, d_model=128, nhead=4, num_layers=4, dim_feedforward=512, dropout=0.0, grating_period=1000.0):
+        super().__init__()
+        self.n_harmonics = n_harmonics
+        self.nx = nx
+        self.grating_period = grating_period
+        
+        self.material_embedding = nn.Embedding(n_materials, embed_dim)
+        self.register_buffer("r_grid", torch.linspace(0, grating_period, nx + 1)[:-1])
+        self.register_buffer("harmonic_idx", torch.arange(1, n_harmonics + 1, dtype=torch.float32))
+        
+        # Token projectors
+        self.spatial_proj = nn.Linear(1, d_model)
+        self.h_proj = nn.Linear(1, d_model)
+        self.inc_ang_proj = nn.Linear(1, d_model)
+        self.mat_proj = nn.Linear(embed_dim, d_model)
+        
+        # Positional Encoding (learnable)
+        self.seq_len = nx + 3
+        self.pos_embed = nn.Parameter(torch.randn(1, self.seq_len, d_model) * 0.02)
+        self.pos_drop = nn.Dropout(p=dropout)
+        
+        # Transformer Encoder
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=d_model, nhead=nhead, dim_feedforward=dim_feedforward, 
+            dropout=dropout, activation="gelu", batch_first=True
+        )
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        
+        # Output Head
+        self.head = nn.Sequential(
+            nn.LayerNorm(d_model),
+            nn.Linear(d_model, 256),
+            nn.GELU(),
+            nn.Linear(256, n_wavelengths),
+            nn.Sigmoid()
+        )
+
+    def forward(self, geometry, material_id, wls=None):
+        profile, h, inc_ang = build_profile(
+            geometry, self.n_harmonics, self.nx, 
+            self.grating_period, self.r_grid, self.harmonic_idx
+        )
+        mat_embed = _embed_material(material_id, self.material_embedding)
+        
+        B, L = profile.shape
+        abs_profile = profile + h 
+        
+        # Project
+        spatial_tokens = self.spatial_proj(abs_profile.view(B, L, 1)) # (B, L, d_model)
+        h_token = self.h_proj(h.view(B, 1)).unsqueeze(1) # (B, 1, d_model)
+        inc_token = self.inc_ang_proj(inc_ang.view(B, 1)).unsqueeze(1) # (B, 1, d_model)
+        mat_token = self.mat_proj(mat_embed.view(B, -1)).unsqueeze(1) # (B, 1, d_model)
+        
+        # Sequence: [h, inc, mat, ...spatial...]
+        x = torch.cat([h_token, inc_token, mat_token, spatial_tokens], dim=1)
+        
+        x = x + self.pos_embed
+        x = self.pos_drop(x)
+        x = self.transformer(x)
+        
+        # Pooling (mean across all tokens)
+        x_pooled = x.mean(dim=1)
+        return self.head(x_pooled)
 
 class InverseDecoder(nn.Module):
     """Maps absorptance curve (+ optional noise z) → normalized geometry [0,1] + Gumbel material."""
@@ -454,23 +528,22 @@ class InverseDecoder(nn.Module):
         
         conv_layers = []
         for i, out_ch in enumerate(conv_channels):
-            conv_layers.append(ResBlock1D(in_ch, out_ch, kernel_size, dropout))
-            if i < len(conv_channels) - 1:
-                conv_layers.append(nn.MaxPool1d(2))
+            conv_layers.append(ResBlock1D(in_ch, out_ch, kernel_size, dropout, downsample=(i < len(conv_channels) - 1)))
             in_ch = out_ch
         self.conv_backbone = nn.Sequential(*conv_layers)
         
-        downsample_factor = 2 ** (len(conv_channels) - 1)
-        spatial_dim = self.seq_len // downsample_factor
-        fc_in = conv_channels[-1] * spatial_dim + latent_dim
-        
+        with torch.no_grad():
+            dummy = torch.zeros(1, 2, self.seq_len)
+            spatial_dim = self.conv_backbone(dummy).shape[-1]
+        fc_in = conv_channels[-1] * spatial_dim + latent_dim        
         fc_layers = []
         for fc_dim in fc_dims:
-            fc_layers.append(SkipLinear(fc_in, fc_dim, activation="gelu", norm="layer", dropout=dropout))
+            fc_layers.append(SkipLinear(fc_in, fc_dim, activation="snake", norm="layer", dropout=dropout))
             fc_in = fc_dim
         self.fc_head = nn.Sequential(*fc_layers)
 
-        self.geometry_head = nn.Linear(fc_in, n_geometry)
+        N = (n_geometry - 2) // 2
+        self.geometry_head = nn.Linear(fc_in, n_geometry + N)
         self.material_head = nn.Linear(fc_in, n_materials)
 
     def forward(
@@ -491,8 +564,19 @@ class InverseDecoder(nn.Module):
             
         h = self.fc_head(x)
         
-        pred_geometry_norm = self.geometry_head(h)
-        pred_geometry = torch.sigmoid(pred_geometry_norm) * (self.geo_max - self.geo_min) + self.geo_min
+        raw_geo = self.geometry_head(h)
+        N = (self.n_geometry - 2) // 2
+        amps_norm = torch.sigmoid(raw_geo[:, :N])
+        xy = raw_geo[:, N:3*N].view(B, N, 2)
+        h_inc_norm = torch.sigmoid(raw_geo[:, 3*N:])
+        
+        phases = torch.atan2(xy[:, :, 1], xy[:, :, 0]) + math.pi
+        amps = amps_norm * (self.geo_max[:, 0:2*N:2] - self.geo_min[:, 0:2*N:2]) + self.geo_min[:, 0:2*N:2]
+        
+        pred_geometry = torch.empty(B, self.n_geometry, device=raw_geo.device)
+        pred_geometry[:, 0:2*N:2] = amps
+        pred_geometry[:, 1:2*N:2] = phases
+        pred_geometry[:, 2*N:] = h_inc_norm * (self.geo_max[:, 2*N:] - self.geo_min[:, 2*N:]) + self.geo_min[:, 2*N:]
         
         material_logits = self.material_head(h)
         material_onehot = F.gumbel_softmax(material_logits, tau=tau, hard=hard)
@@ -596,19 +680,17 @@ class GeometryEncoder(nn.Module):
         
         conv_layers = []
         for i, out_ch in enumerate(conv_channels):
-            conv_layers.append(ResBlock1D(in_ch, out_ch, kernel_size, dropout))
-            if i < len(conv_channels) - 1:
-                conv_layers.append(nn.MaxPool1d(2))
+            conv_layers.append(ResBlock1D(in_ch, out_ch, kernel_size, dropout, downsample=(i < len(conv_channels) - 1)))
             in_ch = out_ch
         self.conv_backbone = nn.Sequential(*conv_layers)
 
-        downsample_factor = 2 ** (len(conv_channels) - 1)
-        spatial_dim = nx // downsample_factor
-        fc_in = conv_channels[-1] * spatial_dim
-        
+        with torch.no_grad():
+            dummy = torch.zeros(1, 1 + 1 + embed_dim + 1, nx)
+            spatial_dim = self.conv_backbone(dummy).shape[-1]
+        fc_in = conv_channels[-1] * spatial_dim        
         fc_layers = []
         for fc_dim in fc_dims:
-            fc_layers.append(SkipLinear(fc_in, fc_dim, activation="gelu", norm="layer", dropout=dropout))
+            fc_layers.append(SkipLinear(fc_in, fc_dim, activation="snake", norm="layer", dropout=dropout))
             fc_in = fc_dim
         self.fc_head = nn.Sequential(*fc_layers)
         
@@ -654,17 +736,30 @@ class GeometryDecoder(nn.Module):
         in_dim = latent_dim
         layers: list[nn.Module] = []
         for h_dim in hidden_dims:
-            layers.append(SkipLinear(in_dim, h_dim, activation="gelu", norm="layer", dropout=dropout))
+            layers.append(SkipLinear(in_dim, h_dim, activation="snake", norm="layer", dropout=dropout))
             in_dim = h_dim
         self.trunk = nn.Sequential(*layers)
-        self.geometry_head = nn.Linear(in_dim, n_geometry)
+        N = (n_geometry - 2) // 2
+        self.geometry_head = nn.Linear(in_dim, n_geometry + N)
         self.material_head = nn.Linear(in_dim, n_materials)
 
     def forward(self, z: torch.Tensor, tau: float = 1.0, hard: bool = True):
         """Returns (recon_geometry_physical, material_onehot, material_logits)."""
         h = self.trunk(z)
-        recon_geometry_norm = self.geometry_head(h)
-        recon_geometry = torch.sigmoid(recon_geometry_norm) * (self.geo_max - self.geo_min) + self.geo_min
+        raw_geo = self.geometry_head(h)
+        B = raw_geo.shape[0]
+        N = (self.n_geometry - 2) // 2
+        amps_norm = torch.sigmoid(raw_geo[:, :N])
+        xy = raw_geo[:, N:3*N].view(B, N, 2)
+        h_inc_norm = torch.sigmoid(raw_geo[:, 3*N:])
+        
+        phases = torch.atan2(xy[:, :, 1], xy[:, :, 0]) + math.pi
+        amps = amps_norm * (self.geo_max[:, 0:2*N:2] - self.geo_min[:, 0:2*N:2]) + self.geo_min[:, 0:2*N:2]
+        
+        recon_geometry = torch.empty(B, self.n_geometry, device=raw_geo.device)
+        recon_geometry[:, 0:2*N:2] = amps
+        recon_geometry[:, 1:2*N:2] = phases
+        recon_geometry[:, 2*N:] = h_inc_norm * (self.geo_max[:, 2*N:] - self.geo_min[:, 2*N:]) + self.geo_min[:, 2*N:]
         material_logits = self.material_head(h)
         material_onehot = F.gumbel_softmax(material_logits, tau=tau, hard=hard)
         return recon_geometry, material_onehot, material_logits
@@ -685,19 +780,17 @@ class SpectrumEncoder(nn.Module):
         
         conv_layers = []
         for i, out_ch in enumerate(conv_channels):
-            conv_layers.append(ResBlock1D(in_ch, out_ch, kernel_size, dropout))
-            if i < len(conv_channels) - 1:
-                conv_layers.append(nn.MaxPool1d(2))
+            conv_layers.append(ResBlock1D(in_ch, out_ch, kernel_size, dropout, downsample=(i < len(conv_channels) - 1)))
             in_ch = out_ch
         self.conv_backbone = nn.Sequential(*conv_layers)
         
-        downsample_factor = 2 ** (len(conv_channels) - 1)
-        spatial_dim = self.seq_len // downsample_factor
-        fc_in = conv_channels[-1] * spatial_dim
-        
+        with torch.no_grad():
+            dummy = torch.zeros(1, 2, self.seq_len)
+            spatial_dim = self.conv_backbone(dummy).shape[-1]
+        fc_in = conv_channels[-1] * spatial_dim        
         fc_layers = []
         for fc_dim in fc_dims:
-            fc_layers.append(SkipLinear(fc_in, fc_dim, activation="gelu", norm="layer", dropout=dropout))
+            fc_layers.append(SkipLinear(fc_in, fc_dim, activation="snake", norm="layer", dropout=dropout))
             fc_in = fc_dim
             
         self.fc_head = nn.Sequential(*fc_layers)
@@ -773,7 +866,7 @@ class ContrastiveVAE(nn.Module):
         pred_norm = (out["recon_geometry"] - geo_min) / (geo_max - geo_min + 1e-9)
         targ_norm = (geometry - geo_min) / (geo_max - geo_min + 1e-9)
         
-        loss_recon = F.mse_loss(pred_norm, targ_norm)
+        loss_recon = F.huber_loss(pred_norm, targ_norm, delta=0.01)
         loss_mat_ce = F.cross_entropy(out["recon_material_logits"], material_id)
         loss_kl = self.kl_divergence(out["mu_x"], out["logvar_x"])
         loss_margin = self.margin_loss(out["z_x"], out["z_y"], self.margin_radius)
@@ -920,8 +1013,8 @@ def train_forward_model(
     """Train Forward models (MLP, CNN, skipCNN, SIREN)."""
     model = model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=50, T_mult=2, eta_min=1e-6)
-    criterion = nn.MSELoss()
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=20, min_lr=1e-6)
+    criterion = nn.HuberLoss(delta=0.01)
     best_val, best_state, patience_ctr = float("inf"), None, 0
     history: dict[str, list[float]] = {"train_loss": [], "val_loss": [], "val_mae": [], "val_max_err": []}
 
@@ -930,14 +1023,15 @@ def train_forward_model(
         model.train()
         train_loss_accum = 0.0
         
-        lambda_fft = 1.0 * min(1.0, (epoch - 1) / max(1, epochs // 2))
+        # Disabled FFT loss per user request
+        lambda_fft = 1.0
         
         for batch in train_loader:
             geo, mat, target = (batch["geometry"].to(device),
                                 batch["material_id"].to(device), batch["target"].to(device))
             pred = model(geo, mat)
             
-            mse_loss = criterion(pred, target)
+            base_loss = criterion(pred, target)
             wl = target.shape[-1] // 2
             
             fft_pred_p = torch.fft.rfft(pred[:, :wl], dim=-1, norm="ortho").abs()
@@ -947,7 +1041,7 @@ def train_forward_model(
             
             spectral_loss = criterion(fft_pred_p, fft_target_p) + criterion(fft_pred_s, fft_target_s)
             
-            loss = mse_loss + lambda_fft * spectral_loss
+            loss = base_loss + lambda_fft * spectral_loss
             
             optimizer.zero_grad()
             loss.backward()
@@ -967,7 +1061,7 @@ def train_forward_model(
                                     batch["material_id"].to(device), batch["target"].to(device))
                 pred = model(geo, mat)
                 
-                mse_loss = criterion(pred, target)
+                base_loss = criterion(pred, target)
                 wl = target.shape[-1] // 2
                 
                 fft_pred_p = torch.fft.rfft(pred[:, :wl], dim=-1, norm="ortho").abs()
@@ -978,7 +1072,7 @@ def train_forward_model(
                 spectral_loss = criterion(fft_pred_p, fft_target_p) + criterion(fft_pred_s, fft_target_s)
                 
                 # Validation always evaluates against the final, full-weighted objective
-                loss = mse_loss + 1.0 * spectral_loss
+                loss = base_loss + 1.0 * spectral_loss
                 
                 val_loss_accum += loss.item()
                 
@@ -993,7 +1087,7 @@ def train_forward_model(
         history["val_loss"].append(avg_val)
         history["val_mae"].append(avg_mae)
         history["val_max_err"].append(avg_max_err)
-        scheduler.step()
+        scheduler.step(avg_val)
 
         if avg_val < best_val:
             best_val = avg_val
@@ -1007,7 +1101,7 @@ def train_forward_model(
 
         pbar.set_postfix_str(f"lr={optimizer.param_groups[0]['lr']:.1e} "
                              f"best={best_val:.3e} train={avg_train:.3e} val={avg_val:.3e} "
-                             f"vMAE={avg_mae:.3f} vMaxE={val_max_err_accum:.3f}")
+                             f"vMAE={avg_mae:.3f} vMaxE={avg_max_err:.3f}")
 
     if best_state is not None:
         model.load_state_dict(best_state)
@@ -1023,8 +1117,8 @@ def train_tandem(
     """Train tandem. Only InverseDecoder params are optimised; forward model stays frozen."""
     tandem = tandem.to(device)
     optimizer = torch.optim.AdamW(tandem.inverse_decoder.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=50, T_mult=2, eta_min=1e-6)
-    criterion = nn.MSELoss()
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=20, min_lr=1e-6)
+    criterion = nn.HuberLoss(delta=0.01)
     best_val, best_state, patience_ctr = float("inf"), None, 0
     history: dict[str, list[float]] = {"train_loss": [], "val_loss": [], "val_mae": [], "val_max_err": []}
 
@@ -1039,7 +1133,7 @@ def train_tandem(
             out = tandem(target, tau=tau)
             pred = out["predicted_curve"]
             
-            mse_loss = criterion(pred, target)
+            base_loss = criterion(pred, target)
             wl = target.shape[-1] // 2
             
             # Spectral Loss (FFT Magnitude) - insensitive to small peak shifts
@@ -1050,7 +1144,7 @@ def train_tandem(
             
             spectral_loss = (criterion(fft_pred_p, fft_target_p) + criterion(fft_pred_s, fft_target_s)) / wl
             
-            loss = mse_loss + 0.5 * spectral_loss
+            loss = base_loss + 0.5 * spectral_loss
             
             optimizer.zero_grad(); loss.backward(); optimizer.step()
             train_loss_accum += loss.item()
@@ -1068,7 +1162,7 @@ def train_tandem(
                 out = tandem(target, tau=tau)
                 pred = out["predicted_curve"]
                 
-                mse_loss = criterion(pred, target)
+                base_loss = criterion(pred, target)
                 wl = target.shape[-1] // 2
                 
                 fft_pred_p = torch.fft.rfft(pred[:, :wl], dim=-1).abs()
@@ -1078,7 +1172,7 @@ def train_tandem(
                 
                 spectral_loss = (criterion(fft_pred_p, fft_target_p) + criterion(fft_pred_s, fft_target_s)) / wl
                 
-                val_loss_accum += (mse_loss + 0.5 * spectral_loss).item()
+                val_loss_accum += (base_loss + 0.5 * spectral_loss).item()
                 
                 abs_err = torch.abs(pred - target)
                 val_mae_accum += abs_err.mean().item()
@@ -1091,7 +1185,7 @@ def train_tandem(
         history["val_loss"].append(avg_val)
         history["val_mae"].append(avg_mae)
         history["val_max_err"].append(avg_max_err)
-        scheduler.step()
+        scheduler.step(avg_val)
 
         if avg_val < best_val:
             best_val = avg_val
@@ -1105,7 +1199,7 @@ def train_tandem(
 
         pbar.set_postfix_str(f"tau={tau:.2f} lr={optimizer.param_groups[0]['lr']:.1e} "
                              f"best={best_val:.3e} train={avg_train:.3e} val={avg_val:.3e} "
-                             f"vMAE={avg_mae:.3f} vMaxE={val_max_err_accum:.3f}")
+                             f"vMAE={avg_mae:.3f} vMaxE={avg_max_err:.3f}")
 
     if best_state is not None:
         tandem.inverse_decoder.load_state_dict(best_state)
@@ -1121,7 +1215,7 @@ def train_cvae(
     """Train C-VAE. All sub-networks trained jointly. Loss = recon + CE + β·KL + γ·margin."""
     cvae = cvae.to(device)
     optimizer = torch.optim.AdamW(cvae.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=50, T_mult=2, eta_min=1e-6)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=20, min_lr=1e-6)
     best_val, best_state, patience_ctr = float("inf"), None, 0
     history: dict[str, list[float]] = {
         "train_loss": [], "val_loss": [],
@@ -1159,7 +1253,7 @@ def train_cvae(
 
         avg_val = val_accum / len(val_loader)
         history["val_loss"].append(avg_val)
-        scheduler.step()
+        scheduler.step(avg_val)
 
         if avg_val < best_val:
             best_val = avg_val
@@ -1189,7 +1283,7 @@ def train_cvae_wishful(
     """Wishful thinking finetuning: select top quantile of curves and gradually pull them to 1.0."""
     cvae = cvae.to(device)
     optimizer = torch.optim.AdamW(cvae.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=50, T_mult=2, eta_min=1e-6)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=20, min_lr=1e-6)
     best_val, best_state, patience_ctr = float("inf"), None, 0
     history: dict[str, list[float]] = {
         "train_loss": [], "val_loss": [],
@@ -1252,7 +1346,7 @@ def train_cvae_wishful(
         if n_val == 0: continue
         avg_val = val_accum / n_val
         history["val_loss"].append(avg_val)
-        scheduler.step()
+        scheduler.step(avg_val)
 
         if avg_val < best_val:
             best_val = avg_val
@@ -1280,13 +1374,11 @@ def train_implicit_forward(
     """Train SIREN implicitly directly on individual physical wavelengths."""
     model = model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=50, T_mult=2, eta_min=1e-6)
-    criterion = nn.MSELoss()
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=20, min_lr=1e-6)
+    criterion = nn.HuberLoss(delta=0.01)
     best_val, best_state, patience_ctr = float("inf"), None, 0
     history: dict[str, list[float]] = {"train_loss": [], "val_loss": [], "val_mae": [], "val_max_err": []}
 
-    import sys
-    from tqdm import tqdm
     pbar = tqdm(range(1, epochs + 1), desc="Epochs", unit="ep", dynamic_ncols=True, file=sys.stdout)
     for epoch in pbar:
         model.train()
@@ -1318,8 +1410,8 @@ def train_implicit_forward(
                 target = batch["target"].to(device)
                 
                 pred = model(geo, mat, wls=wl).squeeze(1)
-                mse_loss = criterion(pred, target)
-                val_loss_accum += mse_loss.item()
+                base_loss = criterion(pred, target)
+                val_loss_accum += base_loss.item()
                 
                 abs_err = torch.abs(pred - target)
                 val_mae_accum += abs_err.mean().item()
@@ -1332,7 +1424,7 @@ def train_implicit_forward(
         history["val_loss"].append(avg_val)
         history["val_mae"].append(avg_mae)
         history["val_max_err"].append(avg_max_err)
-        scheduler.step()
+        scheduler.step(avg_val)
 
         if avg_val < best_val:
             best_val = avg_val

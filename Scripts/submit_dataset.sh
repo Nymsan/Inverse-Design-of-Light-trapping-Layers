@@ -1,7 +1,7 @@
 #!/bin/sh
 #BSUB -J generate_dataset_cpu[1-3]
 #BSUB -q hpc
-#BSUB -n 24
+#BSUB -n 64
 #BSUB -R "rusage[mem=16GB]"
 #BSUB -R "span[hosts=1]"
 #BSUB -W 24:00

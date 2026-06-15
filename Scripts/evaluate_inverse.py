@@ -14,6 +14,8 @@ import os
 import sys
 from pathlib import Path
 
+from tqdm import tqdm
+
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -27,8 +29,9 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from Utils.models import (
     MATERIAL_LIBRARY, N_MATERIALS,
-    ForwardMLP, SpatialCNN,
-    TandemNetwork, GenerativeTandemNetwork, ContrastiveVAE,
+    ForwardMLP, SpatialCNN, SkipCNN, SIREN,
+    TandemNetwork, GenerativeTandemNetwork, ContrastiveVAE, InverseDecoder,
+    GeometryEncoder, SpectrumEncoder, GeometryDecoder
 )
 from Utils.utils import generate_eval_batch
 
@@ -52,7 +55,7 @@ def plot_loss_curves(all_history: dict, save_path: str):
     if not all_history:
         return
     n_models = len(all_history)
-    fig, axes = plt.subplots(1, n_models, figsize=(5 * n_models, 4), squeeze=False, layout="constrained")
+    fig, axes = plt.subplots(1, n_models, figsize=(5 * n_models, 5), squeeze=False, layout="tight")
     axes = axes[0]
 
     for ax, (name, hist) in zip(axes, all_history.items()):
@@ -67,7 +70,7 @@ def plot_loss_curves(all_history: dict, save_path: str):
         ax.legend()
         ax.grid(True, alpha=0.3)
 
-    plt.suptitle("Inverse Training Loss Curves", fontsize=15, y=1.02)
+    plt.suptitle("Inverse Training Loss Curves", fontsize=15)
     plt.savefig(save_path)
     plt.close()
     print(f"  Saved: {save_path}")
@@ -215,7 +218,7 @@ def plot_candidate_designs(inv_model, forward_model, val_loader, save_path: str,
             writer.writerow(row)
     print(f"  Saved: {csv_path}")
     
-    fig, axes = plt.subplots(n_samples, 2, figsize=(14, 4 * n_samples), squeeze=False, layout="constrained")
+    fig, axes = plt.subplots(n_samples, 3, figsize=(18, 4 * n_samples), squeeze=False, layout="tight")
     n_wl_half = n_wavelengths // 2
     mat_names = list(stats["materials"].keys())
     
@@ -224,7 +227,7 @@ def plot_candidate_designs(inv_model, forward_model, val_loader, save_path: str,
     r_grid = np.linspace(0, 1000.0, 256)
     harmonic_idx = np.arange(1, n_harmonics + 1)
     
-    for i in range(n_samples):
+    for i in tqdm(range(n_samples), desc="Simulating Inverse Designs (RCWA)"):
         idx = selected_indices[i]
         target_mat_idx = mat[idx].item()
         target_mat_name = mat_names[target_mat_idx] if target_mat_idx < len(mat_names) else f"Mat_{target_mat_idx}"
@@ -278,7 +281,7 @@ def plot_candidate_designs(inv_model, forward_model, val_loader, save_path: str,
         # ---------------------------------
 
         mat_idx = mat_oh[i].argmax().item()
-        mat_name = mat_names[mat_idx] if mat_idx < len(mat_names) else f"Untrained_Mat_{mat_idx}"
+        mat_name = mat_names[mat_idx] if mat_idx < len(mat_names) else f"Untrained_{mat_idx}"
         n_harmonics = stats["n_harmonics"]
         n_fourier = n_harmonics * 2
         
@@ -290,17 +293,37 @@ def plot_candidate_designs(inv_model, forward_model, val_loader, save_path: str,
         arg = 2.0 * np.pi * harmonic_idx[:, None] * r_grid[None, :] / 1000.0 - phases[:, None]
         cosines = amps[:, None] * np.cos(arg)
         prof = grating_height / 2.0 + cosines.sum(axis=0)
-        p_min = prof.min()
-        p_max = prof.max()
-        prof = (prof - p_min) / (p_max - p_min + 1e-9)
         
-        ax.fill_between(r_grid, 0, prof * h_nm, color="gray", alpha=0.5)
-        ax.set_ylim(0, max(600, h_nm * 1.2))
+        ax.fill_between(r_grid, 0, prof, color="gray", alpha=0.5)
+        ax.set_ylim(0, max(120, grating_height * 1.2))
         ax.set_xlim(0, 1000)
-        ax.set_title(f"Candidate {i+1} ({mat_name}, h={h_nm:.1f}nm)")
-        ax.set_ylabel("Thickness (nm)")
+        ax.set_title(f"Candidate {i+1} ({mat_name})")
+        
+        text_str = f"Film Height ($h$): {h_nm:.1f} nm\nGrating Height: {grating_height:.1f} nm\nIncidence: {inc_ang_deg:.1f}°"
+        ax.text(0.05, 0.95, text_str, transform=ax.transAxes, fontsize=10,
+                verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+        ax.set_ylabel("Grating Thickness (nm)")
         if i == n_samples - 1:
             ax.set_xlabel("x (nm)")
+            
+        # Third column: Harmonics Bar Plot
+        ax_h = axes[i, 2]
+        x_pos = np.arange(1, n_harmonics + 1)
+        ax_h.bar(x_pos, amps, color="skyblue", edgecolor="black")
+        ax_h.set_ylabel("Amplitude (nm)", color="C0")
+        ax_h.tick_params(axis='y', labelcolor="C0")
+        
+        ax_p = ax_h.twinx()
+        ax_p.plot(x_pos, phases, 'ro', markersize=8)
+        ax_p.set_ylabel("Phase (rad)", color="red")
+        ax_p.tick_params(axis='y', labelcolor="red")
+        ax_p.set_ylim(-0.5, 2*np.pi + 0.5)
+        
+        ax_h.set_title("Harmonic Amplitudes & Phases")
+        ax_h.set_xticks(x_pos)
+        ax_h.set_xticklabels([f"n={n}" for n in x_pos])
+        if i == n_samples - 1:
+            ax_h.set_xlabel("Harmonic Index")
             
     plt.savefig(save_path)
     plt.close()
@@ -420,7 +443,7 @@ def main():
     if cvae_path.exists():
         geo_enc = GeometryEncoder(
             n_continuous=n_continuous, n_materials=N_MATERIALS, embed_dim=8,
-            latent_dim=64, fc_dims=(256,),
+            latent_dim=64, fc_dims=(256, 256),
         )
         geo_dec = GeometryDecoder(
             latent_dim=64, n_geometry=n_continuous,
@@ -429,7 +452,7 @@ def main():
         )
         spec_enc = SpectrumEncoder(
             n_wavelengths=n_wavelengths, latent_dim=64,
-            fc_dims=(256,),
+            conv_channels=(32, 64, 128, 64), fc_dims=(256, 256),
         )
         cvae = ContrastiveVAE(
             geometry_encoder=geo_enc, geometry_decoder=geo_dec,
@@ -446,7 +469,7 @@ def main():
     if cvae_wishful_path.exists():
         geo_enc = GeometryEncoder(
             n_continuous=n_continuous, n_materials=N_MATERIALS, embed_dim=8,
-            latent_dim=64, fc_dims=(256,),
+            latent_dim=64, fc_dims=(256, 256),
         )
         geo_dec = GeometryDecoder(
             latent_dim=64, n_geometry=n_continuous,
@@ -455,7 +478,7 @@ def main():
         )
         spec_enc = SpectrumEncoder(
             n_wavelengths=n_wavelengths, latent_dim=64,
-            fc_dims=(256,),
+            conv_channels=(32, 64, 128, 64), fc_dims=(256, 256),
         )
         cvae_wishful = ContrastiveVAE(
             geometry_encoder=geo_enc, geometry_decoder=geo_dec,

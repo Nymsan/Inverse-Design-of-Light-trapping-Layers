@@ -19,6 +19,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+torch.set_float32_matmul_precision("high")
 import torch.nn as nn
 from torch.utils.data import DataLoader, random_split
 
@@ -248,7 +249,7 @@ def main():
             n_harmonics=n_harmonics, nx=128,
             n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
-            hidden_dims=(256, 512, 512, 256), activation="gelu",
+            
         )
         hist, model = load_checkpoint(mlp_path, model)
         forward_models["forward_mlp"] = model
@@ -261,8 +262,7 @@ def main():
             n_harmonics=n_harmonics, nx=128,
             n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
-            grating_period=1000.0, conv_channels=(32, 64, 128, 64),
-            fc_dims=(256, 512, 256),
+            grating_period=1000.0, 
         )
         hist, model = load_checkpoint(cnn_path, model)
         forward_models["spatial_cnn"] = model
@@ -275,8 +275,7 @@ def main():
             n_harmonics=n_harmonics, nx=128,
             n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
-            grating_period=1000.0, conv_channels=(32, 64, 128, 64),
-            fc_dims=(256, 512, 256),
+            grating_period=1000.0, 
         )
         hist, model = load_checkpoint(skipcnn_path, model)
         forward_models["skip_cnn"] = model
