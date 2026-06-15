@@ -28,7 +28,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from Utils.models import (
     MATERIAL_LIBRARY, N_MATERIALS,
-    ForwardMLP, SpatialCNN, SkipCNN, SIREN,
+    ForwardMLP, SpatialCNN, SkipCNN, SIREN, TransformerForward,
     InverseDecoder, TandemNetwork, GenerativeTandemNetwork,
     GeometryEncoder, GeometryDecoder, SpectrumEncoder, ContrastiveVAE,
     GratingDataset,
@@ -130,7 +130,23 @@ def get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics):
                 model.load_state_dict(_clean_state_dict(ckpt["model_state_dict"]), strict=True)
                 best_model = model
 
-
+    # TransformerForward
+    p = ckpt_dir / "transformer_forward.pt"
+    if p.exists():
+        model = TransformerForward(
+            n_harmonics=n_harmonics, nx=128,
+            n_continuous=n_continuous, n_wavelengths=n_wavelengths,
+            n_materials=N_MATERIALS, d_model=128, nhead=4, num_layers=4
+        )
+        ckpt = torch.load(p, map_location="cpu", weights_only=False)
+        hist = ckpt.get("history", {})
+        if "val_loss" in hist and len(hist["val_loss"]) > 0:
+            val_loss = min(hist["val_loss"])
+            if val_loss < best_loss:
+                best_loss = val_loss
+                best_name = "transformer_forward"
+                model.load_state_dict(_clean_state_dict(ckpt["model_state_dict"]), strict=True)
+                best_model = model
 
     return best_model, best_name, best_loss
 

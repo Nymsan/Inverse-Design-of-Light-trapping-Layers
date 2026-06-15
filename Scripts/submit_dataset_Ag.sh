@@ -1,6 +1,6 @@
 #!/bin/sh
 #BSUB -J generate_dataset_Ag[1-3]
-#BSUB -q hpc
+#BSUB -q milan
 #BSUB -n 64
 #BSUB -R "rusage[mem=16GB]"
 #BSUB -R "span[hosts=1]"
@@ -29,7 +29,7 @@ case ${LSB_JOBINDEX} in
             --grating_material Si \
             --reflector_type Ag \
             --seed 142 \
-            --n_jobs 32
+            --n_jobs 64
         ;;
     2)
         echo "======================================"
@@ -45,7 +45,7 @@ case ${LSB_JOBINDEX} in
             --grating_material TiO2 \
             --reflector_type Ag \
             --seed 143 \
-            --n_jobs 32
+            --n_jobs 64
         ;;
     3)
         echo "======================================"
@@ -61,7 +61,7 @@ case ${LSB_JOBINDEX} in
             --grating_material Si3N4 \
             --reflector_type Ag \
             --seed 144 \
-            --n_jobs 32
+            --n_jobs 64
         ;;
 esac
 

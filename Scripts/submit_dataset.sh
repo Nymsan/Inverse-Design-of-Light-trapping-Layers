@@ -1,6 +1,6 @@
 #!/bin/sh
 #BSUB -J generate_dataset_cpu[1-3]
-#BSUB -q hpc
+#BSUB -q milan
 #BSUB -n 64
 #BSUB -R "rusage[mem=16GB]"
 #BSUB -R "span[hosts=1]"
@@ -28,7 +28,7 @@ case ${LSB_JOBINDEX} in
             --nx 5000 \
             --grating_material Si \
             --seed 42 \
-            --n_jobs 24
+            --n_jobs 64
         ;;
     2)
         echo "======================================"
@@ -43,7 +43,7 @@ case ${LSB_JOBINDEX} in
             --nx 5000 \
             --grating_material TiO2 \
             --seed 43 \
-            --n_jobs 24
+            --n_jobs 64
         ;;
     3)
         echo "======================================"
@@ -58,7 +58,7 @@ case ${LSB_JOBINDEX} in
             --nx 5000 \
             --grating_material Si3N4 \
             --seed 44 \
-            --n_jobs 24
+            --n_jobs 64
         ;;
 esac
 
