@@ -1,6 +1,6 @@
 #!/bin/sh
 #BSUB -J generate_dataset_cpu[1-3]
-#BSUB -q milan
+#BSUB -q "milan hpc"
 #BSUB -n 64
 #BSUB -R "rusage[mem=16GB]"
 #BSUB -R "span[hosts=1]"
