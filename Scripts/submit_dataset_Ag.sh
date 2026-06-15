@@ -1,6 +1,6 @@
 #!/bin/sh
 #BSUB -J generate_dataset_Ag[1-300]
-#BSUB -q "milan rome epyc hpc"
+#BSUB -q hpc
 #BSUB -n 4
 #BSUB -R "rusage[mem=16GB]"
 #BSUB -R "span[hosts=1]"
@@ -37,7 +37,7 @@ echo "Running Material: ${MATERIAL} with Ag reflector"
 echo "Batch Range: ${START_BATCH} to ${END_BATCH}"
 echo "======================================"
 
-uv run python Scripts/generate_dataset.py \
+uv run --no-sync python Scripts/generate_dataset.py \
     --num_samples 10000 \
     --batch_size 100 \
     --order_N 15 \

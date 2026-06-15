@@ -37,7 +37,7 @@ echo "Running Material: ${MATERIAL}"
 echo "Batch Range: ${START_BATCH} to ${END_BATCH}"
 echo "======================================"
 
-uv run python Scripts/generate_dataset.py \
+uv run --no-sync python Scripts/generate_dataset.py \
     --num_samples 10000 \
     --batch_size 100 \
     --order_N 15 \
