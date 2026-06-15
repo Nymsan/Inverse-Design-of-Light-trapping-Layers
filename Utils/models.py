@@ -430,9 +430,11 @@ class SpatialCNN(nn.Module):
         x = x.view(B, -1)
         return self.fc_head(x)
 
+
+
 class TransformerForward(nn.Module):
     def __init__(self, n_harmonics=5, nx=128, n_continuous=12, n_wavelengths=322, n_materials=3, 
-                 embed_dim=8, d_model=128, nhead=4, num_layers=4, dim_feedforward=512, dropout=0.0, grating_period=1000.0):
+                 embed_dim=8, d_model=128, nhead=4, dim_feedforward=512, num_layers=3, dropout=0.0, grating_period=1000.0):
         super().__init__()
         self.n_harmonics = n_harmonics
         self.nx = nx
@@ -453,10 +455,10 @@ class TransformerForward(nn.Module):
         self.pos_embed = nn.Parameter(torch.randn(1, self.seq_len, d_model) * 0.02)
         self.pos_drop = nn.Dropout(p=dropout)
         
-        # Transformer Encoder
+        # Transformer Layers
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model, nhead=nhead, dim_feedforward=dim_feedforward, 
-            dropout=dropout, activation="gelu", batch_first=True
+            dropout=dropout, batch_first=True, activation="gelu"
         )
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
         
@@ -490,11 +492,39 @@ class TransformerForward(nn.Module):
         
         x = x + self.pos_embed
         x = self.pos_drop(x)
+        
+        # Transformer inherently has global bidirectional context
         x = self.transformer(x)
         
-        # Pooling (mean across all tokens)
+        # Pooling (mean across all valid tokens)
         x_pooled = x.mean(dim=1)
         return self.head(x_pooled)
+
+def generate_synthetic_targets(B: int, n_wavelengths: int, device: torch.device) -> torch.Tensor:
+    """Generate synthetic ideal targets: mix of Gaussians and Step functions."""
+    wl_len = n_wavelengths // 2
+    wls = torch.linspace(300, 1100, wl_len, device=device).unsqueeze(0).expand(B, -1)
+    
+    targets = torch.zeros(B, wl_len, device=device)
+    
+    # 50% Gaussians, 50% Step functions
+    mask_gauss = torch.rand(B, device=device) < 0.5
+    
+    # Gaussians
+    mu = torch.rand(B, 1, device=device) * 800 + 300
+    sigma = torch.rand(B, 1, device=device) * 150 + 50
+    targets_gauss = torch.exp(-0.5 * ((wls - mu) / sigma)**2)
+    
+    # Step functions
+    c = torch.rand(B, 1, device=device) * 800 + 300
+    width = torch.rand(B, 1, device=device) * 300 + 50
+    targets_step = ((wls >= c - width / 2) & (wls <= c + width / 2)).float()
+    
+    targets[mask_gauss] = targets_gauss[mask_gauss]
+    targets[~mask_gauss] = targets_step[~mask_gauss]
+    
+    # Duplicate for P and S polarizations
+    return torch.cat([targets, targets], dim=-1)
 
 class InverseDecoder(nn.Module):
     """Maps absorptance curve (+ optional noise z) → normalized geometry [0,1] + Gumbel material."""
@@ -1009,6 +1039,7 @@ def train_forward_model(
     model: nn.Module, train_loader, val_loader, *,
     epochs: int = 500, lr: float = 1e-3, weight_decay: float = 1e-5,
     patience: int = 100, device: torch.device = torch.device("cpu"),
+    use_bfloat16: bool = True
 ) -> dict[str, list[float]]:
     """Train Forward models (MLP, CNN, skipCNN, SIREN)."""
     model = model.to(device)
@@ -1023,21 +1054,26 @@ def train_forward_model(
         model.train()
         train_loss_accum = 0.0
         
-        # Disabled FFT loss per user request
         lambda_fft = 1.0
         
         for batch in train_loader:
             geo, mat, target = (batch["geometry"].to(device),
                                 batch["material_id"].to(device), batch["target"].to(device))
-            pred = model(geo, mat)
+                                
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=use_bfloat16 and torch.cuda.is_available()):
+                pred = model(geo, mat)
+                
+            # Compute loss in fp32 for stability and FFT compatibility
+            pred_f32 = pred.float()
+            target_f32 = target.float()
             
-            base_loss = criterion(pred, target)
-            wl = target.shape[-1] // 2
+            base_loss = criterion(pred_f32, target_f32)
+            wl = target_f32.shape[-1] // 2
             
-            fft_pred_p = torch.fft.rfft(pred[:, :wl], dim=-1, norm="ortho").abs()
-            fft_pred_s = torch.fft.rfft(pred[:, wl:], dim=-1, norm="ortho").abs()
-            fft_target_p = torch.fft.rfft(target[:, :wl], dim=-1, norm="ortho").abs()
-            fft_target_s = torch.fft.rfft(target[:, wl:], dim=-1, norm="ortho").abs()
+            fft_pred_p = torch.fft.rfft(pred_f32[:, :wl], dim=-1, norm="ortho").abs()
+            fft_pred_s = torch.fft.rfft(pred_f32[:, wl:], dim=-1, norm="ortho").abs()
+            fft_target_p = torch.fft.rfft(target_f32[:, :wl], dim=-1, norm="ortho").abs()
+            fft_target_s = torch.fft.rfft(target_f32[:, wl:], dim=-1, norm="ortho").abs()
             
             spectral_loss = criterion(fft_pred_p, fft_target_p) + criterion(fft_pred_s, fft_target_s)
             
@@ -1071,8 +1107,7 @@ def train_forward_model(
                 
                 spectral_loss = criterion(fft_pred_p, fft_target_p) + criterion(fft_pred_s, fft_target_s)
                 
-                # Validation always evaluates against the final, full-weighted objective
-                loss = base_loss + 1.0 * spectral_loss
+                loss = base_loss + lambda_fft * spectral_loss
                 
                 val_loss_accum += loss.item()
                 
@@ -1113,6 +1148,7 @@ def train_tandem(
     epochs: int = 500, lr: float = 1e-3, weight_decay: float = 1e-5,
     patience: int = 100, tau_start: float = 1.0, tau_end: float = 0.1,
     device: torch.device = torch.device("cpu"),
+    synthetic_phase: bool = False,
 ) -> dict[str, list[float]]:
     """Train tandem. Only InverseDecoder params are optimised; forward model stays frozen."""
     tandem = tandem.to(device)
@@ -1129,22 +1165,27 @@ def train_tandem(
         tandem.train()
         train_loss_accum = 0.0
         for batch in train_loader:
-            target = batch["target"].to(device)
+            if synthetic_phase:
+                target = generate_synthetic_targets(batch["target"].shape[0], batch["target"].shape[-1], device)
+            else:
+                target = batch["target"].to(device)
             out = tandem(target, tau=tau)
             pred = out["predicted_curve"]
             
             base_loss = criterion(pred, target)
-            wl = target.shape[-1] // 2
             
-            # Spectral Loss (FFT Magnitude) - insensitive to small peak shifts
-            fft_pred_p = torch.fft.rfft(pred[:, :wl], dim=-1).abs()
-            fft_pred_s = torch.fft.rfft(pred[:, wl:], dim=-1).abs()
-            fft_target_p = torch.fft.rfft(target[:, :wl], dim=-1).abs()
-            fft_target_s = torch.fft.rfft(target[:, wl:], dim=-1).abs()
-            
-            spectral_loss = (criterion(fft_pred_p, fft_target_p) + criterion(fft_pred_s, fft_target_s)) / wl
-            
-            loss = base_loss + 0.5 * spectral_loss
+            if synthetic_phase:
+                loss = base_loss
+            else:
+                wl = target.shape[-1] // 2
+                # Spectral Loss (FFT Magnitude) - insensitive to small peak shifts
+                fft_pred_p = torch.fft.rfft(pred[:, :wl], dim=-1).abs()
+                fft_pred_s = torch.fft.rfft(pred[:, wl:], dim=-1).abs()
+                fft_target_p = torch.fft.rfft(target[:, :wl], dim=-1).abs()
+                fft_target_s = torch.fft.rfft(target[:, wl:], dim=-1).abs()
+                
+                spectral_loss = (criterion(fft_pred_p, fft_target_p) + criterion(fft_pred_s, fft_target_s)) / wl
+                loss = base_loss + 0.5 * spectral_loss
             
             optimizer.zero_grad(); loss.backward(); optimizer.step()
             train_loss_accum += loss.item()
@@ -1158,21 +1199,26 @@ def train_tandem(
         val_max_err_accum = 0.0
         with torch.no_grad():
             for batch in val_loader:
-                target = batch["target"].to(device)
+                if synthetic_phase:
+                    target = generate_synthetic_targets(batch["target"].shape[0], batch["target"].shape[-1], device)
+                else:
+                    target = batch["target"].to(device)
                 out = tandem(target, tau=tau)
                 pred = out["predicted_curve"]
                 
                 base_loss = criterion(pred, target)
-                wl = target.shape[-1] // 2
                 
-                fft_pred_p = torch.fft.rfft(pred[:, :wl], dim=-1).abs()
-                fft_pred_s = torch.fft.rfft(pred[:, wl:], dim=-1).abs()
-                fft_target_p = torch.fft.rfft(target[:, :wl], dim=-1).abs()
-                fft_target_s = torch.fft.rfft(target[:, wl:], dim=-1).abs()
-                
-                spectral_loss = (criterion(fft_pred_p, fft_target_p) + criterion(fft_pred_s, fft_target_s)) / wl
-                
-                val_loss_accum += (base_loss + 0.5 * spectral_loss).item()
+                if synthetic_phase:
+                    val_loss_accum += base_loss.item()
+                else:
+                    wl = target.shape[-1] // 2
+                    fft_pred_p = torch.fft.rfft(pred[:, :wl], dim=-1).abs()
+                    fft_pred_s = torch.fft.rfft(pred[:, wl:], dim=-1).abs()
+                    fft_target_p = torch.fft.rfft(target[:, :wl], dim=-1).abs()
+                    fft_target_s = torch.fft.rfft(target[:, wl:], dim=-1).abs()
+                    
+                    spectral_loss = (criterion(fft_pred_p, fft_target_p) + criterion(fft_pred_s, fft_target_s)) / wl
+                    val_loss_accum += (base_loss + 0.5 * spectral_loss).item()
                 
                 abs_err = torch.abs(pred - target)
                 val_mae_accum += abs_err.mean().item()
@@ -1211,6 +1257,8 @@ def train_cvae(
     epochs: int = 500, lr: float = 1e-3, weight_decay: float = 1e-5,
     patience: int = 100, tau_start: float = 1.0, tau_end: float = 0.1,
     device: torch.device = torch.device("cpu"),
+    forward_model: Optional[nn.Module] = None,
+    synthetic_phase: bool = False,
 ) -> dict[str, list[float]]:
     """Train C-VAE. All sub-networks trained jointly. Loss = recon + CE + β·KL + γ·margin."""
     cvae = cvae.to(device)
@@ -1229,13 +1277,24 @@ def train_cvae(
         cvae.train()
         accum = {"loss": 0.0, "recon": 0.0, "mat_ce": 0.0, "kl": 0.0, "margin": 0.0}
         for batch in train_loader:
-            geo, mat, target = (batch["geometry"].to(device),
-                                batch["material_id"].to(device), batch["target"].to(device))
-            out = cvae(geo, mat, target, tau=tau)
-            losses = cvae.compute_loss(out, geo, mat)
-            optimizer.zero_grad(); losses["loss"].backward(); optimizer.step()
-            for k in accum:
-                accum[k] += losses[f"loss_{k}"].item() if k != "loss" else losses["loss"].item()
+            if synthetic_phase:
+                assert forward_model is not None, "Forward model required for synthetic phase in CVAE"
+                target = generate_synthetic_targets(batch["target"].shape[0], batch["target"].shape[-1], device)
+                z_y = cvae.spectrum_encoder(target)
+                pred_geo, mat_oh, _ = cvae.geometry_decoder(z_y, tau=tau, hard=True)
+                pred_curve = forward_model(geometry=pred_geo, material_id=mat_oh)
+                loss = F.huber_loss(pred_curve, target, delta=0.01)
+                
+                optimizer.zero_grad(); loss.backward(); optimizer.step()
+                accum["loss"] += loss.item()
+            else:
+                geo, mat, target = (batch["geometry"].to(device),
+                                    batch["material_id"].to(device), batch["target"].to(device))
+                out = cvae(geo, mat, target, tau=tau)
+                losses = cvae.compute_loss(out, geo, mat)
+                optimizer.zero_grad(); losses["loss"].backward(); optimizer.step()
+                for k in accum:
+                    accum[k] += losses[f"loss_{k}"].item() if k != "loss" else losses["loss"].item()
 
         n = len(train_loader)
         history["train_loss"].append(accum["loss"] / n)
@@ -1246,10 +1305,18 @@ def train_cvae(
         val_accum = 0.0
         with torch.no_grad():
             for batch in val_loader:
-                geo, mat, target = (batch["geometry"].to(device),
-                                    batch["material_id"].to(device), batch["target"].to(device))
-                losses = cvae.compute_loss(cvae(geo, mat, target, tau=tau), geo, mat)
-                val_accum += losses["loss"].item()
+                if synthetic_phase:
+                    target = generate_synthetic_targets(batch["target"].shape[0], batch["target"].shape[-1], device)
+                    z_y = cvae.spectrum_encoder(target)
+                    pred_geo, mat_oh, _ = cvae.geometry_decoder(z_y, tau=tau, hard=True)
+                    pred_curve = forward_model(geometry=pred_geo, material_id=mat_oh)
+                    loss = F.huber_loss(pred_curve, target, delta=0.01)
+                    val_accum += loss.item()
+                else:
+                    geo, mat, target = (batch["geometry"].to(device),
+                                        batch["material_id"].to(device), batch["target"].to(device))
+                    losses = cvae.compute_loss(cvae(geo, mat, target, tau=tau), geo, mat)
+                    val_accum += losses["loss"].item()
 
         avg_val = val_accum / len(val_loader)
         history["val_loss"].append(avg_val)

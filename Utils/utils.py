@@ -595,7 +595,7 @@ def generate_eval_batch(stats, n_samples_per_mat=100):
     
     all_geo, all_px, all_mat, all_target = [], [], [], []
     for mat_id, mat_name in enumerate(materials):
-        batch_path = test_dir / f"{mat_name}_batch_0099.pt"
+        batch_path = test_dir / f"{mat_name}.pt"
         if not batch_path.exists():
             print(f"Warning: Test batch not found: {batch_path}")
             continue

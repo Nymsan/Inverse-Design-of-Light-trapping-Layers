@@ -19,8 +19,8 @@ for mat in ["Si", "TiO2", "Si3N4"]:
             for key in keys_to_check:
                 if key in data:
                     curve = data[key][i]
-                    if (curve > 1.0001).any():
-                        bad_indices = torch.where(curve > 1.0001)
+                    if (curve > 1).any():
+                        bad_indices = torch.where(curve > 1)
                         # In the batch dict, the curve shape is (161, 3) or (161, 2)
                         # bad_indices[0] corresponds to the wavelength dimension
                         bad_wls = sorted(list(set(WAVELENGTHS[idx] for idx in bad_indices[0].numpy())))
@@ -40,6 +40,6 @@ exploded_details.sort(key=lambda x: x["max_absorptance"], reverse=True)
 for d in exploded_details:
     wls = ", ".join([f"{w:.1f}" for w in d['bad_wavelengths']])
     print(f"[{d['material']}] {d['key']} in {d['file']} (Max: {d['max_absorptance']:.4f})")
-    print(f"  h: {d['h']:.2f} nm, inc_ang: {d['inc_ang']:.4f} rad")
+    print(f"  h: {d['h']:.2f} nm, inc_ang: {d['inc_ang']:.4f} deg")
     print(f"  params_x: {d['params_x']}")
     print(f"  Exploded Wavelengths (nm): {wls}\n")

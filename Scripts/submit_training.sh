@@ -10,9 +10,9 @@
 #BSUB -e logs/train_surrogates_%J.err
 
 mkdir -p logs
-module load cuda/11.8
+module load cuda/12.4
 
-# Fix for PyTorch 2.5.1 cu118 missing shared libs on compute nodes
+# Fix for PyTorch 2.4.1 cu124 missing shared libs on compute nodes
 export LD_LIBRARY_PATH="../.venv/lib/python3.12/site-packages/nvidia/cudnn/lib:../.venv/lib/python3.12/site-packages/nvidia/nccl/lib:../.venv/lib/python3.12/site-packages/nvidia/cublas/lib:../.venv/lib/python3.12/site-packages/nvidia/cusparse/lib:../.venv/lib/python3.12/site-packages/nvidia/cusolver/lib:${LD_LIBRARY_PATH}"
 
 export PYTHONUNBUFFERED=1
@@ -51,6 +51,7 @@ uv run python train_inverse.py \
     --materials Si TiO2 Si3N4 \
     --target_key all_film \
     --epochs 2000 \
+    --synthetic_epochs 500 \
     --batch_size 256 \
     --lr 2e-3 \
     --patience 200 \

@@ -23,3 +23,5 @@ Siren activations - look at absorptance curves as a function of effective wavele
 Fano resonances in absorptance curves
 
 choice of loss - fft for the peaks, mse for the shape. Discuss the ortho norm weigthing and so on. Discuss the implicit assumptions of SIREN. Discuss how this is unavailable in 3d data.
+
+try to generate the data with gradient information. And train the models implicitly with this in mind (sobolev inspired loss)

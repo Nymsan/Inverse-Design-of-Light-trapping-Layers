@@ -147,55 +147,52 @@ def plot_spectrum_samples(models: dict[str, nn.Module], val_loader, save_path: s
     mat_names = list(MATERIAL_LIBRARY.keys())
     n_wl_half = n_wavelengths // 2
 
-    fig, axes = plt.subplots(n_samples, 4, figsize=(20, 3 * n_samples), squeeze=False, layout="constrained")
-    colors = plt.cm.tab10(np.linspace(0, 1, len(models)))
+    colors = plt.cm.viridis(np.linspace(0, 1, len(models)))
 
-    for i, idx in enumerate(selected_indices):
-        preds = {}
-        for name, model in models.items():
+    for (name, model), color in zip(models.items(), colors):
+        fig, axes = plt.subplots(n_samples, 4, figsize=(20, 3 * n_samples), squeeze=False, layout="constrained")
+        
+        for i, idx in enumerate(selected_indices):
             pred = model(geo[idx:idx+1], mat[idx:idx+1])
-            preds[name] = pred
+            mat_idx = mat[idx].item()
+            mat_name = mat_names[mat_idx] if mat_idx < len(mat_names) else f"Mat_{mat_idx}"
 
-        mat_idx = mat[idx].item()
-        mat_name = mat_names[mat_idx] if mat_idx < len(mat_names) else f"Mat_{mat_idx}"
-
-        for pol_idx, pol_label in enumerate(["p-pol", "s-pol"]):
-            ax = axes[i, pol_idx]
-            start = pol_idx * n_wl_half
-            end = start + n_wl_half
-            ax.plot(WAVELENGTHS, target[idx, start:end].numpy(), "k-", lw=2.5, label="Truth", alpha=0.5)
-
-            for (name, pred), c in zip(preds.items(), colors):
-                ax.plot(WAVELENGTHS, pred[0, start:end].numpy(),
-                        "--", color=c, lw=2.0, label=name.replace("_", " ").title())
-            
-            ax.set_xlim(300, 1100)
-            ax.set_ylim(-0.05, 1.05)
-            ax.set_ylabel(f"Absorptance ({mat_name})")
-            if i == 0:
-                ax.set_title(f"Predictions ({pol_label})")
-            if i == 0 and pol_idx == 0:
-                ax.legend(fontsize=9)
-            if i == n_samples - 1:
-                ax.set_xlabel("Wavelength (nm)")
+            for pol_idx, pol_label in enumerate(["p-pol", "s-pol"]):
+                ax = axes[i, pol_idx]
+                start = pol_idx * n_wl_half
+                end = start + n_wl_half
                 
-            # Plot Errors
-            ax_err = axes[i, pol_idx + 2]
-            for (name, pred), c in zip(preds.items(), colors):
+                # Plot Truth and Pred
+                ax.plot(WAVELENGTHS, target[idx, start:end].numpy(), "k-", lw=2.5, label="Truth", alpha=0.5)
+                ax.plot(WAVELENGTHS, pred[0, start:end].numpy(), "--", color=color, lw=2.0, label=name.replace("_", " ").title())
+                
+                ax.set_xlim(300, 1100)
+                ax.set_ylim(-0.05, 1.05)
+                ax.set_ylabel(f"Absorptance ({mat_name})")
+                if i == 0:
+                    ax.set_title(f"Predictions ({pol_label})")
+                if i == 0 and pol_idx == 0:
+                    ax.legend(fontsize=9)
+                if i == n_samples - 1:
+                    ax.set_xlabel("Wavelength (nm)")
+                    
+                # Plot Errors
+                ax_err = axes[i, pol_idx + 2]
                 error = target[idx, start:end] - pred[0, start:end]
-                ax_err.plot(WAVELENGTHS, error.numpy(), "-", color=c, lw=1.5, label=name.replace("_", " ").title())
-            
-            ax_err.axhline(0, color='k', linestyle='--', lw=1.0)
-            ax_err.set_xlim(300, 1100)
-            ax_err.set_ylabel(f"Error ({mat_name})")
-            if i == 0:
-                ax_err.set_title(f"Error ({pol_label})")
-            if i == n_samples - 1:
-                ax_err.set_xlabel("Wavelength (nm)")
+                ax_err.plot(WAVELENGTHS, error.numpy(), "-", color=color, lw=1.5, label=name.replace("_", " ").title())
+                
+                ax_err.axhline(0, color='k', linestyle='--', lw=1.0)
+                ax_err.set_xlim(300, 1100)
+                ax_err.set_ylabel(f"Error ({mat_name})")
+                if i == 0:
+                    ax_err.set_title(f"Error ({pol_label})")
+                if i == n_samples - 1:
+                    ax_err.set_xlabel("Wavelength (nm)")
 
-    plt.savefig(save_path)
-    plt.close()
-    print(f"  Saved: {save_path}")
+        model_save_path = save_path.replace(".png", f"_{name}.png")
+        plt.savefig(model_save_path)
+        plt.close()
+        print(f"  Saved: {model_save_path}")
 
 
 @torch.no_grad()
@@ -243,14 +240,18 @@ def main():
     all_history = {}
     forward_models = {}
 
+    kwargs = {
+        "n_wavelengths": n_wavelengths,
+        "n_materials": N_MATERIALS,
+        "embed_dim": 8,
+        "n_harmonics": n_harmonics,
+        "nx": 128,
+        "n_continuous": n_continuous,
+    }
+
     mlp_path = ckpt_dir / "forward_mlp.pt"
     if mlp_path.exists():
-        model = ForwardMLP(
-            n_harmonics=n_harmonics, nx=128,
-            n_continuous=n_continuous, n_wavelengths=n_wavelengths,
-            n_materials=N_MATERIALS, embed_dim=8,
-            
-        )
+        model = ForwardMLP(**kwargs)
         hist, model = load_checkpoint(mlp_path, model)
         forward_models["forward_mlp"] = model
         all_history["forward_mlp"] = hist
@@ -258,12 +259,7 @@ def main():
 
     cnn_path = ckpt_dir / "spatial_cnn.pt"
     if cnn_path.exists():
-        model = SpatialCNN(
-            n_harmonics=n_harmonics, nx=128,
-            n_continuous=n_continuous, n_wavelengths=n_wavelengths,
-            n_materials=N_MATERIALS, embed_dim=8,
-            grating_period=1000.0, 
-        )
+        model = SpatialCNN(conv_channels=(32, 64, 64, 64), fc_dims=(512, 128), **kwargs)
         hist, model = load_checkpoint(cnn_path, model)
         forward_models["spatial_cnn"] = model
         all_history["spatial_cnn"] = hist
@@ -271,31 +267,28 @@ def main():
 
     skipcnn_path = ckpt_dir / "skip_cnn.pt"
     if skipcnn_path.exists():
-        model = SkipCNN(
-            n_harmonics=n_harmonics, nx=128,
-            n_continuous=n_continuous, n_wavelengths=n_wavelengths,
-            n_materials=N_MATERIALS, embed_dim=8,
-            grating_period=1000.0, 
-        )
+        model = SkipCNN(conv_channels=(32, 64, 128, 64), fc_dims=(256, 256), **kwargs)
         hist, model = load_checkpoint(skipcnn_path, model)
         forward_models["skip_cnn"] = model
         all_history["skip_cnn"] = hist
         print("Loaded: skip_cnn")
 
-
-
     siren_path = ckpt_dir / "siren.pt"
     if siren_path.exists():
-        model = SIREN(
-            n_harmonics=n_harmonics, nx=128,
-            n_continuous=n_continuous, n_wavelengths=n_wavelengths,
-            n_materials=N_MATERIALS, embed_dim=8,
-            conv_channels=(32, 64, 128, 64), kernel_size=7, dropout=0.05, siren_hidden=(256, 256, 256), latent_dim=128, omega_0=10.0
-        )
+        model = SIREN(conv_channels=(32, 64, 64), **kwargs)
         hist, model = load_checkpoint(siren_path, model)
         forward_models["siren"] = model
         all_history["siren"] = hist
         print("Loaded: siren")
+
+    transformer_path = ckpt_dir / "transformer_forward.pt"
+    if transformer_path.exists():
+        from Utils.models import TransformerForward
+        model = TransformerForward(d_model=128, nhead=4, dim_feedforward=512, num_layers=3, dropout=0.0, **kwargs)
+        hist, model = load_checkpoint(transformer_path, model)
+        forward_models["transformer_forward"] = model
+        all_history["transformer_forward"] = hist
+        print("Loaded: transformer_forward")
 
 
 

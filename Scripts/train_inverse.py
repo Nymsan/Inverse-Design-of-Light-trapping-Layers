@@ -55,15 +55,19 @@ def get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics):
                 clean_sd[k] = v
         return clean_sd
 
+    kwargs = {
+        "n_wavelengths": n_wavelengths,
+        "n_materials": N_MATERIALS,
+        "embed_dim": 8,
+        "n_harmonics": n_harmonics,
+        "nx": 128,
+        "n_continuous": n_continuous,
+    }
+
     # ForwardMLP
     p = ckpt_dir / "forward_mlp.pt"
     if p.exists():
-        model = ForwardMLP(
-            n_harmonics=n_harmonics, nx=128,
-            n_continuous=n_continuous, n_wavelengths=n_wavelengths,
-            n_materials=N_MATERIALS, embed_dim=8,
-            
-        )
+        model = ForwardMLP(**kwargs)
         ckpt = torch.load(p, map_location="cpu", weights_only=False)
         hist = ckpt.get("history", {})
         if "val_loss" in hist and len(hist["val_loss"]) > 0:
@@ -77,12 +81,7 @@ def get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics):
     # SpatialCNN
     p = ckpt_dir / "spatial_cnn.pt"
     if p.exists():
-        model = SpatialCNN(
-            n_harmonics=n_harmonics, nx=128,
-            n_continuous=n_continuous, n_wavelengths=n_wavelengths,
-            n_materials=N_MATERIALS, embed_dim=8,
-            grating_period=1000.0, 
-        )
+        model = SpatialCNN(conv_channels=(32, 64, 64, 64), fc_dims=(512, 128), **kwargs)
         ckpt = torch.load(p, map_location="cpu", weights_only=False)
         hist = ckpt.get("history", {})
         if "val_loss" in hist and len(hist["val_loss"]) > 0:
@@ -96,12 +95,7 @@ def get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics):
     # SkipCNN
     p = ckpt_dir / "skip_cnn.pt"
     if p.exists():
-        model = SkipCNN(
-            n_harmonics=n_harmonics, nx=128,
-            n_continuous=n_continuous, n_wavelengths=n_wavelengths,
-            n_materials=N_MATERIALS, embed_dim=8,
-            grating_period=1000.0, 
-        )
+        model = SkipCNN(conv_channels=(32, 64, 128, 64), fc_dims=(256, 256), **kwargs)
         ckpt = torch.load(p, map_location="cpu", weights_only=False)
         hist = ckpt.get("history", {})
         if "val_loss" in hist and len(hist["val_loss"]) > 0:
@@ -115,11 +109,7 @@ def get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics):
     # SIREN
     p = ckpt_dir / "siren.pt"
     if p.exists():
-        model = SIREN(
-            n_harmonics=n_harmonics, nx=128, n_continuous=n_continuous, n_wavelengths=n_wavelengths,
-            n_materials=N_MATERIALS, embed_dim=8,
-            conv_channels=(32, 64, 128, 64), kernel_size=7, dropout=0.05, siren_hidden=(256, 256, 256), latent_dim=128, omega_0=10.0
-        )
+        model = SIREN(conv_channels=(32, 64, 64), **kwargs)
         ckpt = torch.load(p, map_location="cpu", weights_only=False)
         hist = ckpt.get("history", {})
         if "val_loss" in hist and len(hist["val_loss"]) > 0:
@@ -133,11 +123,7 @@ def get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics):
     # TransformerForward
     p = ckpt_dir / "transformer_forward.pt"
     if p.exists():
-        model = TransformerForward(
-            n_harmonics=n_harmonics, nx=128,
-            n_continuous=n_continuous, n_wavelengths=n_wavelengths,
-            n_materials=N_MATERIALS, d_model=128, nhead=4, num_layers=4
-        )
+        model = TransformerForward(d_model=128, nhead=4, dim_feedforward=512, num_layers=3, dropout=0.0, **kwargs)
         ckpt = torch.load(p, map_location="cpu", weights_only=False)
         hist = ckpt.get("history", {})
         if "val_loss" in hist and len(hist["val_loss"]) > 0:
@@ -157,6 +143,7 @@ def get_args():
     p.add_argument("--materials", nargs="+", default=["Si", "TiO2", "Si3N4"])
     p.add_argument("--batch_size", type=int, default=64)
     p.add_argument("--epochs", type=int, default=500)
+    p.add_argument("--synthetic_epochs", type=int, default=100)
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--patience", type=int, default=100)
     p.add_argument("--val_split", type=float, default=0.01)
@@ -217,8 +204,8 @@ def main():
         geo_min = stats["geo_min"]
         geo_max = stats["geo_max"]
     else:
-        geo_min = dataset.geometry.min(dim=0).values
-        geo_max = dataset.geometry.max(dim=0).values
+        geo_min = train_set.geometry.min(dim=0).values
+        geo_max = train_set.geometry.max(dim=0).values
 
     # Find the best forward model
     forward_model, fwd_name, fwd_loss = get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics)
@@ -249,12 +236,23 @@ def main():
 # Removed torch.compile due to dynamic tau parameter causing recompilation hangs
             print(f"  Trainable parameters (decoder only): {n_params:,}")
 
+            print("  Phase 1: Real curves")
             t0 = time.time()
             hist = train_tandem(
                 tandem, train_loader, val_loader,
                 epochs=args.epochs, lr=args.lr, patience=args.patience,
-                device=device,
+                device=device, synthetic_phase=False,
             )
+            if args.synthetic_epochs > 0:
+                print("\n  Phase 2: Synthetic curves")
+                hist_synth = train_tandem(
+                    tandem, train_loader, val_loader,
+                    epochs=args.synthetic_epochs, lr=args.lr, patience=args.patience,
+                    device=device, synthetic_phase=True,
+                )
+                for k in hist:
+                    hist[k].extend(hist_synth.get(k, []))
+            
             elapsed = time.time() - t0
             timings["tandem"] = elapsed
             all_history["tandem"] = hist
@@ -283,12 +281,23 @@ def main():
 # Removed torch.compile due to dynamic tau parameter causing recompilation hangs
             print(f"  Trainable parameters (decoder only): {n_params:,}")
 
+            print("  Phase 1: Real curves")
             t0 = time.time()
             hist = train_tandem(
                 gen_tandem, train_loader, val_loader,
                 epochs=args.epochs, lr=args.lr, patience=args.patience,
-                device=device,
+                device=device, synthetic_phase=False,
             )
+            if args.synthetic_epochs > 0:
+                print("\n  Phase 2: Synthetic curves")
+                hist_synth = train_tandem(
+                    gen_tandem, train_loader, val_loader,
+                    epochs=args.synthetic_epochs, lr=args.lr, patience=args.patience,
+                    device=device, synthetic_phase=True,
+                )
+                for k in hist:
+                    hist[k].extend(hist_synth.get(k, []))
+            
             elapsed = time.time() - t0
             timings["generative_tandem"] = elapsed
             all_history["generative_tandem"] = hist
@@ -322,33 +331,33 @@ def main():
 # Removed torch.compile due to dynamic tau parameter causing recompilation hangs
         print(f"  Parameters: {n_params:,}")
 
+        print("  Phase 1: Real curves")
         t0 = time.time()
         hist = train_cvae(
             cvae, train_loader, val_loader,
             epochs=args.epochs, lr=args.lr, patience=args.patience,
-            device=device,
+            device=device, synthetic_phase=False,
         )
+        if args.synthetic_epochs > 0:
+            if forward_model is not None:
+                print("\n  Phase 2: Synthetic curves")
+                hist_synth = train_cvae(
+                    cvae, train_loader, val_loader,
+                    epochs=args.synthetic_epochs, lr=args.lr, patience=args.patience,
+                    device=device, forward_model=forward_model, synthetic_phase=True,
+                )
+                for k in hist:
+                    hist[k].extend(hist_synth.get(k, []))
+            else:
+                print("\n  WARNING: Skipping Phase 2 for CVAE as forward_model is missing.")
+        
         elapsed = time.time() - t0
         timings["cvae"] = elapsed
         all_history["cvae"] = hist
         print(f"  Time: {elapsed / 60:.1f} min")
         save_checkpoint(cvae, hist, str(ckpt_dir / "cvae.pt"))
 
-        print("\n" + "-" * 60)
-        print("Wishful Finetuning: CVAE")
-        print("-" * 60)
-        t0 = time.time()
-        # Finetune with lower lr and fewer epochs
-        hist_ft = train_cvae_wishful(
-            cvae, train_loader, val_loader,
-            epochs=args.epochs // 2 if args.epochs > 1 else 1, lr=args.lr * 0.1, patience=args.patience // 2 if args.patience > 1 else 1,
-            device=device,
-        )
-        elapsed = time.time() - t0
-        timings["cvae_wishful"] = elapsed
-        all_history["cvae_wishful"] = hist_ft
-        print(f"  Time: {elapsed / 60:.1f} min")
-        save_checkpoint(cvae, hist_ft, str(ckpt_dir / "cvae_wishful.pt"))
+
 
     history_path = ckpt_dir / "inverse_history.json"
     with open(history_path, "w") as f:

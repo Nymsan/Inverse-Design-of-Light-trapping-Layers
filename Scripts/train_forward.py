@@ -15,6 +15,7 @@ import sys
 import time
 import glob
 import random
+import matplotlib.pyplot as plt
 from pathlib import Path
 
 import torch
@@ -122,9 +123,10 @@ def main():
             
         )
         n_params = sum(p.numel() for p in model.parameters())
+        print(f"  Parameters: {n_params:,}")
+
         if hasattr(torch, "compile"):
             model = torch.compile(model)
-        print(f"  Parameters: {n_params:,}")
 
         t0 = time.time()
         hist = train_forward_model(
@@ -146,12 +148,13 @@ def main():
         model = SpatialCNN(
             n_harmonics=n_harmonics, nx=128, n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
-            grating_period=1000.0, 
+            grating_period=1000.0, conv_channels=(32, 64, 64, 64), fc_dims=(512, 128)
         )
         n_params = sum(p.numel() for p in model.parameters())
+        print(f"  Parameters: {n_params:,}")
+
         if hasattr(torch, "compile"):
             model = torch.compile(model)
-        print(f"  Parameters: {n_params:,}")
 
         t0 = time.time()
         hist = train_forward_model(
@@ -173,12 +176,13 @@ def main():
         model = SkipCNN(
             n_harmonics=n_harmonics, nx=128, n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
-            grating_period=1000.0, 
+            grating_period=1000.0, conv_channels=(32, 64, 128, 64), fc_dims=(256, 256)
         )
         n_params = sum(p.numel() for p in model.parameters())
+        print(f"  Parameters: {n_params:,}")
+
         if hasattr(torch, "compile"):
             model = torch.compile(model)
-        print(f"  Parameters: {n_params:,}")
 
         t0 = time.time()
         hist = train_forward_model(
@@ -200,12 +204,13 @@ def main():
         model = SIREN(
             n_harmonics=n_harmonics, nx=128, n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
-            conv_channels=(32, 64, 128), kernel_size=7, dropout=0.0, siren_hidden=(256, 256, 256), latent_dim=64, omega_0=30.0
+            conv_channels=(32, 64, 64), kernel_size=7, dropout=0.0, siren_hidden=(256, 256, 256), latent_dim=64, omega_0=30.0
         )
         n_params = sum(p.numel() for p in model.parameters())
+        print(f"  Parameters: {n_params:,}")
+
         if hasattr(torch, "compile"):
             model = torch.compile(model)
-        print(f"  Parameters: {n_params:,}")
 
         t0 = time.time()
         hist = train_forward_model(
@@ -227,12 +232,13 @@ def main():
         model = TransformerForward(
             n_harmonics=n_harmonics, nx=128, n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
-            d_model=128, nhead=4, num_layers=4, dim_feedforward=512, dropout=0.0, grating_period=1000.0
+            d_model=128, nhead=4, dim_feedforward=512, num_layers=3, dropout=0.0, grating_period=1000.0
         )
         n_params = sum(p.numel() for p in model.parameters())
+        print(f"  Parameters: {n_params:,}")
+
         if hasattr(torch, "compile"):
             model = torch.compile(model)
-        print(f"  Parameters: {n_params:,}")
 
         t0 = time.time()
         hist = train_forward_model(
