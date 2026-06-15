@@ -99,6 +99,10 @@ def main():
                         help="Total number of samples to generate")
     parser.add_argument('--batch_size', type=int, default=100,
                         help="Number of samples to save per .pt file")
+    parser.add_argument('--start_batch', type=int, default=None,
+                        help="Batch index to start computing (inclusive)")
+    parser.add_argument('--end_batch', type=int, default=None,
+                        help="Batch index to stop computing (exclusive)")
     parser.add_argument('--order_N', type=int, default=5,
                         help="Diffraction order")
     parser.add_argument('--n_jobs', type=int, default=4,
@@ -151,7 +155,11 @@ def main():
     
     torch.set_num_threads(1)
     
-    for batch_idx in range(num_batches):
+    start_batch = args.start_batch if args.start_batch is not None else 0
+    end_batch = args.end_batch if args.end_batch is not None else num_batches
+    end_batch = min(end_batch, num_batches)
+    
+    for batch_idx in range(start_batch, end_batch):
         batch_file = os.path.join(out_dir, f"batch_{batch_idx:04d}.pt")
         if os.path.exists(batch_file):
             print(f"Batch {batch_idx:04d} already exists. Skipping...")

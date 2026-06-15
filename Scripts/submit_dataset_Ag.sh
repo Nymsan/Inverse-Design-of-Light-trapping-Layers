@@ -1,68 +1,54 @@
 #!/bin/sh
-#BSUB -J generate_dataset_Ag[1-3]
-#BSUB -q "milan hpc"
-#BSUB -n 64
+#BSUB -J generate_dataset_Ag[1-300]
+#BSUB -q "milan rome epyc hpc"
+#BSUB -n 4
 #BSUB -R "rusage[mem=16GB]"
 #BSUB -R "span[hosts=1]"
 #BSUB -W 24:00
-#BSUB -o logs/generate_dataset_Ag_%J_%I.out
-#BSUB -e logs/generate_dataset_Ag_%J_%I.err
+#BSUB -o logs/generate_dataset_Ag/%J_%I.out
+#BSUB -e logs/generate_dataset_Ag/%J_%I.err
 
 export PYTHONUNBUFFERED=1
-mkdir -p logs
+mkdir -p logs/generate_dataset_Ag
 echo "Job starting on $(hostname), Task ID: ${LSB_JOBINDEX}"
 
 export CUDA_VISIBLE_DEVICES=""
 
-case ${LSB_JOBINDEX} in
-    1)
-        echo "======================================"
-        echo "Running Material: Si with Ag reflector"
-        echo "======================================"
-        uv run generate_dataset.py \
-            --num_samples 10000 \
-            --batch_size 100 \
-            --order_N 15 \
-            --height_per_layer 5.0 \
-            --grating_period 1000.0 \
-            --nx 5000 \
-            --grating_material Si \
-            --reflector_type Ag \
-            --seed 142 \
-            --n_jobs 64
-        ;;
-    2)
-        echo "======================================"
-        echo "Running Material: TiO2 with Ag reflector"
-        echo "======================================"
-        uv run generate_dataset.py \
-            --num_samples 10000 \
-            --batch_size 100 \
-            --order_N 15 \
-            --height_per_layer 5.0 \
-            --grating_period 1000.0 \
-            --nx 5000 \
-            --grating_material TiO2 \
-            --reflector_type Ag \
-            --seed 143 \
-            --n_jobs 64
-        ;;
-    3)
-        echo "======================================"
-        echo "Running Material: Si3N4 with Ag reflector"
-        echo "======================================"
-        uv run generate_dataset.py \
-            --num_samples 10000 \
-            --batch_size 100 \
-            --order_N 15 \
-            --height_per_layer 5.0 \
-            --grating_period 1000.0 \
-            --nx 5000 \
-            --grating_material Si3N4 \
-            --reflector_type Ag \
-            --seed 144 \
-            --n_jobs 64
-        ;;
-esac
+# Map LSB_JOBINDEX [1-300] to Material and Batch Index
+if [ ${LSB_JOBINDEX} -le 100 ]; then
+    MATERIAL="Si"
+    SEED=142
+    BATCH_IDX=$((LSB_JOBINDEX - 1))
+elif [ ${LSB_JOBINDEX} -le 200 ]; then
+    MATERIAL="TiO2"
+    SEED=143
+    BATCH_IDX=$((LSB_JOBINDEX - 101))
+else
+    MATERIAL="Si3N4"
+    SEED=144
+    BATCH_IDX=$((LSB_JOBINDEX - 201))
+fi
+
+START_BATCH=${BATCH_IDX}
+END_BATCH=$((BATCH_IDX + 1))
+
+echo "======================================"
+echo "Running Material: ${MATERIAL} with Ag reflector"
+echo "Batch Range: ${START_BATCH} to ${END_BATCH}"
+echo "======================================"
+
+uv run python Scripts/generate_dataset.py \
+    --num_samples 10000 \
+    --batch_size 100 \
+    --order_N 15 \
+    --height_per_layer 5.0 \
+    --grating_period 1000.0 \
+    --nx 5000 \
+    --grating_material ${MATERIAL} \
+    --reflector_type Ag \
+    --seed ${SEED} \
+    --n_jobs 4 \
+    --start_batch ${START_BATCH} \
+    --end_batch ${END_BATCH}
 
 echo "Task completed!"
