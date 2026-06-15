@@ -9,6 +9,7 @@
 #BSUB -e logs/generate_dataset_Ag/%J_%I.err
 
 export PYTHONUNBUFFERED=1
+cd ~/Documents/Python/Inverse-Design-of-Light-trapping-Layers
 mkdir -p logs/generate_dataset_Ag
 echo "Job starting on $(hostname), Task ID: ${LSB_JOBINDEX}"
 
