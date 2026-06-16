@@ -28,7 +28,7 @@ uv run python train_forward.py \
     --lr 2e-3 \
     --patience 200 \
     --val_split 0.05 \
-    --skip \
+    --skip siren transformer\
     --seed 1337
 
 RUN_IMPLICIT_SIREN=false

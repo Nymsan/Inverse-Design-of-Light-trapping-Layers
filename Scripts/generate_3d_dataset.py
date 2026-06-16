@@ -138,6 +138,10 @@ def main():
     parser.add_argument('--no_subpixel', action='store_true',
                         help="Disable subpixel smoothing")
     parser.add_argument('--seed', type=int, default=42, help="Random seed for LHS sampling")
+    parser.add_argument('--start_batch', type=int, default=0,
+                        help="Starting batch index (inclusive)")
+    parser.add_argument('--end_batch', type=int, default=None,
+                        help="Ending batch index (exclusive)")
     
     args = parser.parse_args()
     
@@ -166,7 +170,11 @@ def main():
     
     torch.set_num_threads(1)
     
-    for batch_idx in range(num_batches):
+    start_batch = args.start_batch
+    end_batch = args.end_batch if args.end_batch is not None else num_batches
+    end_batch = min(end_batch, num_batches)
+    
+    for batch_idx in range(start_batch, end_batch):
         batch_file = os.path.join(out_dir, f"batch_{batch_idx:04d}.pt")
         if os.path.exists(batch_file):
             print(f"Batch {batch_idx:04d} already exists. Skipping...")

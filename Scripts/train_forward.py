@@ -132,7 +132,7 @@ def main():
         hist = train_forward_model(
             model, train_loader, val_loader,
             epochs=args.epochs, lr=args.lr, patience=args.patience,
-            device=device,
+            device=device, use_bfloat16=False
         )
         elapsed = time.time() - t0
         timings["forward_mlp"] = elapsed
@@ -160,7 +160,7 @@ def main():
         hist = train_forward_model(
             model, train_loader, val_loader,
             epochs=args.epochs, lr=args.lr, patience=args.patience,
-            device=device,
+            device=device, use_bfloat16=False
         )
         elapsed = time.time() - t0
         timings["spatial_cnn"] = elapsed
@@ -188,7 +188,7 @@ def main():
         hist = train_forward_model(
             model, train_loader, val_loader,
             epochs=args.epochs, lr=args.lr, patience=args.patience,
-            device=device,
+            device=device, use_bfloat16=False
         )
         elapsed = time.time() - t0
         timings["skip_cnn"] = elapsed
@@ -216,7 +216,7 @@ def main():
         hist = train_forward_model(
             model, train_loader, val_loader,
             epochs=args.epochs, lr=args.lr, patience=args.patience,
-            device=device,
+            device=device, use_bfloat16=False
         )
         elapsed = time.time() - t0
         timings["siren"] = elapsed
