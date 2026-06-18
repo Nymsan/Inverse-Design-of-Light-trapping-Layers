@@ -28,9 +28,9 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from Utils.models import (
     MATERIAL_LIBRARY, N_MATERIALS,
-    ForwardMLP, SpatialCNN, SkipCNN, SIREN,
 )
 from Utils.utils import generate_test_batch
+from Utils.checkpoint import load_forward_model, _FORWARD_FILENAMES
 
 plt.rcParams.update({
     "font.size": 11, "axes.titlesize": 13, "axes.labelsize": 12,
@@ -38,31 +38,6 @@ plt.rcParams.update({
 })
 
 WAVELENGTHS = np.linspace(300, 1100, 161)
-
-
-def load_checkpoint(path, model):
-    ckpt = torch.load(path, map_location="cpu", weights_only=False)
-    state_dict = ckpt["model_state_dict"]
-    
-    clean_state_dict = {}
-    for k, v in state_dict.items():
-        if k.startswith("_orig_mod."):
-            clean_state_dict[k[len("_orig_mod."):]] = v
-        else:
-            clean_state_dict[k] = v
-            
-    # Handle material_embedding expansion for old checkpoints
-    if "material_embedding.weight" in clean_state_dict:
-        old_emb = clean_state_dict["material_embedding.weight"]
-        current_emb = model.state_dict()["material_embedding.weight"]
-        if old_emb.shape[0] < current_emb.shape[0]:
-            new_emb = current_emb.clone()
-            new_emb[:old_emb.shape[0]] = old_emb
-            clean_state_dict["material_embedding.weight"] = new_emb
-            
-    model.load_state_dict(clean_state_dict, strict=True)
-    model.eval()
-    return ckpt.get("history", {}), model
 
 
 def parse_args():
@@ -249,55 +224,17 @@ def main():
     all_history = {}
     forward_models = {}
 
-    kwargs = {
-        "n_wavelengths": n_wavelengths,
-        "n_materials": N_MATERIALS,
-        "embed_dim": 8,
-        "n_harmonics": n_harmonics,
-        "nx": 128,
-        "n_continuous": n_continuous,
-    }
-
-    mlp_path = ckpt_dir / "forward_mlp.pt"
-    if mlp_path.exists():
-        model = ForwardMLP(**kwargs)
-        hist, model = load_checkpoint(mlp_path, model)
-        forward_models["forward_mlp"] = model
-        all_history["forward_mlp"] = hist
-        print("Loaded: forward_mlp")
-
-    cnn_path = ckpt_dir / "spatial_cnn.pt"
-    if cnn_path.exists():
-        model = SpatialCNN(conv_channels=(32, 64, 64, 64), fc_dims=(512, 128), **kwargs)
-        hist, model = load_checkpoint(cnn_path, model)
-        forward_models["spatial_cnn"] = model
-        all_history["spatial_cnn"] = hist
-        print("Loaded: spatial_cnn")
-
-    skipcnn_path = ckpt_dir / "skip_cnn.pt"
-    if skipcnn_path.exists():
-        model = SkipCNN(conv_channels=(32, 64, 128, 64), fc_dims=(256, 256), **kwargs)
-        hist, model = load_checkpoint(skipcnn_path, model)
-        forward_models["skip_cnn"] = model
-        all_history["skip_cnn"] = hist
-        print("Loaded: skip_cnn")
-
-    siren_path = ckpt_dir / "siren.pt"
-    if siren_path.exists():
-        model = SIREN(conv_channels=(32, 64, 64), **kwargs)
-        hist, model = load_checkpoint(siren_path, model)
-        forward_models["siren"] = model
-        all_history["siren"] = hist
-        print("Loaded: siren")
-
-    transformer_path = ckpt_dir / "transformer_forward.pt"
-    if transformer_path.exists():
-        from Utils.models import TransformerForward
-        model = TransformerForward(d_model=128, nhead=4, dim_feedforward=512, num_layers=3, dropout=0.0, **kwargs)
-        hist, model = load_checkpoint(transformer_path, model)
-        forward_models["transformer_forward"] = model
-        all_history["transformer_forward"] = hist
-        print("Loaded: transformer_forward")
+    for fname in _FORWARD_FILENAMES:
+        p = ckpt_dir / fname
+        if p.exists():
+            model, hist, class_name = load_forward_model(
+                p, n_continuous=n_continuous, n_wavelengths=n_wavelengths, n_harmonics=n_harmonics
+            )
+            model.eval()
+            stem = p.stem
+            forward_models[stem] = model
+            all_history[stem] = hist
+            print(f"Loaded: {stem} (as {class_name})")
 
 
 

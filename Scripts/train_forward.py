@@ -31,13 +31,7 @@ from Utils.models import (
     GratingDataset,
     train_forward_model,
 )
-
-def save_checkpoint(model, history: dict, path: str, use_bfloat16: bool = False):
-    torch.save({
-        "model_state_dict": model.state_dict(),
-        "history": history,
-        "use_bfloat16": use_bfloat16,
-    }, path)
+from Utils.checkpoint import save_forward_checkpoint
 
 def get_args():
     p = argparse.ArgumentParser()
@@ -117,12 +111,12 @@ def main():
         print("\n" + "=" * 60)
         print("Training: ForwardMLP")
         print("=" * 60)
-        model = ForwardMLP(
+        model_kwargs = dict(
             n_harmonics=n_harmonics, nx=128,
             n_continuous=n_continuous, n_wavelengths=n_wavelengths,
-            n_materials=N_MATERIALS, embed_dim=8,
-            
+            n_materials=N_MATERIALS, embed_dim=8, hidden_dims=(512,768,512)
         )
+        model = ForwardMLP(**model_kwargs)
         n_params = sum(p.numel() for p in model.parameters())
         print(f"  Parameters: {n_params:,}")
 
@@ -140,17 +134,18 @@ def main():
         all_history["forward_mlp"] = hist
         print(f"  Time: {elapsed / 60:.1f} min")
 
-        save_checkpoint(model, hist, str(ckpt_dir / "forward_mlp.pt"), use_bfloat16=False)
+        save_forward_checkpoint(model, hist, str(ckpt_dir / "forward_mlp.pt"), "ForwardMLP", model_kwargs, use_bfloat16=False)
 
     if "cnn" not in args.skip:
         print("\n" + "=" * 60)
         print("Training: SpatialCNN")
         print("=" * 60)
-        model = SpatialCNN(
+        model_kwargs = dict(
             n_harmonics=n_harmonics, nx=128, n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
-            grating_period=1000.0, conv_channels=(32, 64, 64, 64), fc_dims=(512, 128)
+            grating_period=1000.0, conv_channels=(64, 128, 128, 64), fc_dims=(512, 128),
         )
+        model = SpatialCNN(**model_kwargs)
         n_params = sum(p.numel() for p in model.parameters())
         print(f"  Parameters: {n_params:,}")
 
@@ -168,17 +163,18 @@ def main():
         all_history["spatial_cnn"] = hist
         print(f"  Time: {elapsed / 60:.1f} min")
 
-        save_checkpoint(model, hist, str(ckpt_dir / "spatial_cnn.pt"), use_bfloat16=False)
+        save_forward_checkpoint(model, hist, str(ckpt_dir / "spatial_cnn.pt"), "SpatialCNN", model_kwargs, use_bfloat16=False)
 
     if "skipcnn" not in args.skip:
         print("\n" + "=" * 60)
         print("Training: SkipCNN")
         print("=" * 60)
-        model = SkipCNN(
+        model_kwargs = dict(
             n_harmonics=n_harmonics, nx=128, n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
-            grating_period=1000.0, conv_channels=(32, 64, 128, 64), fc_dims=(256, 256)
+            grating_period=1000.0, conv_channels=(64, 128, 128, 64), fc_dims=(256, 256),
         )
+        model = SkipCNN(**model_kwargs)
         n_params = sum(p.numel() for p in model.parameters())
         print(f"  Parameters: {n_params:,}")
 
@@ -196,17 +192,19 @@ def main():
         all_history["skip_cnn"] = hist
         print(f"  Time: {elapsed / 60:.1f} min")
 
-        save_checkpoint(model, hist, str(ckpt_dir / "skip_cnn.pt"), use_bfloat16=False)
+        save_forward_checkpoint(model, hist, str(ckpt_dir / "skip_cnn.pt"), "SkipCNN", model_kwargs, use_bfloat16=False)
 
     if "siren" not in args.skip:
         print("\n" + "=" * 60)
         print("Training: SIREN")
         print("=" * 60)
-        model = SIREN(
+        model_kwargs = dict(
             n_harmonics=n_harmonics, nx=128, n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
-            conv_channels=(32, 64, 64), kernel_size=7, dropout=0.0, siren_hidden=(256, 256, 256), latent_dim=64, omega_0=30.0
+            conv_channels=(32, 64, 64), kernel_size=7, dropout=0.0,
+            siren_hidden=(256, 256, 256), latent_dim=64, omega_0=30.0,
         )
+        model = SIREN(**model_kwargs)
         n_params = sum(p.numel() for p in model.parameters())
         print(f"  Parameters: {n_params:,}")
 
@@ -224,17 +222,18 @@ def main():
         all_history["siren"] = hist
         print(f"  Time: {elapsed / 60:.1f} min")
 
-        save_checkpoint(model, hist, str(ckpt_dir / "siren.pt"), use_bfloat16=True)
+        save_forward_checkpoint(model, hist, str(ckpt_dir / "siren.pt"), "SIREN", model_kwargs, use_bfloat16=True)
 
     if "transformer" not in args.skip:
         print("\n" + "=" * 60)
         print("Training: TransformerForward")
         print("=" * 60)
-        model = TransformerForward(
+        model_kwargs = dict(
             n_harmonics=n_harmonics, nx=128, n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
-            d_model=128, nhead=4, dim_feedforward=512, num_layers=3, dropout=0.0, grating_period=1000.0
+            d_model=128, nhead=4, dim_feedforward=512, num_layers=3, dropout=0.0, grating_period=1000.0,
         )
+        model = TransformerForward(**model_kwargs)
         n_params = sum(p.numel() for p in model.parameters())
         print(f"  Parameters: {n_params:,}")
 
@@ -252,7 +251,7 @@ def main():
         all_history["transformer"] = hist
         print(f"  Time: {elapsed / 60:.1f} min")
 
-        save_checkpoint(model, hist, str(ckpt_dir / "transformer_forward.pt"), use_bfloat16=True)
+        save_forward_checkpoint(model, hist, str(ckpt_dir / "transformer_forward.pt"), "TransformerForward", model_kwargs, use_bfloat16=True)
 
     history_path = ckpt_dir / "forward_history.json"
     with open(history_path, "w") as f:

@@ -34,7 +34,7 @@ from Utils.models import (
     GeometryEncoder, SpectrumEncoder, GeometryDecoder
 )
 from Utils.utils import generate_test_batch, get_absorptance_curve, RCWAConfig
-from Scripts.train_inverse import get_best_forward_model
+from Utils.checkpoint import get_best_forward_model, load_inverse_model
 
 plt.rcParams.update({
     "font.size": 11, "axes.titlesize": 13, "axes.labelsize": 12,
@@ -137,11 +137,15 @@ def plot_model_dashboard(
         sim_np = np.concatenate([rcwa_p, rcwa_s])
         mse_list.append(np.mean((target_np - sim_np)**2))
         
+        # Use viridis colormap for consistency
+        cmap = plt.cm.viridis
+        c_target, c_surr, c_physics = cmap(0.0), cmap(0.5), cmap(0.8)
+        
         # 2. P-Pol Spectra
         ax_p = axes[i, 0]
         ax_p.plot(WAVELENGTHS, curve[i, :n_wl_half].cpu().numpy(), "k-", lw=2.5, label="Target", zorder=10)
-        ax_p.plot(WAVELENGTHS, surrogate_preds[i, :n_wl_half].cpu().numpy(), "r--", lw=2.0, label="Surrogate")
-        ax_p.plot(WAVELENGTHS, rcwa_p, "g-", lw=2.0, label="Torcwa Physics")
+        ax_p.plot(WAVELENGTHS, surrogate_preds[i, :n_wl_half].cpu().numpy(), linestyle="--", color=c_surr, lw=2.0, label="Surrogate")
+        ax_p.plot(WAVELENGTHS, rcwa_p, linestyle="-", color=c_physics, lw=2.0, label="Torcwa Physics")
         ax_p.set_xlim(300, 1100); ax_p.set_ylim(-0.05, 1.05)
         ax_p.set_ylabel("Absorptance (P-Pol)")
         if i == 0:
@@ -152,8 +156,8 @@ def plot_model_dashboard(
         # 3. S-Pol Spectra
         ax_s = axes[i, 1]
         ax_s.plot(WAVELENGTHS, curve[i, n_wl_half:].cpu().numpy(), "k-", lw=2.5, label="Target", zorder=10)
-        ax_s.plot(WAVELENGTHS, surrogate_preds[i, n_wl_half:].cpu().numpy(), "b--", lw=2.0, label="Surrogate")
-        ax_s.plot(WAVELENGTHS, rcwa_s, "g-", lw=2.0, label="Torcwa Physics")
+        ax_s.plot(WAVELENGTHS, surrogate_preds[i, n_wl_half:].cpu().numpy(), linestyle="--", color=c_surr, lw=2.0, label="Surrogate")
+        ax_s.plot(WAVELENGTHS, rcwa_s, linestyle="-", color=c_physics, lw=2.0, label="Torcwa Physics")
         ax_s.set_xlim(300, 1100); ax_s.set_ylim(-0.05, 1.05)
         ax_s.set_ylabel("Absorptance (S-Pol)")
         ax_s.set_title(f"{title_prefix} S-Pol")
@@ -206,6 +210,39 @@ def plot_model_dashboard(
     print(f"  Saved Dashboard: {save_path}")
     return np.mean(mse_list)
 
+def plot_inverse_loss_curves(all_history: dict, save_path: str):
+    if not all_history:
+        return
+    
+    # Filter out models that didn't return a valid history dict
+    valid_history = {k: v for k, v in all_history.items() if v and "train_loss" in v}
+    n_models = len(valid_history)
+    
+    if n_models == 0:
+        return
+
+    fig, axes = plt.subplots(1, n_models, figsize=(5 * n_models, 4), squeeze=False, layout="constrained")
+    axes = axes[0]
+
+    for ax, (name, hist) in zip(axes, valid_history.items()):
+        epochs = range(1, len(hist["train_loss"]) + 1)
+        ax.semilogy(epochs, hist["train_loss"], label="Train", alpha=0.8)
+        
+        if "val_loss" in hist:
+            ax.semilogy(epochs, hist["val_loss"], label="Val", alpha=0.8)
+            
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel("Loss")
+        ax.set_title(name.replace("_", " ").title())
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+
+    plt.suptitle("Inverse Training Loss Curves", fontsize=15)
+    plt.tight_layout()
+    plt.savefig(save_path)
+    plt.close()
+    print(f"  Saved: {save_path}")
+
 
 def main():
     args = parse_args()
@@ -245,43 +282,24 @@ def main():
         model.load_state_dict(state_dict, strict=False)
 
     inverse_models = {}
+    all_history = {}
     
     # Load Models
-    tandem_path = ckpt_dir / "tandem.pt"
-    if tandem_path.exists():
-        dec = InverseDecoder(n_wavelengths=n_wavelengths, n_geometry=n_continuous, n_materials=N_MATERIALS, latent_dim=0, geo_min=stats["geo_min"], geo_max=stats["geo_max"])
-        m = TandemNetwork(inverse_decoder=dec, forward_model=forward_model)
-        safe_load_state_dict(m, torch.load(tandem_path, map_location="cpu", weights_only=False)["model_state_dict"])
-        m.eval()
-        inverse_models["tandem"] = m
+    for model_file in ["tandem.pt", "generative_tandem.pt", "cvae.pt"]:
+        path = ckpt_dir / model_file
+        if path.exists():
+            model, hist, metadata = load_inverse_model(
+                path, forward_model=forward_model, dataset_stats=stats,
+                n_continuous=n_continuous, n_wavelengths=n_wavelengths
+            )
+            model.eval()
+            stem = path.stem
+            inverse_models[stem] = model
+            all_history[stem] = hist
 
-    gen_path = ckpt_dir / "generative_tandem.pt"
-    if gen_path.exists():
-        dec = InverseDecoder(n_wavelengths=n_wavelengths, n_geometry=n_continuous, n_materials=N_MATERIALS, latent_dim=32, geo_min=stats["geo_min"], geo_max=stats["geo_max"])
-        m = GenerativeTandemNetwork(inverse_decoder=dec, forward_model=forward_model, latent_dim=32)
-        safe_load_state_dict(m, torch.load(gen_path, map_location="cpu", weights_only=False)["model_state_dict"])
-        m.eval()
-        inverse_models["generative_tandem"] = m
-        
-    cvae_path = ckpt_dir / "cvae.pt"
-    if cvae_path.exists():
-        g_e = GeometryEncoder(n_continuous=n_continuous, n_materials=N_MATERIALS, embed_dim=8, latent_dim=64, fc_dims=(256, 256))
-        g_d = GeometryDecoder(latent_dim=64, n_geometry=n_continuous, n_materials=N_MATERIALS, hidden_dims=(256, 256), geo_min=stats["geo_min"], geo_max=stats["geo_max"])
-        s_e = SpectrumEncoder(n_wavelengths=n_wavelengths, latent_dim=64, conv_channels=(32, 64, 128, 64), fc_dims=(256, 256))
-        m = ContrastiveVAE(geometry_encoder=g_e, geometry_decoder=g_d, spectrum_encoder=s_e, margin_radius=1.0, beta=1e-3, gamma=1.0)
-        safe_load_state_dict(m, torch.load(cvae_path, map_location="cpu", weights_only=False)["model_state_dict"])
-        m.eval()
-        inverse_models["cvae"] = m
-
-    cvae_wishful_path = ckpt_dir / "cvae_wishful.pt"
-    if cvae_wishful_path.exists():
-        g_e = GeometryEncoder(n_continuous=n_continuous, n_materials=N_MATERIALS, embed_dim=8, latent_dim=64, fc_dims=(256, 256))
-        g_d = GeometryDecoder(latent_dim=64, n_geometry=n_continuous, n_materials=N_MATERIALS, hidden_dims=(256, 256), geo_min=stats["geo_min"], geo_max=stats["geo_max"])
-        s_e = SpectrumEncoder(n_wavelengths=n_wavelengths, latent_dim=64, conv_channels=(32, 64, 128, 64), fc_dims=(256, 256))
-        m = ContrastiveVAE(geometry_encoder=g_e, geometry_decoder=g_d, spectrum_encoder=s_e, margin_radius=1.0, beta=1e-3, gamma=1.0)
-        safe_load_state_dict(m, torch.load(cvae_wishful_path, map_location="cpu", weights_only=False)["model_state_dict"])
-        m.eval()
-        inverse_models["cvae_wishful"] = m
+            phases = metadata.get("phases_trained", [])
+            fwd = metadata.get("forward_model_name", "")
+            print(f"Loaded: {stem} (Phases: {phases}, Fwd: {fwd})")
 
     # Retrieve RCWA Config
     first_batch_file = PROJECT_ROOT / "Data" / f"LHS_Dataset_{mat_names[0]}" / "batch_0000.pt"
@@ -291,6 +309,9 @@ def main():
         rcwa_config_dict = {}
 
     print("\nGenerating comprehensive model dashboards...")
+
+    if all_history:
+        plot_inverse_loss_curves(all_history, str(eval_dir / "inverse_loss_curves.png"))
     
     # We will pick 2 real targets from the batch, and 2 ideal broadband targets.
     real_targets = batch["target"][:2]

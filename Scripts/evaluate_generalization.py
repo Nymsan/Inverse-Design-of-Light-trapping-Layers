@@ -15,8 +15,9 @@ from scipy.stats import qmc
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from Utils.models import SpatialCNN, SkipCNN, TransformerForward, ForwardMLP, SIREN, MATERIAL_LIBRARY, N_MATERIALS
+from Utils.models import MATERIAL_LIBRARY, N_MATERIALS
 from Utils.utils import get_absorptance_curve, RCWAConfig
+from Utils.checkpoint import load_forward_model, _FORWARD_FILENAMES
 
 def get_lhs_samples(num_samples, n_harmonics=20, seed=42):
     sampler = qmc.LatinHypercube(d=2 + n_harmonics * 2, seed=seed)
@@ -101,23 +102,6 @@ def main():
     mat_indices = torch.tensor([MATERIAL_LIBRARY[m] for m in sampled_materials], dtype=torch.long, device=device)
     geo = torch.cat([px_tensor.view(args.num_samples, -1), h_tensor, inc_tensor], dim=1).to(device)
     
-    kwargs = {
-        "n_wavelengths": stats["n_wavelengths"],
-        "n_materials": N_MATERIALS,
-        "embed_dim": 8,
-        "n_harmonics": stats["n_harmonics"],  # Forward models initialized with training harmonic count
-        "nx": 128,
-        "n_continuous": stats["n_continuous"]
-    }
-    
-    models = {
-        "forward_mlp": ForwardMLP(**kwargs),
-        "skip_cnn": SkipCNN(conv_channels=(32, 64, 128, 64), fc_dims=(256, 256), **kwargs),
-        "spatial_cnn": SpatialCNN(conv_channels=(32, 64, 64, 64), fc_dims=(512, 128), **kwargs),
-        "siren": SIREN(conv_channels=(32, 64, 64), **kwargs),
-        "transformer_forward": TransformerForward(d_model=128, nhead=4, dim_feedforward=512, num_layers=3, dropout=0.0, **kwargs)
-    }
-    
     samples_data = []
     for i in range(args.num_samples):
         samples_data.append({
@@ -131,22 +115,14 @@ def main():
         
     metrics = {"samples": samples_data}
     
-    for name, model in models.items():
-        ckpt_path = ckpt_dir / f"{name}.pt"
+    for fname in _FORWARD_FILENAMES:
+        ckpt_path = ckpt_dir / fname
         if not ckpt_path.exists():
             continue
             
-        ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
-        clean_sd = {k.replace("_orig_mod.", ""): v for k, v in ckpt["model_state_dict"].items()}
-        if "material_embedding.weight" in clean_sd:
-            old_emb = clean_sd["material_embedding.weight"]
-            current_emb = model.state_dict()["material_embedding.weight"]
-            if old_emb.shape[0] < current_emb.shape[0]:
-                new_emb = current_emb.clone()
-                new_emb[:old_emb.shape[0]] = old_emb
-                clean_sd["material_embedding.weight"] = new_emb
-                
-        model.load_state_dict(clean_sd, strict=False)
+        model, hist, name = load_forward_model(
+            ckpt_path, n_continuous=stats["n_continuous"], n_wavelengths=stats["n_wavelengths"], n_harmonics=stats["n_harmonics"]
+        )
         model = model.to(device)
         model.eval()
         
@@ -162,6 +138,9 @@ def main():
         metrics[name] = {"mae": mae}
         
         # Plot dashboard
+        cmap = plt.cm.viridis
+        c_surr, c_physics = cmap(0.5), cmap(0.8)
+        
         fig, axes = plt.subplots(args.num_samples, 2, figsize=(10, 3 * args.num_samples), squeeze=False)
         for i in range(args.num_samples):
             ax_p = axes[i, 0]
@@ -169,13 +148,13 @@ def main():
             n_wl = stats["n_wavelengths"] // 2
             
             ax_p.plot(WAVELENGTHS, physics_targets[i, :, 0].numpy(), "k-", lw=2, label="Torcwa Physics")
-            ax_p.plot(WAVELENGTHS, preds[i, :n_wl].numpy(), "r--", lw=2, label="Surrogate")
+            ax_p.plot(WAVELENGTHS, preds[i, :n_wl].numpy(), linestyle="--", color=c_surr, lw=2, label="Surrogate")
             ax_p.set_title(f"Sample {i+1} ({sampled_materials[i]}) - P-Pol")
             ax_p.set_ylim(-0.05, 1.05)
             if i == 0: ax_p.legend(fontsize=8)
             
             ax_s.plot(WAVELENGTHS, physics_targets[i, :, 1].numpy(), "k-", lw=2, label="Torcwa Physics")
-            ax_s.plot(WAVELENGTHS, preds[i, n_wl:].numpy(), "b--", lw=2, label="Surrogate")
+            ax_s.plot(WAVELENGTHS, preds[i, n_wl:].numpy(), linestyle="--", color=c_surr, lw=2, label="Surrogate")
             ax_s.set_title(f"Sample {i+1} ({sampled_materials[i]}) - S-Pol")
             ax_s.set_ylim(-0.05, 1.05)
             

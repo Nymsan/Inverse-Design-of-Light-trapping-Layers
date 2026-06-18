@@ -23,6 +23,8 @@ class BatchedSurrogateOptimizer:
         self.h_max = self.geo_max[-2:-1]
         self.inc_min = self.geo_min[-1:]
         self.inc_max = self.geo_max[-1:]
+        for param in self.forward_model.parameters():
+            param.requires_grad = False
 
     def _get_target_and_mask(self, bands: List[Tuple[float, float]], n_wavelengths: int = 322) -> Tuple[torch.Tensor, torch.Tensor]:
         wl_len = n_wavelengths // 2
@@ -64,6 +66,7 @@ class BatchedSurrogateOptimizer:
         mat = torch.tensor(allowed_materials, device=self.device).repeat_interleave(n_restarts)
         
         optimizer = optim.Adam([geo], lr=lr)
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=steps)
         
         history = torch.zeros((steps, n_allowed), device=self.device)
         pbar = tqdm(range(steps), desc="Optimizing Geometry")
@@ -71,24 +74,32 @@ class BatchedSurrogateOptimizer:
             optimizer.zero_grad()
             pred = self.forward_model(geometry=geo, material_id=mat)
             
-            loss = (nn.functional.mse_loss(pred.float(), target.float(), reduction='none') * mask).mean(dim=-1)
+            abs_vals = (pred.float() * mask).sum(dim=-1) / mask.sum(dim=-1)
+            loss = -abs_vals
             loss_sum = loss.mean()
             loss_sum.backward()
             optimizer.step()
+            scheduler.step()
             
             with torch.no_grad():
                 geo.clamp_(self.geo_min, self.geo_max)
-                loss_reshaped = loss.view(n_allowed, n_restarts)
-                min_vals = loss_reshaped.min(dim=1).values
-                history[step] = min_vals
-                pbar.set_postfix(min_loss=f"{min_vals.min().item():.4f}")
+                avg_abs = (pred.float() * mask).sum(dim=-1) / mask.sum(dim=-1)
+                abs_reshaped = avg_abs.view(n_allowed, n_restarts)
+                max_vals = abs_reshaped.max(dim=1).values
+                history[step] = max_vals
+                from Utils.models import MATERIAL_LIBRARY
+                postfix_dict = {
+                    list(MATERIAL_LIBRARY.keys())[mat_idx]: f"{max_vals[i].item():.4f}" 
+                    for i, mat_idx in enumerate(allowed_materials)
+                }
+                pbar.set_postfix(postfix_dict)
                 
         with torch.no_grad():
             pred = self.forward_model(geometry=geo, material_id=mat)
-            final_loss = (nn.functional.mse_loss(pred.float(), target.float(), reduction='none') * mask).mean(dim=-1)
+            final_abs = (pred.float() * mask).sum(dim=-1) / mask.sum(dim=-1)
             
-        final_loss_reshaped = final_loss.view(n_allowed, n_restarts)
-        top_vals, top_indices_local = final_loss_reshaped.topk(top_k, dim=1, largest=False)
+        final_abs_reshaped = final_abs.view(n_allowed, n_restarts)
+        top_vals, top_indices_local = final_abs_reshaped.topk(top_k, dim=1, largest=True)
         
         top_results = []
         for i in range(n_allowed):
@@ -100,13 +111,13 @@ class BatchedSurrogateOptimizer:
                     "material_idx": mat_idx,
                     "geometry": geo[global_idx].detach().cpu(),
                     "curve": pred[global_idx].detach().float().cpu(),
-                    "loss": final_loss[global_idx].item()
+                    "loss": final_abs[global_idx].item()
                 })
                 
-        best_global_idx = final_loss.argmin().item()
+        best_global_idx = final_abs.argmax().item()
         
         return {
-            "best_loss": final_loss[best_global_idx].item(),
+            "best_loss": final_abs[best_global_idx].item(),
             "best_geometry": geo[best_global_idx].detach().cpu(),
             "best_material": mat[best_global_idx].item(),
             "best_curve": pred[best_global_idx].detach().float().cpu(),
@@ -143,6 +154,7 @@ class BatchedSurrogateOptimizer:
         
         # Note: lr is much higher because profile values are around ~0-1000 nm, while geo angles are ~0-2pi
         optimizer = optim.Adam([profile, h, inc_ang], lr=lr)
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=steps)
         
         history = torch.zeros((steps, n_allowed), device=self.device)
         pbar = tqdm(range(steps), desc="Optimizing Profile")
@@ -150,10 +162,12 @@ class BatchedSurrogateOptimizer:
             optimizer.zero_grad()
             pred = self.forward_model(profile=profile, h=h, inc_ang=inc_ang, material_id=mat)
                 
-            loss = (nn.functional.mse_loss(pred.float(), target.float(), reduction='none') * mask).mean(dim=-1)
+            abs_vals = (pred.float() * mask).sum(dim=-1) / mask.sum(dim=-1)
+            loss = -abs_vals
             loss_sum = loss.mean()
             loss_sum.backward()
             optimizer.step()
+            scheduler.step()
             
             with torch.no_grad():
                 # Enforce DC term = sum(A_n) constraint to match torcwa's geometry parameterization
@@ -169,17 +183,24 @@ class BatchedSurrogateOptimizer:
                 profile.clamp_(min=0.0) # Physical constraint
                 h.clamp_(self.h_min, self.h_max)
                 inc_ang.clamp_(self.inc_min, self.inc_max)
-                loss_reshaped = loss.view(n_allowed, n_restarts)
-                min_vals = loss_reshaped.min(dim=1).values
-                history[step] = min_vals
-                pbar.set_postfix(min_loss=f"{min_vals.min().item():.4f}")
+                
+                avg_abs = (pred.float() * mask).sum(dim=-1) / mask.sum(dim=-1)
+                abs_reshaped = avg_abs.view(n_allowed, n_restarts)
+                max_vals = abs_reshaped.max(dim=1).values
+                history[step] = max_vals
+                from Utils.models import MATERIAL_LIBRARY
+                postfix_dict = {
+                    list(MATERIAL_LIBRARY.keys())[mat_idx]: f"{max_vals[i].item():.4f}" 
+                    for i, mat_idx in enumerate(allowed_materials)
+                }
+                pbar.set_postfix(postfix_dict)
                 
         with torch.no_grad():
             pred = self.forward_model(profile=profile, h=h, inc_ang=inc_ang, material_id=mat)
-            final_loss = (nn.functional.mse_loss(pred.float(), target.float(), reduction='none') * mask).mean(dim=-1)
+            final_abs = (pred.float() * mask).sum(dim=-1) / mask.sum(dim=-1)
             
-        final_loss_reshaped = final_loss.view(n_allowed, n_restarts)
-        top_vals, top_indices_local = final_loss_reshaped.topk(top_k, dim=1, largest=False)
+        final_abs_reshaped = final_abs.view(n_allowed, n_restarts)
+        top_vals, top_indices_local = final_abs_reshaped.topk(top_k, dim=1, largest=True)
         
         top_results = []
         for i in range(n_allowed):
@@ -193,13 +214,13 @@ class BatchedSurrogateOptimizer:
                     "h": h[global_idx].detach().cpu(),
                     "inc_ang": inc_ang[global_idx].detach().cpu(),
                     "curve": pred[global_idx].detach().float().cpu(),
-                    "loss": final_loss[global_idx].item()
+                    "loss": final_abs[global_idx].item()
                 })
                 
-        best_global_idx = final_loss.argmin().item()
+        best_global_idx = final_abs.argmax().item()
         
         return {
-            "best_loss": final_loss[best_global_idx].item(),
+            "best_loss": final_abs[best_global_idx].item(),
             "best_profile": profile[best_global_idx].detach().cpu(),
             "best_h": h[best_global_idx].detach().cpu(),
             "best_inc_ang": inc_ang[best_global_idx].detach().cpu(),

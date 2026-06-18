@@ -3,8 +3,14 @@
 Train inverse models on generated grating data.
 Automatically loads the best available frozen forward surrogate from checkpoints.
 
+Training follows a 3-phase curriculum (each phase optional):
+  Phase 1: Real curves (always runs)
+  Phase 2: Wishful thinking — top quantile of curves interpolated toward 1.0
+  Phase 3: Synthetic curves — Gaussians and step functions via frozen forward model
+
 Usage:
-    python Scripts/train_inverse.py --data_dir Data/LHS_Dataset_Si
+    python Scripts/train_inverse.py --data_dir Data/LHS_Dataset_Si Data/LHS_Dataset_TiO2 Data/LHS_Dataset_Si3N4
+    python Scripts/train_inverse.py --data_dir Data/LHS_Dataset_Si --skip_wishful --skip_synthetic
 """
 
 from __future__ import annotations
@@ -28,123 +34,14 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from Utils.models import (
     MATERIAL_LIBRARY, N_MATERIALS,
-    ForwardMLP, SpatialCNN, SkipCNN, SIREN, TransformerForward,
     InverseDecoder, TandemNetwork, GenerativeTandemNetwork,
     GeometryEncoder, GeometryDecoder, SpectrumEncoder, ContrastiveVAE,
     GratingDataset,
     train_tandem, train_cvae, train_cvae_wishful,
 )
-
-def save_checkpoint(model, history: dict, path: str):
-    torch.save({
-        "model_state_dict": model.state_dict(),
-        "history": history,
-    }, path)
-
-def get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics):
-    best_loss = float('inf')
-    best_name = None
-    best_model = None
-
-    def _clean_state_dict(sd):
-        clean_sd = {}
-        for k, v in sd.items():
-            if k.startswith("_orig_mod."):
-                clean_sd[k[len("_orig_mod."):]] = v
-            else:
-                clean_sd[k] = v
-        return clean_sd
-
-    def safe_load_state_dict(model, state_dict):
-        if "material_embedding.weight" in state_dict:
-            old_emb = state_dict["material_embedding.weight"]
-            current_emb = model.state_dict()["material_embedding.weight"]
-            if old_emb.shape[0] < current_emb.shape[0]:
-                new_emb = current_emb.clone()
-                new_emb[:old_emb.shape[0]] = old_emb
-                state_dict["material_embedding.weight"] = new_emb
-        model.load_state_dict(state_dict, strict=True)
-
-    kwargs = {
-        "n_wavelengths": n_wavelengths,
-        "n_materials": N_MATERIALS,
-        "embed_dim": 8,
-        "n_harmonics": n_harmonics,
-        "nx": 128,
-        "n_continuous": n_continuous,
-    }
-
-    # ForwardMLP
-    p = ckpt_dir / "forward_mlp.pt"
-    if p.exists():
-        model = ForwardMLP(**kwargs)
-        ckpt = torch.load(p, map_location="cpu", weights_only=False)
-        hist = ckpt.get("history", {})
-        if "val_loss" in hist and len(hist["val_loss"]) > 0:
-            val_loss = min(hist["val_loss"])
-            if val_loss < best_loss:
-                best_loss = val_loss
-                best_name = "forward_mlp"
-                safe_load_state_dict(model, _clean_state_dict(ckpt["model_state_dict"]))
-                best_model = model
-
-    # SpatialCNN
-    p = ckpt_dir / "spatial_cnn.pt"
-    if p.exists():
-        model = SpatialCNN(conv_channels=(32, 64, 64, 64), fc_dims=(512, 128), **kwargs)
-        ckpt = torch.load(p, map_location="cpu", weights_only=False)
-        hist = ckpt.get("history", {})
-        if "val_loss" in hist and len(hist["val_loss"]) > 0:
-            val_loss = min(hist["val_loss"])
-            if val_loss < best_loss:
-                best_loss = val_loss
-                best_name = "spatial_cnn"
-                safe_load_state_dict(model, _clean_state_dict(ckpt["model_state_dict"]))
-                best_model = model
-
-    # SkipCNN
-    p = ckpt_dir / "skip_cnn.pt"
-    if p.exists():
-        model = SkipCNN(conv_channels=(32, 64, 128, 64), fc_dims=(256, 256), **kwargs)
-        ckpt = torch.load(p, map_location="cpu", weights_only=False)
-        hist = ckpt.get("history", {})
-        if "val_loss" in hist and len(hist["val_loss"]) > 0:
-            val_loss = min(hist["val_loss"])
-            if val_loss < best_loss:
-                best_loss = val_loss
-                best_name = "skip_cnn"
-                safe_load_state_dict(model, _clean_state_dict(ckpt["model_state_dict"]))
-                best_model = model
-
-    # SIREN
-    p = ckpt_dir / "siren.pt"
-    if p.exists():
-        model = SIREN(conv_channels=(32, 64, 64), **kwargs)
-        ckpt = torch.load(p, map_location="cpu", weights_only=False)
-        hist = ckpt.get("history", {})
-        if "val_loss" in hist and len(hist["val_loss"]) > 0:
-            val_loss = min(hist["val_loss"])
-            if val_loss < best_loss:
-                best_loss = val_loss
-                best_name = "siren"
-                safe_load_state_dict(model, _clean_state_dict(ckpt["model_state_dict"]))
-                best_model = model
-
-    # TransformerForward
-    p = ckpt_dir / "transformer_forward.pt"
-    if p.exists():
-        model = TransformerForward(d_model=128, nhead=4, dim_feedforward=512, num_layers=3, dropout=0.0, **kwargs)
-        ckpt = torch.load(p, map_location="cpu", weights_only=False)
-        hist = ckpt.get("history", {})
-        if "val_loss" in hist and len(hist["val_loss"]) > 0:
-            val_loss = min(hist["val_loss"])
-            if val_loss < best_loss:
-                best_loss = val_loss
-                best_name = "transformer_forward"
-                safe_load_state_dict(model, _clean_state_dict(ckpt["model_state_dict"]))
-                best_model = model
-
-    return best_model, best_name, best_loss
+from Utils.checkpoint import (
+    save_inverse_checkpoint, get_best_forward_model,
+)
 
 
 def get_args():
@@ -153,6 +50,7 @@ def get_args():
     p.add_argument("--materials", nargs="+", default=["Si", "TiO2", "Si3N4"])
     p.add_argument("--batch_size", type=int, default=64)
     p.add_argument("--epochs", type=int, default=500)
+    p.add_argument("--wishful_epochs", type=int, default=100)
     p.add_argument("--synthetic_epochs", type=int, default=100)
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--patience", type=int, default=100)
@@ -163,7 +61,89 @@ def get_args():
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--device", default=None)
     p.add_argument("--skip", nargs="*", default=[], choices=["tandem", "gen_tandem", "cvae"])
+    p.add_argument("--skip_wishful", action="store_true",
+                    help="Skip Phase 2 (wishful thinking) training")
+    p.add_argument("--skip_synthetic", action="store_true",
+                    help="Skip Phase 3 (synthetic curves) training")
     return p.parse_args()
+
+
+def _train_model_3phase(
+    model, train_loader, val_loader, args, device, forward_model,
+    train_fn, is_cvae=False, model_name="model",
+):
+    """Run the 3-phase training curriculum for an inverse model.
+    
+    Returns (history, phases_trained, elapsed_time).
+    """
+    phases_trained = []
+    t0 = time.time()
+
+    # --- Phase 1: Real curves (always runs) ---
+    print("  Phase 1: Real curves")
+    if is_cvae:
+        hist = train_fn(
+            model, train_loader, val_loader,
+            epochs=args.epochs, lr=args.lr, patience=args.patience,
+            device=device, synthetic_phase=False,
+        )
+    else:
+        hist = train_fn(
+            model, train_loader, val_loader,
+            epochs=args.epochs, lr=args.lr, patience=args.patience,
+            device=device, synthetic_phase=False,
+        )
+    phases_trained.append("real")
+
+    # --- Phase 2: Wishful thinking (optional, default on) ---
+    if not args.skip_wishful and args.wishful_epochs > 0:
+        if is_cvae:
+            print(f"\n  Phase 2: Wishful thinking ({args.wishful_epochs} epochs)")
+            hist_wishful = train_cvae_wishful(
+                model, train_loader, val_loader,
+                epochs=args.wishful_epochs, lr=args.lr * 0.1,
+                patience=min(args.patience, 50),
+                device=device,
+            )
+            for k in hist:
+                hist[k].extend(hist_wishful.get(k, []))
+            phases_trained.append("wishful")
+        else:
+            print(f"\n  Phase 2: Wishful thinking — skipped for {model_name} (only supported for CVAE)")
+    elif args.skip_wishful:
+        print("\n  Phase 2: Wishful thinking — SKIPPED (--skip_wishful)")
+
+    # --- Phase 3: Synthetic curves (optional, default on) ---
+    if not args.skip_synthetic and args.synthetic_epochs > 0:
+        if is_cvae:
+            if forward_model is not None:
+                print(f"\n  Phase 3: Synthetic curves ({args.synthetic_epochs} epochs)")
+                hist_synth = train_fn(
+                    model, train_loader, val_loader,
+                    epochs=args.synthetic_epochs, lr=args.lr, patience=args.patience,
+                    device=device, forward_model=forward_model, synthetic_phase=True,
+                )
+                for k in hist:
+                    hist[k].extend(hist_synth.get(k, []))
+                phases_trained.append("synthetic")
+            else:
+                print("\n  WARNING: Skipping Phase 3 for CVAE as forward_model is missing.")
+        else:
+            print(f"\n  Phase 3: Synthetic curves ({args.synthetic_epochs} epochs)")
+            hist_synth = train_fn(
+                model, train_loader, val_loader,
+                epochs=args.synthetic_epochs, lr=args.lr, patience=args.patience,
+                device=device, synthetic_phase=True,
+            )
+            for k in hist:
+                hist[k].extend(hist_synth.get(k, []))
+            phases_trained.append("synthetic")
+    elif args.skip_synthetic:
+        print("\n  Phase 3: Synthetic curves — SKIPPED (--skip_synthetic)")
+
+    elapsed = time.time() - t0
+    return hist, phases_trained, elapsed
+
 
 def main():
     args = get_args()
@@ -218,7 +198,9 @@ def main():
         geo_max = train_set.geometry.max(dim=0).values
 
     # Find the best forward model
-    forward_model, fwd_name, fwd_loss = get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics)
+    forward_model, fwd_name, fwd_loss = get_best_forward_model(
+        ckpt_dir, n_continuous=n_continuous, n_wavelengths=n_wavelengths, n_harmonics=n_harmonics
+    )
     
     if forward_model is not None:
         print(f"\n=> Loaded BEST forward model: {fwd_name} (val_loss = {fwd_loss:.6f})")
@@ -228,6 +210,7 @@ def main():
     timings = {}
     all_history = {}
 
+    # ==================== TandemNetwork ====================
     if "tandem" not in args.skip:
         print("\n" + "=" * 60)
         print("Training: TandemNetwork")
@@ -235,40 +218,42 @@ def main():
         if forward_model is None:
             print("  SKIPPED — no forward model available.")
         else:
-            decoder = InverseDecoder(
+            decoder_kwargs = dict(
                 n_wavelengths=n_wavelengths, n_geometry=n_continuous,
                 n_materials=N_MATERIALS, latent_dim=0,
                 geo_min=geo_min, geo_max=geo_max,
-                
             )
+            decoder = InverseDecoder(**decoder_kwargs)
             tandem = TandemNetwork(inverse_decoder=decoder, forward_model=forward_model)
             n_params = sum(p.numel() for p in tandem.inverse_decoder.parameters())
 # Removed torch.compile due to dynamic tau parameter causing recompilation hangs
             print(f"  Trainable parameters (decoder only): {n_params:,}")
 
-            print("  Phase 1: Real curves")
-            t0 = time.time()
-            hist = train_tandem(
-                tandem, train_loader, val_loader,
-                epochs=args.epochs, lr=args.lr, patience=args.patience,
-                device=device, synthetic_phase=False,
+            hist, phases, elapsed = _train_model_3phase(
+                tandem, train_loader, val_loader, args, device, forward_model,
+                train_fn=train_tandem, is_cvae=False, model_name="TandemNetwork",
             )
-            if args.synthetic_epochs > 0:
-                print("\n  Phase 2: Synthetic curves")
-                hist_synth = train_tandem(
-                    tandem, train_loader, val_loader,
-                    epochs=args.synthetic_epochs, lr=args.lr, patience=args.patience,
-                    device=device, synthetic_phase=True,
-                )
-                for k in hist:
-                    hist[k].extend(hist_synth.get(k, []))
             
-            elapsed = time.time() - t0
             timings["tandem"] = elapsed
             all_history["tandem"] = hist
-            print(f"  Time: {elapsed / 60:.1f} min")
-            save_checkpoint(tandem, hist, str(ckpt_dir / "tandem.pt"))
+            print(f"  Time: {elapsed / 60:.1f} min  |  Phases: {phases}")
 
+            # Build config for checkpoint (exclude non-serializable tensors)
+            model_config = {
+                "inverse_decoder": {
+                    k: v for k, v in decoder_kwargs.items()
+                    if k not in ("geo_min", "geo_max")
+                },
+            }
+            save_inverse_checkpoint(
+                tandem, hist, str(ckpt_dir / "tandem.pt"),
+                model_class_name="TandemNetwork",
+                model_config=model_config,
+                forward_model_name=fwd_name,
+                phases_trained=phases,
+            )
+
+    # ==================== GenerativeTandemNetwork ====================
     if "gen_tandem" not in args.skip:
         print("\n" + "=" * 60)
         print("Training: GenerativeTandemNetwork")
@@ -277,12 +262,12 @@ def main():
             print("  SKIPPED — no forward model available.")
         else:
             latent_dim = args.latent_dim_gen
-            decoder = InverseDecoder(
+            decoder_kwargs = dict(
                 n_wavelengths=n_wavelengths, n_geometry=n_continuous,
                 n_materials=N_MATERIALS, latent_dim=latent_dim,
                 geo_min=geo_min, geo_max=geo_max,
-                
             )
+            decoder = InverseDecoder(**decoder_kwargs)
             gen_tandem = GenerativeTandemNetwork(
                 inverse_decoder=decoder, forward_model=forward_model,
                 latent_dim=latent_dim,
@@ -291,84 +276,100 @@ def main():
 # Removed torch.compile due to dynamic tau parameter causing recompilation hangs
             print(f"  Trainable parameters (decoder only): {n_params:,}")
 
-            print("  Phase 1: Real curves")
-            t0 = time.time()
-            hist = train_tandem(
-                gen_tandem, train_loader, val_loader,
-                epochs=args.epochs, lr=args.lr, patience=args.patience,
-                device=device, synthetic_phase=False,
+            hist, phases, elapsed = _train_model_3phase(
+                gen_tandem, train_loader, val_loader, args, device, forward_model,
+                train_fn=train_tandem, is_cvae=False, model_name="GenerativeTandemNetwork",
             )
-            if args.synthetic_epochs > 0:
-                print("\n  Phase 2: Synthetic curves")
-                hist_synth = train_tandem(
-                    gen_tandem, train_loader, val_loader,
-                    epochs=args.synthetic_epochs, lr=args.lr, patience=args.patience,
-                    device=device, synthetic_phase=True,
-                )
-                for k in hist:
-                    hist[k].extend(hist_synth.get(k, []))
-            
-            elapsed = time.time() - t0
+
             timings["generative_tandem"] = elapsed
             all_history["generative_tandem"] = hist
-            print(f"  Time: {elapsed / 60:.1f} min")
-            save_checkpoint(gen_tandem, hist, str(ckpt_dir / "generative_tandem.pt"))
+            print(f"  Time: {elapsed / 60:.1f} min  |  Phases: {phases}")
 
+            model_config = {
+                "inverse_decoder": {
+                    k: v for k, v in decoder_kwargs.items()
+                    if k not in ("geo_min", "geo_max")
+                },
+                "latent_dim": latent_dim,
+            }
+            save_inverse_checkpoint(
+                gen_tandem, hist, str(ckpt_dir / "generative_tandem.pt"),
+                model_class_name="GenerativeTandemNetwork",
+                model_config=model_config,
+                forward_model_name=fwd_name,
+                phases_trained=phases,
+            )
+
+    # ==================== ContrastiveVAE ====================
     if "cvae" not in args.skip:
         print("\n" + "=" * 60)
         print("Training: ContrastiveVAE")
         print("=" * 60)
         latent_dim = args.latent_dim_cvae
-        geo_enc = GeometryEncoder(
+        
+        geo_enc_kwargs = dict(
             n_continuous=n_continuous, n_materials=N_MATERIALS, embed_dim=8,
             latent_dim=latent_dim, fc_dims=(256, 256),
         )
-        geo_dec = GeometryDecoder(
+        geo_dec_kwargs = dict(
             latent_dim=latent_dim, n_geometry=n_continuous,
             n_materials=N_MATERIALS, geo_min=geo_min, geo_max=geo_max,
             hidden_dims=(256, 256),
         )
-        spec_enc = SpectrumEncoder(
+        spec_enc_kwargs = dict(
             n_wavelengths=n_wavelengths, latent_dim=latent_dim,
             conv_channels=(32, 64, 128, 64), fc_dims=(256, 256),
         )
+        cvae_kwargs = dict(
+            margin_radius=1.0, beta=1e-3, gamma=1.0,
+        )
+
+        geo_enc = GeometryEncoder(**geo_enc_kwargs)
+        geo_dec = GeometryDecoder(**geo_dec_kwargs)
+        spec_enc = SpectrumEncoder(**spec_enc_kwargs)
         cvae = ContrastiveVAE(
             geometry_encoder=geo_enc, geometry_decoder=geo_dec,
-            spectrum_encoder=spec_enc, margin_radius=1.0,
-            beta=1e-3, gamma=1.0,
+            spectrum_encoder=spec_enc, **cvae_kwargs,
         )
-        n_params = sum(p.numel() for p in cvae.parameters())
+        n_geo_enc = sum(p.numel() for p in geo_enc.parameters())
+        n_geo_dec = sum(p.numel() for p in geo_dec.parameters())
+        n_spec_enc = sum(p.numel() for p in spec_enc.parameters())
+        n_cvae_total = sum(p.numel() for p in cvae.parameters())
 # Removed torch.compile due to dynamic tau parameter causing recompilation hangs
-        print(f"  Parameters: {n_params:,}")
+        print(f"  Parameters: Total={n_cvae_total:,} | GeoEnc={n_geo_enc:,} | GeoDec={n_geo_dec:,} | SpecEnc={n_spec_enc:,}")
 
-        print("  Phase 1: Real curves")
-        t0 = time.time()
-        hist = train_cvae(
-            cvae, train_loader, val_loader,
-            epochs=args.epochs, lr=args.lr, patience=args.patience,
-            device=device, synthetic_phase=False,
+        hist, phases, elapsed = _train_model_3phase(
+            cvae, train_loader, val_loader, args, device, forward_model,
+            train_fn=train_cvae, is_cvae=True, model_name="ContrastiveVAE",
         )
-        if args.synthetic_epochs > 0:
-            if forward_model is not None:
-                print("\n  Phase 2: Synthetic curves")
-                hist_synth = train_cvae(
-                    cvae, train_loader, val_loader,
-                    epochs=args.synthetic_epochs, lr=args.lr, patience=args.patience,
-                    device=device, forward_model=forward_model, synthetic_phase=True,
-                )
-                for k in hist:
-                    hist[k].extend(hist_synth.get(k, []))
-            else:
-                print("\n  WARNING: Skipping Phase 2 for CVAE as forward_model is missing.")
-        
-        elapsed = time.time() - t0
+
         timings["cvae"] = elapsed
         all_history["cvae"] = hist
-        print(f"  Time: {elapsed / 60:.1f} min")
-        save_checkpoint(cvae, hist, str(ckpt_dir / "cvae.pt"))
+        print(f"  Time: {elapsed / 60:.1f} min  |  Phases: {phases}")
 
+        model_config = {
+            "geometry_encoder": {
+                k: v for k, v in geo_enc_kwargs.items()
+                if k not in ("geo_min", "geo_max")
+            },
+            "geometry_decoder": {
+                k: v for k, v in geo_dec_kwargs.items()
+                if k not in ("geo_min", "geo_max")
+            },
+            "spectrum_encoder": {
+                k: v for k, v in spec_enc_kwargs.items()
+            },
+            **cvae_kwargs,
+        }
+        save_inverse_checkpoint(
+            cvae, hist, str(ckpt_dir / "cvae.pt"),
+            model_class_name="ContrastiveVAE",
+            model_config=model_config,
+            forward_model_name=fwd_name,
+            phases_trained=phases,
+        )
 
-
+    # ==================== Summary ====================
     history_path = ckpt_dir / "inverse_history.json"
     with open(history_path, "w") as f:
         json.dump(all_history, f, indent=2)
