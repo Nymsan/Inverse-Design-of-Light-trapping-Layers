@@ -2,7 +2,7 @@
 #BSUB -J train_surrogates
 #BSUB -q gpul40s
 #BSUB -gpu "num=1:mode=exclusive_process"
-#BSUB -n 4
+#BSUB -n 8
 #BSUB -R "rusage[mem=8GB]"
 #BSUB -R "span[hosts=1]"
 #BSUB -W 24:00
