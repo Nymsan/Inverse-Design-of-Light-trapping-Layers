@@ -55,6 +55,16 @@ def get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics):
                 clean_sd[k] = v
         return clean_sd
 
+    def safe_load_state_dict(model, state_dict):
+        if "material_embedding.weight" in state_dict:
+            old_emb = state_dict["material_embedding.weight"]
+            current_emb = model.state_dict()["material_embedding.weight"]
+            if old_emb.shape[0] < current_emb.shape[0]:
+                new_emb = current_emb.clone()
+                new_emb[:old_emb.shape[0]] = old_emb
+                state_dict["material_embedding.weight"] = new_emb
+        model.load_state_dict(state_dict, strict=True)
+
     kwargs = {
         "n_wavelengths": n_wavelengths,
         "n_materials": N_MATERIALS,
@@ -75,7 +85,7 @@ def get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics):
             if val_loss < best_loss:
                 best_loss = val_loss
                 best_name = "forward_mlp"
-                model.load_state_dict(_clean_state_dict(ckpt["model_state_dict"]), strict=True)
+                safe_load_state_dict(model, _clean_state_dict(ckpt["model_state_dict"]))
                 best_model = model
 
     # SpatialCNN
@@ -89,7 +99,7 @@ def get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics):
             if val_loss < best_loss:
                 best_loss = val_loss
                 best_name = "spatial_cnn"
-                model.load_state_dict(_clean_state_dict(ckpt["model_state_dict"]), strict=True)
+                safe_load_state_dict(model, _clean_state_dict(ckpt["model_state_dict"]))
                 best_model = model
 
     # SkipCNN
@@ -103,7 +113,7 @@ def get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics):
             if val_loss < best_loss:
                 best_loss = val_loss
                 best_name = "skip_cnn"
-                model.load_state_dict(_clean_state_dict(ckpt["model_state_dict"]), strict=True)
+                safe_load_state_dict(model, _clean_state_dict(ckpt["model_state_dict"]))
                 best_model = model
 
     # SIREN
@@ -117,7 +127,7 @@ def get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics):
             if val_loss < best_loss:
                 best_loss = val_loss
                 best_name = "siren"
-                model.load_state_dict(_clean_state_dict(ckpt["model_state_dict"]), strict=True)
+                safe_load_state_dict(model, _clean_state_dict(ckpt["model_state_dict"]))
                 best_model = model
 
     # TransformerForward
@@ -131,7 +141,7 @@ def get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics):
             if val_loss < best_loss:
                 best_loss = val_loss
                 best_name = "transformer_forward"
-                model.load_state_dict(_clean_state_dict(ckpt["model_state_dict"]), strict=True)
+                safe_load_state_dict(model, _clean_state_dict(ckpt["model_state_dict"]))
                 best_model = model
 
     return best_model, best_name, best_loss

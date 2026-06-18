@@ -12,29 +12,28 @@ import argparse
 import json
 import os
 import sys
+import json
 from pathlib import Path
 
 from tqdm import tqdm
-
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from Utils.models import (
     MATERIAL_LIBRARY, N_MATERIALS,
-    ForwardMLP, SpatialCNN, SkipCNN, SIREN,
+    ForwardMLP, SpatialCNN, SkipCNN, SIREN, TransformerForward,
     TandemNetwork, GenerativeTandemNetwork, ContrastiveVAE, InverseDecoder,
     GeometryEncoder, SpectrumEncoder, GeometryDecoder
 )
-from Utils.utils import generate_eval_batch
-
+from Utils.utils import generate_test_batch, get_absorptance_curve, RCWAConfig
 from Scripts.train_inverse import get_best_forward_model
 
 plt.rcParams.update({
@@ -44,228 +43,86 @@ plt.rcParams.update({
 
 WAVELENGTHS = np.linspace(300, 1100, 161)
 
-
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--ckpt_dir", required=True, help="Path to checkpoint directory")
     return p.parse_args()
 
 
-def plot_loss_curves(all_history: dict, save_path: str):
-    if not all_history:
-        return
-    n_models = len(all_history)
-    fig, axes = plt.subplots(1, n_models, figsize=(5 * n_models, 5), squeeze=False, layout="tight")
-    axes = axes[0]
-
-    for ax, (name, hist) in zip(axes, all_history.items()):
-        if "train_loss" not in hist:
-            continue
-        epochs = range(1, len(hist["train_loss"]) + 1)
-        ax.semilogy(epochs, hist["train_loss"], label="Train", alpha=0.8)
-        ax.semilogy(epochs, hist["val_loss"], label="Val", alpha=0.8)
-        ax.set_xlabel("Epoch")
-        ax.set_ylabel("Combined Loss")
-        ax.set_title(name.replace("_", " ").title())
-        ax.legend()
-        ax.grid(True, alpha=0.3)
-
-    plt.suptitle("Inverse Training Loss Curves", fontsize=15)
-    plt.savefig(save_path)
-    plt.close()
-    print(f"  Saved: {save_path}")
-
-
 @torch.no_grad()
-def plot_inverse_performance(inverse_models, forward_model, val_loader, save_path: str, n_wavelengths: int):
-    if not inverse_models:
-        return
-    batch = next(iter(val_loader))
-    target = batch["target"]
-    n_show = min(4, target.shape[0])
-    n_wl_half = n_wavelengths // 2
-
-    fig, axes = plt.subplots(n_show, 2, figsize=(14, 4 * n_show), squeeze=False, layout="constrained")
-    colors = plt.cm.tab10(np.linspace(0, 1, len(inverse_models)))
-
-    for i in range(n_show):
-        curve = target[i:i+1]
-        preds = {}
-        for name, inv_model in inverse_models.items():
-            if name == "tandem":
-                pred_geo, mat_oh, _ = inv_model.inverse_decoder(curve, tau=0.1)
-                preds[name] = _run_forward(forward_model, pred_geo, mat_oh)
-            elif name == "generative_tandem":
-                designs = inv_model.sample_diverse_designs(curve, n_samples=1, tau=0.1)
-                preds[name] = _run_forward(forward_model, designs["pred_geometry"], designs["material_onehot"])
-            elif name == "cvae":
-                z_y = inv_model.spectrum_encoder(curve)
-                pred_geo, mat_oh, _ = inv_model.geometry_decoder(z_y, tau=0.1, hard=True)
-                preds[name] = _run_forward(forward_model, pred_geo, mat_oh)
-
-        for pol_idx, pol_label in enumerate(["p-pol", "s-pol"]):
-            ax = axes[i, pol_idx]
-            start = pol_idx * n_wl_half
-            end = start + n_wl_half
-            ax.plot(WAVELENGTHS, curve[0, start:end].cpu().numpy(), "k-", lw=2.5, label="Target", zorder=10)
-            
-            for (name, pred), c in zip(preds.items(), colors):
-                ax.plot(WAVELENGTHS, pred[0, start:end].cpu().numpy(),
-                        "--", color=c, lw=2.0, label=name.replace("_", " ").title())
-                
-            ax.set_xlim(300, 1100)
-            ax.set_ylim(-0.05, 1.05)
-            ax.set_ylabel("Absorptance")
-            if i == 0:
-                ax.set_title(f"Target vs. Obtained ({pol_label})")
-            if i == 0 and pol_idx == 0:
-                ax.legend(fontsize=9)
-            if i == n_show - 1:
-                ax.set_xlabel("Wavelength (nm)")
-
-    plt.savefig(save_path)
-    plt.close()
-    print(f"  Saved: {save_path}")
-
-
-def _run_forward(forward_model, pred_geo, mat_oh):
-    return forward_model(pred_geo, mat_oh.argmax(dim=-1))
-
-
-@torch.no_grad()
-def plot_candidate_designs(inv_model, forward_model, val_loader, save_path: str, n_wavelengths: int, stats: dict, target_curve=None):
-    from Utils.utils import get_absorptance_curve, RCWAConfig
-    mat_name = list(stats["materials"].keys())[0]
-    from pathlib import Path
-    first_batch_file = PROJECT_ROOT / "Data" / f"LHS_Dataset_{mat_name}" / "batch_0000.pt"
-    if first_batch_file.exists():
-        batch_data = torch.load(first_batch_file, map_location="cpu", weights_only=False)
-        rcwa_config_dict = batch_data.get("metadata", {}).get("config", {})
-    else:
-        rcwa_config_dict = {}
-    batch = next(iter(val_loader))
+def plot_model_dashboard(
+    model_name: str,
+    inv_model: nn.Module,
+    forward_model: nn.Module,
+    targets: torch.Tensor,
+    is_ideal: list[bool],
+    rcwa_config_dict: dict,
+    stats: dict,
+    save_path: str,
+    n_wavelengths: int
+):
+    """
+    Creates a comprehensive dashboard for a single inverse model.
+    Rows: Each target.
+    Cols:
+      1. p-pol Spectrum (Target vs Surrogate vs Torcwa)
+      2. s-pol Spectrum (Target vs Surrogate vs Torcwa)
+      3. Grating Profile
+      4. Harmonic Amplitudes & Phases
+    """
     device = next(inv_model.parameters()).device
+    n_samples = targets.shape[0]
+    n_wl_half = n_wavelengths // 2
     
-    geo = batch["geometry"]
-    mat = batch["material_id"]
-    target = batch["target"]
-    
-    selected_indices = []
-    mat_counts = {}
-    for idx, m_id in enumerate(mat.cpu().numpy()):
-        m_id = m_id.item()
-        if mat_counts.get(m_id, 0) < 2:
-            selected_indices.append(idx)
-            mat_counts[m_id] = mat_counts.get(m_id, 0) + 1
-        if len(selected_indices) >= 6:
-            break
-            
-    # Sort indices so the materials appear in order (e.g. 0, 0, 1, 1, 2, 2)
-    selected_indices.sort(key=lambda idx: mat[idx].item())
-            
-    n_samples = len(selected_indices)
-    curve = target[selected_indices].to(device)
-    if target_curve is not None:
-        curve = target_curve.to(device).expand(n_samples, -1)
-    real_geo = geo[selected_indices].to(device)
-    
+    # Generate designs
+    curve = targets.to(device)
     if hasattr(inv_model, "sample_diverse_designs"):
-        # Generative Tandem
         designs = inv_model(curve, z=torch.randn(n_samples, inv_model.latent_dim, device=device))
-        pred_geo = designs["pred_geometry"] # (n_samples, 12)
-        mat_oh = designs["material_onehot"] # (n_samples, 3)
+        pred_geo = designs["pred_geometry"]
+        mat_oh = designs["material_onehot"]
     elif hasattr(inv_model, "spectrum_encoder"):
-        # Contrastive VAE
         z_y = inv_model.spectrum_encoder(curve)
         z_noisy = z_y + torch.randn_like(z_y) * 0.5
         pred_geo, mat_oh, _ = inv_model.geometry_decoder(z_noisy, tau=0.1, hard=True)
     elif hasattr(inv_model, "inverse_decoder"):
-        # Tandem Network
         pred_geo, mat_oh, _ = inv_model.inverse_decoder(curve, tau=0.1, hard=True)
     else:
-        # Fallback
         pred_geo, mat_oh, _ = inv_model(curve)
-
-    # Run generated designs through Forward model to get the physical prediction
-    preds = _run_forward(forward_model, pred_geo, mat_oh)
-    
-    # Save CSV
-    headers = ["Material_Target"] + [f"Amp_{i+1}" for i in range(5)] + [f"Phase_{i+1}" for i in range(5)]
-    headers.append("Thickness_nm")
-    if real_geo.shape[1] > 11:
-        headers.append("IncidenceAngle_deg")
-    import csv
-    csv_path = save_path.replace(".png", ".csv")
-    real_geo = pred_geo
-    
-    n_harmonics = stats["n_harmonics"]
-    mat_names = list(stats["materials"].keys())
-    
-    headers = ["Material"]
-    for j in range(1, n_harmonics + 1):
-        headers.extend([f"Amp_{j}", f"Phase_{j}"])
-    headers.append("Thickness_nm")
-    if real_geo.shape[1] > n_harmonics * 2 + 1:
-        headers.append("IncidenceAngle_deg")
         
-    with open(csv_path, "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(headers)
-        for i in range(n_samples):
-            mat_idx = mat_oh[i].argmax().item()
-            mat_name = mat_names[mat_idx] if mat_idx < len(mat_names) else f"Untrained_{mat_idx}"
-            row = [mat_name] + real_geo[i].tolist()
-            writer.writerow(row)
-    print(f"  Saved: {csv_path}")
+    # Forward Surrogate Prediction
+    surrogate_preds = forward_model(pred_geo, mat_oh.argmax(dim=-1))
     
-    fig, axes = plt.subplots(n_samples, 3, figsize=(18, 4 * n_samples), squeeze=False, layout="tight")
-    n_wl_half = n_wavelengths // 2
+    # Setting up the figure
+    fig, axes = plt.subplots(n_samples, 4, figsize=(22, 5 * n_samples), squeeze=False, layout="tight")
     mat_names = list(stats["materials"].keys())
     
-    # Pre-build coordinates for the profile
     n_harmonics = stats["n_harmonics"]
+    n_fourier = n_harmonics * 2
     r_grid = np.linspace(0, 1000.0, 256)
     harmonic_idx = np.arange(1, n_harmonics + 1)
     
-    for i in tqdm(range(n_samples), desc="Simulating Inverse Designs (RCWA)"):
-        idx = selected_indices[i]
-        target_mat_idx = mat[idx].item()
-        target_mat_name = mat_names[target_mat_idx] if target_mat_idx < len(mat_names) else f"Mat_{target_mat_idx}"
-        
-        # Left column: Curves
-        ax = axes[i, 0]
-        ax.plot(WAVELENGTHS, curve[i, :n_wl_half].cpu().numpy(), "k-", lw=2.5, label="Target p-pol", zorder=10)
-        ax.plot(WAVELENGTHS, preds[i, :n_wl_half].cpu().numpy(), "r--", lw=2.0, label="Pred p-pol")
-        ax.plot(WAVELENGTHS, curve[i, n_wl_half:].cpu().numpy(), "k:", lw=2.5, label="Target s-pol", zorder=10)
-        ax.plot(WAVELENGTHS, preds[i, n_wl_half:].cpu().numpy(), "b--", lw=2.0, label="Pred s-pol")
-        ax.set_xlim(300, 1100)
-        ax.set_ylim(-0.05, 1.05)
-        ax.set_ylabel(f"Absorptance ({target_mat_name})")
-        if i == 0:
-            ax.set_title("Neural Surrogate vs. Target Spectra")
-            ax.legend(fontsize=8, ncol=2)
-            
-        # Right column: Geometry profile
-        ax = axes[i, 1]
-        
-        # --- Torcwa Physics Validation ---
-        n_fourier = n_harmonics * 2
+    for i in tqdm(range(n_samples), desc=f"Evaluating {model_name} (Torcwa Simulation)"):
+        mse_list = []
+        # Geometry extraction
         px = pred_geo[i, :n_fourier].view(-1, 2)
         h_nm = pred_geo[i, n_fourier].item()
-        
         inc_ang_deg = pred_geo[i, n_fourier+1].item() if pred_geo.shape[1] > n_fourier+1 else 0.0
         
+        pred_mat_idx = mat_oh[i].argmax().item()
+        pred_mat_name = mat_names[pred_mat_idx] if pred_mat_idx < len(mat_names) else "Si"
+        
+        # 1. Torcwa Simulation
         base_config = RCWAConfig(**rcwa_config_dict)
         base_config.h = float(h_nm)
         base_config.inc_ang = (float(inc_ang_deg) + 1e-3) * np.pi/180
         base_config.azi_ang = 1e-3 * np.pi/180
+        if pred_mat_name.endswith("_Ag"):
+            base_config.grating_material = pred_mat_name[:-3]
+            base_config.reflector_type = 'Ag'
+        else:
+            base_config.grating_material = pred_mat_name
+            base_config.reflector_type = 'pec'
         
-        # VERY IMPORTANT: The base_config material must be set to the PREDICTED material!
-        pred_mat_idx = mat_oh[i].argmax().item()
-        pred_mat_name = mat_names[pred_mat_idx] if pred_mat_idx < len(mat_names) else "Si"
-        base_config.material = pred_mat_name
-        
-        # Only simulate normal incidence for the plot to save time
         A_film, _ = get_absorptance_curve(
             params_x=px,
             params_y=None,
@@ -273,19 +130,36 @@ def plot_candidate_designs(inv_model, forward_model, val_loader, save_path: str,
             config=base_config,
             show_progress=False
         )
+        rcwa_p = A_film[:, 0].cpu().numpy()
+        rcwa_s = A_film[:, 1].cpu().numpy()
         
-        axes[i, 0].plot(WAVELENGTHS, A_film[:, 0].cpu().numpy(), "g-", lw=2.0, label="True Physics (p-pol)")
-        axes[i, 0].plot(WAVELENGTHS, A_film[:, 1].cpu().numpy(), "g:", lw=2.0, label="True Physics (s-pol)")
-        axes[i, 0].legend(fontsize=7, ncol=2)
-        axes[i, 0].set_title(f"Target ({target_mat_name}) vs. Inverse Design ({pred_mat_name})")
-        # ---------------------------------
-
-        mat_idx = mat_oh[i].argmax().item()
-        mat_name = mat_names[mat_idx] if mat_idx < len(mat_names) else f"Untrained_{mat_idx}"
-        n_harmonics = stats["n_harmonics"]
-        n_fourier = n_harmonics * 2
+        target_np = curve[i].cpu().numpy()
+        sim_np = np.concatenate([rcwa_p, rcwa_s])
+        mse_list.append(np.mean((target_np - sim_np)**2))
         
-        px = pred_geo[i, :n_fourier].view(-1, 2)
+        # 2. P-Pol Spectra
+        ax_p = axes[i, 0]
+        ax_p.plot(WAVELENGTHS, curve[i, :n_wl_half].cpu().numpy(), "k-", lw=2.5, label="Target", zorder=10)
+        ax_p.plot(WAVELENGTHS, surrogate_preds[i, :n_wl_half].cpu().numpy(), "r--", lw=2.0, label="Surrogate")
+        ax_p.plot(WAVELENGTHS, rcwa_p, "g-", lw=2.0, label="Torcwa Physics")
+        ax_p.set_xlim(300, 1100); ax_p.set_ylim(-0.05, 1.05)
+        ax_p.set_ylabel("Absorptance (P-Pol)")
+        if i == 0:
+            ax_p.legend(fontsize=9)
+        title_prefix = "Ideal Target" if is_ideal[i] else "Real Target"
+        ax_p.set_title(f"{title_prefix} P-Pol")
+        
+        # 3. S-Pol Spectra
+        ax_s = axes[i, 1]
+        ax_s.plot(WAVELENGTHS, curve[i, n_wl_half:].cpu().numpy(), "k-", lw=2.5, label="Target", zorder=10)
+        ax_s.plot(WAVELENGTHS, surrogate_preds[i, n_wl_half:].cpu().numpy(), "b--", lw=2.0, label="Surrogate")
+        ax_s.plot(WAVELENGTHS, rcwa_s, "g-", lw=2.0, label="Torcwa Physics")
+        ax_s.set_xlim(300, 1100); ax_s.set_ylim(-0.05, 1.05)
+        ax_s.set_ylabel("Absorptance (S-Pol)")
+        ax_s.set_title(f"{title_prefix} S-Pol")
+        
+        # 4. Grating Profile
+        ax_g = axes[i, 2]
         amps = px[:, 0].cpu().numpy()
         phases = px[:, 1].cpu().numpy()
         
@@ -294,92 +168,49 @@ def plot_candidate_designs(inv_model, forward_model, val_loader, save_path: str,
         cosines = amps[:, None] * np.cos(arg)
         prof = grating_height / 2.0 + cosines.sum(axis=0)
         
-        ax.fill_between(r_grid, 0, prof, color="gray", alpha=0.5)
-        ax.set_ylim(0, max(120, grating_height * 1.2))
-        ax.set_xlim(0, 1000)
-        ax.set_title(f"Candidate {i+1} ({mat_name})")
+        ax_g.fill_between(r_grid, 0, prof, color="gray", alpha=0.5)
+        ax_g.set_ylim(0, max(120, grating_height * 1.2))
+        ax_g.set_xlim(0, 1000)
+        ax_g.set_title(f"Predicted Profile ({pred_mat_name})")
+        ax_g.set_ylabel("Thickness (nm)")
         
-        text_str = f"Film Height ($h$): {h_nm:.1f} nm\nGrating Height: {grating_height:.1f} nm\nIncidence: {inc_ang_deg:.1f}°"
-        ax.text(0.05, 0.95, text_str, transform=ax.transAxes, fontsize=10,
+        text_str = f"Material: {pred_mat_name}\nFilm Height ($h$): {h_nm:.1f} nm\nGrating Height: {grating_height:.1f} nm\nIncidence: {inc_ang_deg:.1f}°"
+        ax_g.text(0.05, 0.95, text_str, transform=ax_g.transAxes, fontsize=10,
                 verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
-        ax.set_ylabel("Grating Thickness (nm)")
-        if i == n_samples - 1:
-            ax.set_xlabel("x (nm)")
-            
-        # Third column: Harmonics Bar Plot
-        ax_h = axes[i, 2]
+                
+        # 5. Harmonics Bar Plot
+        ax_h = axes[i, 3]
         x_pos = np.arange(1, n_harmonics + 1)
         ax_h.bar(x_pos, amps, color="skyblue", edgecolor="black")
         ax_h.set_ylabel("Amplitude (nm)", color="C0")
         ax_h.tick_params(axis='y', labelcolor="C0")
         
-        ax_p = ax_h.twinx()
-        ax_p.plot(x_pos, phases, 'ro', markersize=8)
-        ax_p.set_ylabel("Phase (rad)", color="red")
-        ax_p.tick_params(axis='y', labelcolor="red")
-        ax_p.set_ylim(-0.5, 2*np.pi + 0.5)
+        ax_p2 = ax_h.twinx()
+        ax_p2.plot(x_pos, phases, 'ro', markersize=8)
+        ax_p2.set_ylabel("Phase (rad)", color="red")
+        ax_p2.tick_params(axis='y', labelcolor="red")
+        ax_p2.set_ylim(-0.5, 2*np.pi + 0.5)
         
-        ax_h.set_title("Harmonic Amplitudes & Phases")
+        ax_h.set_title("Harmonics Amplitudes & Phases")
         ax_h.set_xticks(x_pos)
         ax_h.set_xticklabels([f"n={n}" for n in x_pos])
+        
         if i == n_samples - 1:
+            ax_p.set_xlabel("Wavelength (nm)")
+            ax_s.set_xlabel("Wavelength (nm)")
+            ax_g.set_xlabel("x (nm)")
             ax_h.set_xlabel("Harmonic Index")
             
     plt.savefig(save_path)
     plt.close()
-    print(f"  Saved: {save_path}")
-
-
-@torch.no_grad()
-def plot_unit_absorptance(inverse_models, forward_model, save_path: str, n_wavelengths: int, stats: dict):
-    curve = torch.ones(1, n_wavelengths)
-    n_wl_half = n_wavelengths // 2
-
-    fig, axes = plt.subplots(1, 2, figsize=(16, 6), squeeze=False, layout="constrained")
-    colors = plt.cm.tab10(np.linspace(0, 1, len(inverse_models)))
-    mat_names = list(stats["materials"].keys())
-
-    obtained_curves = {}
-    
-    for name, inv_model in inverse_models.items():
-        if name == "tandem":
-            pred_geo, mat_oh, _ = inv_model.inverse_decoder(curve, tau=0.1)
-            obtained_curves[name] = _run_forward(forward_model, pred_geo, mat_oh)
-        elif name == "generative_tandem":
-            designs = inv_model.sample_diverse_designs(curve, n_samples=1, tau=0.1)
-            obtained_curves[name] = _run_forward(forward_model, designs["pred_geometry"], designs["material_onehot"])
-        elif name in ("cvae", "cvae_wishful"):
-            z_y = inv_model.spectrum_encoder(curve)
-            pred_geo, mat_oh, _ = inv_model.geometry_decoder(z_y, tau=0.1, hard=True)
-            obtained_curves[name] = _run_forward(forward_model, pred_geo, mat_oh)
-
-    for pol_idx, pol_label in enumerate(["p-pol", "s-pol"]):
-        ax = axes[0, pol_idx]
-        start = pol_idx * n_wl_half
-        end = start + n_wl_half
-        
-        ax.plot(WAVELENGTHS, curve[0, start:end].cpu().numpy(), "k-", lw=2.5, label="Target (100%)", zorder=10)
-        
-        for (name, pred), c in zip(obtained_curves.items(), colors):
-            ax.plot(WAVELENGTHS, pred[0, start:end].cpu().numpy(), "--", color=c, lw=2.0, label=name.replace("_", " ").title())
-            
-        ax.set_xlim(300, 1100)
-        ax.set_ylim(-0.05, 1.05)
-        ax.set_xlabel("Wavelength (nm)")
-        ax.set_ylabel("Absorptance")
-        ax.set_title(f"Perfect Absorber Challenge ({pol_label})")
-        if pol_idx == 0:
-            ax.legend()
-            
-    plt.savefig(save_path)
-    plt.close()
-    print(f"  Saved: {save_path}")
+    print(f"  Saved Dashboard: {save_path}")
+    return np.mean(mse_list)
 
 
 def main():
     args = parse_args()
     ckpt_dir = Path(args.ckpt_dir)
-    eval_dir = ckpt_dir / "evaluation"
+    eval_dir = ckpt_dir / "evaluation" / "inverse"
     eval_dir.mkdir(parents=True, exist_ok=True)
 
     stats = torch.load(ckpt_dir / "dataset_stats.pt", map_location="cpu", weights_only=False)
@@ -387,134 +218,109 @@ def main():
     n_wavelengths = stats["n_wavelengths"]
     n_harmonics = stats["n_harmonics"]
     
-    mat_dirs = {k: str(PROJECT_ROOT / "Data" / Path(v).name) for k, v in stats["materials"].items()}
-    target_key = stats["target_key"]
-    print(f"n_continuous={n_continuous}  n_wavelengths={n_wavelengths}  materials={list(mat_dirs.keys())}")
+    mat_names = list(stats["materials"].keys())
+    print(f"Loaded Stats: n_continuous={n_continuous}, n_wavelengths={n_wavelengths}, materials={mat_names}")
 
-    batch = generate_eval_batch(stats)
-    val_loader = [batch]
-
+    batch = generate_test_batch(stats)
+    
     forward_model, fwd_name, fwd_loss = get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics)
     if forward_model is not None:
         forward_model.eval()
-        print(f"\n=> Loaded BEST forward model for evaluation: {fwd_name} (val_loss = {fwd_loss:.6f})")
+        print(f"\n=> Loaded BEST forward model for evaluation: {fwd_name}")
     else:
-        print("\n=> ERROR: No forward models found. Run train_forward.py first!")
+        print("\n=> ERROR: No forward models found.")
         return
 
-    all_history = {}
+    def safe_load_state_dict(model, state_dict):
+        current_state = model.state_dict()
+        for k, v in list(state_dict.items()):
+            if k in current_state:
+                curr_v = current_state[k]
+                if v.shape != curr_v.shape:
+                    if "material_embedding" in k or "material_head" in k:
+                        if v.shape[0] < curr_v.shape[0]:
+                            new_w = curr_v.clone()
+                            new_w[:v.shape[0]] = v
+                            state_dict[k] = new_w
+        model.load_state_dict(state_dict, strict=False)
+
     inverse_models = {}
     
-    for name in ("tandem", "generative_tandem", "cvae", "cvae_wishful"):
-        p = ckpt_dir / f"{name}.pt"
-        if p.exists():
-            ckpt = torch.load(p, map_location="cpu", weights_only=False)
-            all_history[name] = ckpt.get("history", {})
-
+    # Load Models
     tandem_path = ckpt_dir / "tandem.pt"
     if tandem_path.exists():
-        dec = InverseDecoder(
-            n_wavelengths=n_wavelengths, n_geometry=n_continuous,
-            n_materials=N_MATERIALS, latent_dim=0,
-            geo_min=stats["geo_min"], geo_max=stats["geo_max"],
-        )
-        tandem = TandemNetwork(inverse_decoder=dec, forward_model=forward_model)
-        ckpt = torch.load(tandem_path, map_location="cpu", weights_only=False)
-        tandem.load_state_dict(ckpt["model_state_dict"], strict=False)
-        tandem.eval()
-        inverse_models["tandem"] = tandem
-        print("Loaded: tandem")
+        dec = InverseDecoder(n_wavelengths=n_wavelengths, n_geometry=n_continuous, n_materials=N_MATERIALS, latent_dim=0, geo_min=stats["geo_min"], geo_max=stats["geo_max"])
+        m = TandemNetwork(inverse_decoder=dec, forward_model=forward_model)
+        safe_load_state_dict(m, torch.load(tandem_path, map_location="cpu", weights_only=False)["model_state_dict"])
+        m.eval()
+        inverse_models["tandem"] = m
 
     gen_path = ckpt_dir / "generative_tandem.pt"
     if gen_path.exists():
-        dec = InverseDecoder(
-            n_wavelengths=n_wavelengths, n_geometry=n_continuous,
-            n_materials=N_MATERIALS, latent_dim=32,
-            geo_min=stats["geo_min"], geo_max=stats["geo_max"],
-        )
-        gen_tandem = GenerativeTandemNetwork(inverse_decoder=dec, forward_model=forward_model, latent_dim=32)
-        ckpt = torch.load(gen_path, map_location="cpu", weights_only=False)
-        gen_tandem.load_state_dict(ckpt["model_state_dict"], strict=False)
-        gen_tandem.eval()
-        inverse_models["generative_tandem"] = gen_tandem
-        print("Loaded: generative_tandem")
+        dec = InverseDecoder(n_wavelengths=n_wavelengths, n_geometry=n_continuous, n_materials=N_MATERIALS, latent_dim=32, geo_min=stats["geo_min"], geo_max=stats["geo_max"])
+        m = GenerativeTandemNetwork(inverse_decoder=dec, forward_model=forward_model, latent_dim=32)
+        safe_load_state_dict(m, torch.load(gen_path, map_location="cpu", weights_only=False)["model_state_dict"])
+        m.eval()
+        inverse_models["generative_tandem"] = m
         
     cvae_path = ckpt_dir / "cvae.pt"
     if cvae_path.exists():
-        geo_enc = GeometryEncoder(
-            n_continuous=n_continuous, n_materials=N_MATERIALS, embed_dim=8,
-            latent_dim=64, fc_dims=(256, 256),
-        )
-        geo_dec = GeometryDecoder(
-            latent_dim=64, n_geometry=n_continuous,
-            n_materials=N_MATERIALS, hidden_dims=(256, 256),
-            geo_min=stats["geo_min"], geo_max=stats["geo_max"],
-        )
-        spec_enc = SpectrumEncoder(
-            n_wavelengths=n_wavelengths, latent_dim=64,
-            conv_channels=(32, 64, 128, 64), fc_dims=(256, 256),
-        )
-        cvae = ContrastiveVAE(
-            geometry_encoder=geo_enc, geometry_decoder=geo_dec,
-            spectrum_encoder=spec_enc, margin_radius=1.0,
-            beta=1e-3, gamma=1.0,
-        )
-        ckpt = torch.load(cvae_path, map_location="cpu", weights_only=False)
-        cvae.load_state_dict(ckpt["model_state_dict"], strict=False)
-        cvae.eval()
-        inverse_models["cvae"] = cvae
-        print("Loaded: cvae")
-        
+        g_e = GeometryEncoder(n_continuous=n_continuous, n_materials=N_MATERIALS, embed_dim=8, latent_dim=64, fc_dims=(256, 256))
+        g_d = GeometryDecoder(latent_dim=64, n_geometry=n_continuous, n_materials=N_MATERIALS, hidden_dims=(256, 256), geo_min=stats["geo_min"], geo_max=stats["geo_max"])
+        s_e = SpectrumEncoder(n_wavelengths=n_wavelengths, latent_dim=64, conv_channels=(32, 64, 128, 64), fc_dims=(256, 256))
+        m = ContrastiveVAE(geometry_encoder=g_e, geometry_decoder=g_d, spectrum_encoder=s_e, margin_radius=1.0, beta=1e-3, gamma=1.0)
+        safe_load_state_dict(m, torch.load(cvae_path, map_location="cpu", weights_only=False)["model_state_dict"])
+        m.eval()
+        inverse_models["cvae"] = m
+
     cvae_wishful_path = ckpt_dir / "cvae_wishful.pt"
     if cvae_wishful_path.exists():
-        geo_enc = GeometryEncoder(
-            n_continuous=n_continuous, n_materials=N_MATERIALS, embed_dim=8,
-            latent_dim=64, fc_dims=(256, 256),
-        )
-        geo_dec = GeometryDecoder(
-            latent_dim=64, n_geometry=n_continuous,
-            n_materials=N_MATERIALS, hidden_dims=(256, 256),
-            geo_min=stats["geo_min"], geo_max=stats["geo_max"],
-        )
-        spec_enc = SpectrumEncoder(
-            n_wavelengths=n_wavelengths, latent_dim=64,
-            conv_channels=(32, 64, 128, 64), fc_dims=(256, 256),
-        )
-        cvae_wishful = ContrastiveVAE(
-            geometry_encoder=geo_enc, geometry_decoder=geo_dec,
-            spectrum_encoder=spec_enc, margin_radius=1.0,
-            beta=1e-3, gamma=1.0,
-        )
-        ckpt = torch.load(cvae_wishful_path, map_location="cpu", weights_only=False)
-        cvae_wishful.load_state_dict(ckpt["model_state_dict"], strict=False)
-        cvae_wishful.eval()
-        inverse_models["cvae_wishful"] = cvae_wishful
-        print("Loaded: cvae_wishful")
+        g_e = GeometryEncoder(n_continuous=n_continuous, n_materials=N_MATERIALS, embed_dim=8, latent_dim=64, fc_dims=(256, 256))
+        g_d = GeometryDecoder(latent_dim=64, n_geometry=n_continuous, n_materials=N_MATERIALS, hidden_dims=(256, 256), geo_min=stats["geo_min"], geo_max=stats["geo_max"])
+        s_e = SpectrumEncoder(n_wavelengths=n_wavelengths, latent_dim=64, conv_channels=(32, 64, 128, 64), fc_dims=(256, 256))
+        m = ContrastiveVAE(geometry_encoder=g_e, geometry_decoder=g_d, spectrum_encoder=s_e, margin_radius=1.0, beta=1e-3, gamma=1.0)
+        safe_load_state_dict(m, torch.load(cvae_wishful_path, map_location="cpu", weights_only=False)["model_state_dict"])
+        m.eval()
+        inverse_models["cvae_wishful"] = m
 
-    print("\nGenerating evaluation plots...")
-    if all_history:
-        plot_loss_curves(all_history, str(eval_dir / "inverse_loss_curves.png"))
+    # Retrieve RCWA Config
+    first_batch_file = PROJECT_ROOT / "Data" / f"LHS_Dataset_{mat_names[0]}" / "batch_0000.pt"
+    if first_batch_file.exists():
+        rcwa_config_dict = torch.load(first_batch_file, map_location="cpu", weights_only=False).get("metadata", {}).get("config", {})
+    else:
+        rcwa_config_dict = {}
 
-    if inverse_models:
-        plot_inverse_performance(inverse_models, forward_model, val_loader,
-                                str(eval_dir / "inverse_performance.png"), n_wavelengths)
-        
-        if "generative_tandem" in inverse_models:
-            plot_candidate_designs(inverse_models["generative_tandem"], forward_model, val_loader,
-                                   str(eval_dir / "candidate_designs_gen_tandem.png"), n_wavelengths, stats)
-        
-        if "cvae" in inverse_models:
-            plot_candidate_designs(inverse_models["cvae"], forward_model, val_loader,
-                                   str(eval_dir / "candidate_designs_cvae_unit.png"), n_wavelengths, stats, target_curve=torch.ones(1, n_wavelengths))
-                                   
-        if "cvae_wishful" in inverse_models:
-            plot_candidate_designs(inverse_models["cvae_wishful"], forward_model, val_loader,
-                                   str(eval_dir / "candidate_designs_cvae_wishful_unit.png"), n_wavelengths, stats, target_curve=torch.ones(1, n_wavelengths))
-            
-        plot_unit_absorptance(inverse_models, forward_model,
-                              str(eval_dir / "unit_absorptance.png"), n_wavelengths, stats)
+    print("\nGenerating comprehensive model dashboards...")
+    
+    # We will pick 2 real targets from the batch, and 2 ideal broadband targets.
+    real_targets = batch["target"][:2]
+    ideal_target = torch.ones(2, n_wavelengths)
+    
+    targets_to_eval = torch.cat([real_targets, ideal_target], dim=0)
+    is_ideal = [False, False, True, True]
+    
+    all_metrics = {}
 
-    print(f"\nAll evaluation outputs saved to: {eval_dir}")
+    for name, m in inverse_models.items():
+        save_path = str(eval_dir / f"dashboard_{name}.png")
+        avg_mse = plot_model_dashboard(
+            model_name=name,
+            inv_model=m,
+            forward_model=forward_model,
+            targets=targets_to_eval,
+            is_ideal=is_ideal,
+            rcwa_config_dict=rcwa_config_dict,
+            stats=stats,
+            save_path=save_path,
+            n_wavelengths=n_wavelengths
+        )
+        all_metrics[name] = {"mse": float(avg_mse)}
+
+    metrics_path = eval_dir / "inverse_metrics.json"
+    with open(metrics_path, "w") as f:
+        json.dump(all_metrics, f, indent=2)
+
+    print(f"\nAll evaluation outputs and metrics saved to: {eval_dir}")
 
 if __name__ == "__main__":
     main()

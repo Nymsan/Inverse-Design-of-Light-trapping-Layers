@@ -24,4 +24,8 @@ Fano resonances in absorptance curves
 
 choice of loss - fft for the peaks, mse for the shape. Discuss the ortho norm weigthing and so on. Discuss the implicit assumptions of SIREN. Discuss how this is unavailable in 3d data.
 
-try to generate the data with gradient information. And train the models implicitly with this in mind (sobolev inspired loss)
+try to generate the data with gradient information. And train the models implicitly with this in mind (sobolev inspired loss) (maybe, this is finicky with torcwa apparently)
+
+Rayleight anomal and instability ( crash at wavelength half of grating_period)
+
+Maybe since the forward models now take the profile as a direct input, it can also output the profile as a direct output. Or maybe the surrogate optimization can optimize this?

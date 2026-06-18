@@ -42,7 +42,10 @@ import torch.nn.functional as F
 import numpy as np
 
 # Ag is reflector-only and NOT available as a grating material.
-MATERIAL_LIBRARY: Dict[str, int] = {"Si": 0, "TiO2": 1, "Si3N4": 2}
+MATERIAL_LIBRARY: Dict[str, int] = {
+    "Si": 0, "TiO2": 1, "Si3N4": 2,
+    "Si_Ag": 3, "TiO2_Ag": 4, "Si3N4_Ag": 5
+}
 N_MATERIALS: int = len(MATERIAL_LIBRARY)
 
 
@@ -233,9 +236,10 @@ class SIREN(nn.Module):
         self.siren_decoder = nn.Sequential(*siren_layers)
         self.head = nn.Linear(siren_in_dim, 2)
 
-    def forward(self, geometry, material_id, wls=None):
-        B = geometry.shape[0]
-        profile, h, inc_ang = build_profile(geometry, self.n_harmonics, self.nx)
+    def forward(self, geometry, material_id, wls=None, profile=None, h=None, inc_ang=None):
+        B = geometry.shape[0] if geometry is not None else profile.shape[0]
+        if profile is None:
+            profile, h, inc_ang = build_profile(geometry, self.n_harmonics, self.nx)
         mat_embed = _embed_material(material_id, self.material_embedding)
         
         L = profile.shape[1]
@@ -303,8 +307,10 @@ class ForwardMLP(nn.Module):
         self.trunk = nn.Sequential(*layers)
         self.head = nn.Linear(in_dim, n_wavelengths)
 
-    def forward(self, geometry, material_id):
-        profile, h, inc_ang = build_profile(geometry, self.n_harmonics, self.nx, self.grating_period, self.r_grid, self.harmonic_idx)
+    def forward(self, geometry=None, material_id=None, profile=None, h=None, inc_ang=None):
+        B = geometry.shape[0] if geometry is not None else profile.shape[0]
+        if profile is None:
+            profile, h, inc_ang = build_profile(geometry, self.n_harmonics, self.nx, self.grating_period, self.r_grid, self.harmonic_idx)
         mat_embed = _embed_material(material_id, self.material_embedding)
         
         x_list = [profile, h, mat_embed, inc_ang]
@@ -348,11 +354,13 @@ class SkipCNN(nn.Module):
         fc_layers.append(nn.Sigmoid())
         self.fc_head = nn.Sequential(*fc_layers)
 
-    def forward(self, geometry, material_id):
-        profile, h, inc_ang = build_profile(
-            geometry, self.n_harmonics, self.nx, 
-            self.grating_period, self.r_grid, self.harmonic_idx
-        )
+    def forward(self, geometry=None, material_id=None, profile=None, h=None, inc_ang=None):
+        B = geometry.shape[0] if geometry is not None else profile.shape[0]
+        if profile is None:
+            profile, h, inc_ang = build_profile(
+                geometry, self.n_harmonics, self.nx, 
+                self.grating_period, self.r_grid, self.harmonic_idx
+            )
         mat_embed = _embed_material(material_id, self.material_embedding)
         
         B, L = profile.shape
@@ -410,11 +418,13 @@ class SpatialCNN(nn.Module):
         fc_layers.append(nn.Sigmoid())
         self.fc_head = nn.Sequential(*fc_layers)
 
-    def forward(self, geometry, material_id):
-        profile, h, inc_ang = build_profile(
-            geometry, self.n_harmonics, self.nx, 
-            self.grating_period, self.r_grid, self.harmonic_idx
-        )
+    def forward(self, geometry=None, material_id=None, profile=None, h=None, inc_ang=None):
+        B = geometry.shape[0] if geometry is not None else profile.shape[0]
+        if profile is None:
+            profile, h, inc_ang = build_profile(
+                geometry, self.n_harmonics, self.nx, 
+                self.grating_period, self.r_grid, self.harmonic_idx
+            )
         mat_embed = _embed_material(material_id, self.material_embedding)
         
         B, L = profile.shape
@@ -471,11 +481,13 @@ class TransformerForward(nn.Module):
             nn.Sigmoid()
         )
 
-    def forward(self, geometry, material_id, wls=None):
-        profile, h, inc_ang = build_profile(
-            geometry, self.n_harmonics, self.nx, 
-            self.grating_period, self.r_grid, self.harmonic_idx
-        )
+    def forward(self, geometry=None, material_id=None, wls=None, profile=None, h=None, inc_ang=None):
+        B = geometry.shape[0] if geometry is not None else profile.shape[0]
+        if profile is None:
+            profile, h, inc_ang = build_profile(
+                geometry, self.n_harmonics, self.nx, 
+                self.grating_period, self.r_grid, self.harmonic_idx
+            )
         mat_embed = _embed_material(material_id, self.material_embedding)
         
         B, L = profile.shape
@@ -500,12 +512,13 @@ class TransformerForward(nn.Module):
         x_pooled = x.mean(dim=1)
         return self.head(x_pooled)
 
-def generate_synthetic_targets(B: int, n_wavelengths: int, device: torch.device) -> torch.Tensor:
-    """Generate synthetic ideal targets: mix of Gaussians and Step functions."""
+def generate_synthetic_targets(B: int, n_wavelengths: int, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
+    """Generate synthetic ideal targets: mix of Gaussians and Step functions. Returns target, weight_mask."""
     wl_len = n_wavelengths // 2
     wls = torch.linspace(300, 1100, wl_len, device=device).unsqueeze(0).expand(B, -1)
     
     targets = torch.zeros(B, wl_len, device=device)
+    weights = torch.ones(B, wl_len, device=device) * 0.1
     
     # 50% Gaussians, 50% Step functions
     mask_gauss = torch.rand(B, device=device) < 0.5
@@ -514,17 +527,24 @@ def generate_synthetic_targets(B: int, n_wavelengths: int, device: torch.device)
     mu = torch.rand(B, 1, device=device) * 800 + 300
     sigma = torch.rand(B, 1, device=device) * 150 + 50
     targets_gauss = torch.exp(-0.5 * ((wls - mu) / sigma)**2)
+    weights_gauss = torch.where(torch.abs(wls - mu) <= sigma, 1.0, 0.1)
     
     # Step functions
     c = torch.rand(B, 1, device=device) * 800 + 300
     width = torch.rand(B, 1, device=device) * 300 + 50
     targets_step = ((wls >= c - width / 2) & (wls <= c + width / 2)).float()
+    weights_step = torch.where((wls >= c - width / 2) & (wls <= c + width / 2), 1.0, 0.1)
     
     targets[mask_gauss] = targets_gauss[mask_gauss]
     targets[~mask_gauss] = targets_step[~mask_gauss]
+    weights[mask_gauss] = weights_gauss[mask_gauss]
+    weights[~mask_gauss] = weights_step[~mask_gauss]
     
-    # Duplicate for P and S polarizations
-    return torch.cat([targets, targets], dim=-1)
+    # Duplicate for s-pol
+    targets = targets.repeat(1, 2)
+    weights = weights.repeat(1, 2)
+    
+    return targets, weights
 
 class InverseDecoder(nn.Module):
     """Maps absorptance curve (+ optional noise z) → normalized geometry [0,1] + Gumbel material."""
@@ -1039,7 +1059,7 @@ def train_forward_model(
     model: nn.Module, train_loader, val_loader, *,
     epochs: int = 500, lr: float = 1e-3, weight_decay: float = 1e-5,
     patience: int = 100, device: torch.device = torch.device("cpu"),
-    use_bfloat16: bool = True
+    use_bfloat16: bool = False
 ) -> dict[str, list[float]]:
     """Train Forward models (MLP, CNN, skipCNN, SIREN)."""
     model = model.to(device)
@@ -1166,17 +1186,16 @@ def train_tandem(
         train_loss_accum = 0.0
         for batch in train_loader:
             if synthetic_phase:
-                target = generate_synthetic_targets(batch["target"].shape[0], batch["target"].shape[-1], device)
+                target, weight_mask = generate_synthetic_targets(batch["target"].shape[0], batch["target"].shape[-1], device)
             else:
                 target = batch["target"].to(device)
             out = tandem(target, tau=tau)
             pred = out["predicted_curve"]
             
-            base_loss = criterion(pred, target)
-            
             if synthetic_phase:
-                loss = base_loss
+                loss = (torch.nn.functional.mse_loss(pred, target, reduction='none') * weight_mask).mean()
             else:
+                base_loss = criterion(pred, target)
                 wl = target.shape[-1] // 2
                 # Spectral Loss (FFT Magnitude) - insensitive to small peak shifts
                 fft_pred_p = torch.fft.rfft(pred[:, :wl], dim=-1).abs()
@@ -1200,17 +1219,17 @@ def train_tandem(
         with torch.no_grad():
             for batch in val_loader:
                 if synthetic_phase:
-                    target = generate_synthetic_targets(batch["target"].shape[0], batch["target"].shape[-1], device)
+                    target, weight_mask = generate_synthetic_targets(batch["target"].shape[0], batch["target"].shape[-1], device)
                 else:
                     target = batch["target"].to(device)
                 out = tandem(target, tau=tau)
                 pred = out["predicted_curve"]
                 
-                base_loss = criterion(pred, target)
-                
                 if synthetic_phase:
-                    val_loss_accum += base_loss.item()
+                    loss = (torch.nn.functional.mse_loss(pred, target, reduction='none') * weight_mask).mean()
+                    val_loss_accum += loss.item()
                 else:
+                    base_loss = criterion(pred, target)
                     wl = target.shape[-1] // 2
                     fft_pred_p = torch.fft.rfft(pred[:, :wl], dim=-1).abs()
                     fft_pred_s = torch.fft.rfft(pred[:, wl:], dim=-1).abs()
@@ -1279,11 +1298,11 @@ def train_cvae(
         for batch in train_loader:
             if synthetic_phase:
                 assert forward_model is not None, "Forward model required for synthetic phase in CVAE"
-                target = generate_synthetic_targets(batch["target"].shape[0], batch["target"].shape[-1], device)
+                target, weight_mask = generate_synthetic_targets(batch["target"].shape[0], batch["target"].shape[-1], device)
                 z_y = cvae.spectrum_encoder(target)
                 pred_geo, mat_oh, _ = cvae.geometry_decoder(z_y, tau=tau, hard=True)
                 pred_curve = forward_model(geometry=pred_geo, material_id=mat_oh)
-                loss = F.huber_loss(pred_curve, target, delta=0.01)
+                loss = (F.huber_loss(pred_curve, target, delta=0.01, reduction='none') * weight_mask).mean()
                 
                 optimizer.zero_grad(); loss.backward(); optimizer.step()
                 accum["loss"] += loss.item()
@@ -1306,11 +1325,11 @@ def train_cvae(
         with torch.no_grad():
             for batch in val_loader:
                 if synthetic_phase:
-                    target = generate_synthetic_targets(batch["target"].shape[0], batch["target"].shape[-1], device)
+                    target, weight_mask = generate_synthetic_targets(batch["target"].shape[0], batch["target"].shape[-1], device)
                     z_y = cvae.spectrum_encoder(target)
                     pred_geo, mat_oh, _ = cvae.geometry_decoder(z_y, tau=tau, hard=True)
                     pred_curve = forward_model(geometry=pred_geo, material_id=mat_oh)
-                    loss = F.huber_loss(pred_curve, target, delta=0.01)
+                    loss = (F.huber_loss(pred_curve, target, delta=0.01, reduction='none') * weight_mask).mean()
                     val_accum += loss.item()
                 else:
                     geo, mat, target = (batch["geometry"].to(device),

@@ -30,7 +30,7 @@ from Utils.models import (
     MATERIAL_LIBRARY, N_MATERIALS,
     ForwardMLP, SpatialCNN, SkipCNN, SIREN,
 )
-from Utils.utils import generate_eval_batch
+from Utils.utils import generate_test_batch
 
 plt.rcParams.update({
     "font.size": 11, "axes.titlesize": 13, "axes.labelsize": 12,
@@ -50,6 +50,15 @@ def load_checkpoint(path, model):
             clean_state_dict[k[len("_orig_mod."):]] = v
         else:
             clean_state_dict[k] = v
+            
+    # Handle material_embedding expansion for old checkpoints
+    if "material_embedding.weight" in clean_state_dict:
+        old_emb = clean_state_dict["material_embedding.weight"]
+        current_emb = model.state_dict()["material_embedding.weight"]
+        if old_emb.shape[0] < current_emb.shape[0]:
+            new_emb = current_emb.clone()
+            new_emb[:old_emb.shape[0]] = old_emb
+            clean_state_dict["material_embedding.weight"] = new_emb
             
     model.load_state_dict(clean_state_dict, strict=True)
     model.eval()
@@ -222,7 +231,7 @@ def compute_metrics(models: dict[str, nn.Module], val_loader, n_wavelengths: int
 def main():
     args = parse_args()
     ckpt_dir = Path(args.ckpt_dir)
-    eval_dir = ckpt_dir / "evaluation"
+    eval_dir = ckpt_dir / "evaluation" / "forward"
     eval_dir.mkdir(parents=True, exist_ok=True)
 
     stats = torch.load(ckpt_dir / "dataset_stats.pt", map_location="cpu", weights_only=False)
@@ -234,7 +243,7 @@ def main():
     target_key = stats["target_key"]
     print(f"n_continuous={n_continuous}  n_wavelengths={n_wavelengths}  materials={list(mat_dirs.keys())}")
 
-    batch = generate_eval_batch(stats)
+    batch = generate_test_batch(stats)
     val_loader = [batch]
 
     all_history = {}

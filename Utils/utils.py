@@ -234,7 +234,7 @@ def get_absorptance(params_x, params_y, wavelength, config: RCWAConfig):
     sim.set_incident_angle(inc_ang=inc_ang, azi_ang=azi_ang)
     
     for i in range(effective_n_layers):
-        eps_slice = sine_eps[..., -1-i]
+        eps_slice = sine_eps[..., -1-i] #+ 1e-10j # This was added after the latest dataset generation 15.06.26, but maybe it is smart
         if not is_3d:
             eps_slice = eps_slice.unsqueeze(-1)
         sim.add_layer(thickness=grating_height/effective_n_layers, eps=eps_slice)
@@ -586,7 +586,7 @@ def plot_fields(sim, x_plot, z_plot, wavelength, polarization, params_x, params_
     
     return fig, axes
 
-def generate_eval_batch(stats, n_samples_per_mat=100):
+def generate_test_batch(stats, n_samples_per_mat=100):
     
     materials = list(stats["materials"].keys())
     target_key = stats["target_key"]

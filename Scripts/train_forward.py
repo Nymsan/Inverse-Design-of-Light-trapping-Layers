@@ -32,10 +32,11 @@ from Utils.models import (
     train_forward_model,
 )
 
-def save_checkpoint(model, history: dict, path: str):
+def save_checkpoint(model, history: dict, path: str, use_bfloat16: bool = False):
     torch.save({
         "model_state_dict": model.state_dict(),
         "history": history,
+        "use_bfloat16": use_bfloat16,
     }, path)
 
 def get_args():
@@ -139,7 +140,7 @@ def main():
         all_history["forward_mlp"] = hist
         print(f"  Time: {elapsed / 60:.1f} min")
 
-        save_checkpoint(model, hist, str(ckpt_dir / "forward_mlp.pt"))
+        save_checkpoint(model, hist, str(ckpt_dir / "forward_mlp.pt"), use_bfloat16=False)
 
     if "cnn" not in args.skip:
         print("\n" + "=" * 60)
@@ -167,7 +168,7 @@ def main():
         all_history["spatial_cnn"] = hist
         print(f"  Time: {elapsed / 60:.1f} min")
 
-        save_checkpoint(model, hist, str(ckpt_dir / "spatial_cnn.pt"))
+        save_checkpoint(model, hist, str(ckpt_dir / "spatial_cnn.pt"), use_bfloat16=False)
 
     if "skipcnn" not in args.skip:
         print("\n" + "=" * 60)
@@ -195,7 +196,7 @@ def main():
         all_history["skip_cnn"] = hist
         print(f"  Time: {elapsed / 60:.1f} min")
 
-        save_checkpoint(model, hist, str(ckpt_dir / "skip_cnn.pt"))
+        save_checkpoint(model, hist, str(ckpt_dir / "skip_cnn.pt"), use_bfloat16=False)
 
     if "siren" not in args.skip:
         print("\n" + "=" * 60)
@@ -223,7 +224,7 @@ def main():
         all_history["siren"] = hist
         print(f"  Time: {elapsed / 60:.1f} min")
 
-        save_checkpoint(model, hist, str(ckpt_dir / "siren.pt"))
+        save_checkpoint(model, hist, str(ckpt_dir / "siren.pt"), use_bfloat16=True)
 
     if "transformer" not in args.skip:
         print("\n" + "=" * 60)
@@ -244,14 +245,14 @@ def main():
         hist = train_forward_model(
             model, train_loader, val_loader,
             epochs=args.epochs, lr=args.lr, patience=args.patience,
-            device=device,
+            device=device, use_bfloat16=True
         )
         elapsed = time.time() - t0
         timings["transformer"] = elapsed
         all_history["transformer"] = hist
         print(f"  Time: {elapsed / 60:.1f} min")
 
-        save_checkpoint(model, hist, str(ckpt_dir / "transformer_forward.pt"))
+        save_checkpoint(model, hist, str(ckpt_dir / "transformer_forward.pt"), use_bfloat16=True)
 
     history_path = ckpt_dir / "forward_history.json"
     with open(history_path, "w") as f:
