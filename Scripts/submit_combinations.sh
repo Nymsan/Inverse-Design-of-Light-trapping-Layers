@@ -24,7 +24,7 @@ case ${LSB_JOBINDEX} in
         echo "Running WITH subpixel smoothing... (100nm)"
         uv run generate_curve.py \
             --name "sweep_combination_100nm" \
-            --params_x "5,0 5,0 5,0 5,0 5,0 5,0 5,0 5,0 5,0 5,0" \
+            --params_x "5,0;5,0;5,0;5,0;5,0;5,0;5,0;5,0;5,0;5,0" \
             --order_N 1 5 10 25 50 100 \
             --num_layers 1 2 5 10 25 50 100 250 500 \
             --wavelengths 700 700 1 \
@@ -36,7 +36,7 @@ case ${LSB_JOBINDEX} in
         uv run generate_curve.py \
             --name "sweep_combination_no_subpixel_100nm" \
             --no_subpixel \
-            --params_x "5,0 5,0 5,0 5,0 5,0 5,0 5,0 5,0 5,0 5,0" \
+            --params_x "5,0;5,0;5,0;5,0;5,0;5,0;5,0;5,0;5,0;5,0" \
             --order_N 1 5 10 25 50 100 \
             --num_layers 1 2 5 10 25 50 100 250 500 \
             --wavelengths 700 700 1 \
@@ -47,7 +47,7 @@ case ${LSB_JOBINDEX} in
         echo "Running WITH subpixel smoothing... (1000nm)"
         uv run generate_curve.py \
             --name "sweep_combination_1000nm" \
-            --params_x "5,0 5,0 5,0 5,0 5,0 5,0 5,0 5,0 5,0 5,0" \
+            --params_x "5,0;5,0;5,0;5,0;5,0;5,0;5,0;5,0;5,0;5,0" \
             --order_N 1 5 10 25 50 100 \
             --num_layers 1 2 5 10 25 50 100 250 500 \
             --wavelengths 700 700 1 \
@@ -59,7 +59,7 @@ case ${LSB_JOBINDEX} in
         uv run generate_curve.py \
             --name "sweep_combination_no_subpixel_1000nm" \
             --no_subpixel \
-            --params_x "5,0 5,0 5,0 5,0 5,0 5,0 5,0 5,0 5,0 5,0" \
+            --params_x "5,0;5,0;5,0;5,0;5,0;5,0;5,0;5,0;5,0;5,0" \
             --order_N 1 5 10 25 50 100 \
             --num_layers 1 2 5 10 25 50 100 250 500 \
             --wavelengths 700 700 1 \
