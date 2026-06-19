@@ -3,7 +3,7 @@
 #BSUB -o logs/gen_curves_combination_3d_%I.out
 #BSUB -e logs/gen_curves_combination_3d_%I.err
 #BSUB -q hpc
-#BSUB -n 24
+#BSUB -n 32
 #BSUB -R "rusage[mem=16GB]"
 #BSUB -R "span[hosts=1]"
 #BSUB -W 24:00
@@ -65,6 +65,7 @@ case ${LSB_JOBINDEX} in
             --num_layers 1 2 5 10 25 50 100 \
             --wavelengths 700 700 1 \
             --nx 500 \
-            --ny 500
+            --ny 500 \
+            --n_jobs 24
         ;;
 esac

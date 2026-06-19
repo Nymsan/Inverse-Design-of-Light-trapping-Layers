@@ -445,6 +445,9 @@ def get_best_forward_model(
 ) -> tuple[nn.Module | None, str | None, float]:
     """Scan *ckpt_dir* for forward model checkpoints and return the best.
 
+    Checkpoints that cannot be loaded (e.g. stale architecture mismatch) are
+    skipped with a warning rather than crashing the caller.
+
     Returns:
         (model, model_name, best_val_loss)  or  (None, None, inf) if none found.
     """
@@ -458,12 +461,16 @@ def get_best_forward_model(
         if not p.exists():
             continue
 
-        model, history, class_name = load_forward_model(
-            p,
-            n_continuous=n_continuous,
-            n_wavelengths=n_wavelengths,
-            n_harmonics=n_harmonics,
-        )
+        try:
+            model, history, class_name = load_forward_model(
+                p,
+                n_continuous=n_continuous,
+                n_wavelengths=n_wavelengths,
+                n_harmonics=n_harmonics,
+            )
+        except Exception as e:
+            print(f"  [get_best_forward_model] Skipping {fname}: {e}")
+            continue
 
         if "val_loss" in history and len(history["val_loss"]) > 0:
             val_loss = min(history["val_loss"])

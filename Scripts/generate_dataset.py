@@ -23,7 +23,7 @@ def process_sample(i, h_arr, inc_ang_arr, amps_arr, phases_arr, wavelengths, arg
     h = h_arr[i]
     inc_ang_deg = inc_ang_arr[i]
     
-    params_x_data = [[amps_arr[i, j], phases_arr[i, j]] for j in range(5)]
+    params_x_data = [[amps_arr[i, j], phases_arr[i, j]] for j in range(amps_arr.shape[1])]
     params_x = torch.tensor(params_x_data, dtype=geo_dtype, device=device)
     
     base_config = RCWAConfig(
@@ -60,34 +60,37 @@ def process_sample(i, h_arr, inc_ang_arr, amps_arr, phases_arr, wavelengths, arg
 
 from scipy.stats.qmc import LatinHypercube
 
-def get_lhs_samples(num_samples, seed=42):
-    # 12 dimensions: h, inc_ang, 5x amps, 5x phases
-    sampler = LatinHypercube(d=12, seed=seed)
+def get_lhs_samples(num_samples, n_harmonics=10, seed=42):
+    # 2 + 2*n_harmonics dimensions: h, inc_ang, n_harmonics amps, n_harmonics phases
+    d = 2 + 2 * n_harmonics
+    sampler = LatinHypercube(d=d, seed=seed)
     sample = sampler.random(n=num_samples)
     
     # Map from [0, 1] to physical bounds
-    h = 500 + 5500 * sample[:, 0]            # 500 nm to 6000 nm
-    inc_ang = 0 + 45 * sample[:, 1]       # 0 to 45 degrees
+    h = 500 + 5500 * sample[:, 0]                          # 500 nm to 6000 nm
+    inc_ang = 0 + 45 * sample[:, 1]                        # 0 to 45 degrees
     
-    amps = 0 + 30 * sample[:, 2:7]           # 0 to 30 nm max for all 5 harmonics
-    phases = 0 + 2 * np.pi * sample[:, 7:12] # 0 to 2*pi for all 5 phases
+    amps   = 0 + 15 * sample[:, 2:2+n_harmonics]           # 0 to 15 nm for each harmonic
+    phases = 0 + 2 * np.pi * sample[:, 2+n_harmonics:d]    # 0 to 2π for each phase
     
     return h, inc_ang, amps, phases
 
-def get_or_create_samples(out_dir, num_samples, seed=42):
+def get_or_create_samples(out_dir, num_samples, n_harmonics=10, seed=42):
     samples_file = os.path.join(out_dir, '_lhs_samples.npz')
     
     if os.path.exists(samples_file):
         data = np.load(samples_file)
-        if len(data['h']) == num_samples:
+        if len(data['h']) == num_samples and data['amps'].shape[1] == n_harmonics:
             print(f"Loaded existing LHS samples from {samples_file}")
             sys.stdout.flush()
             return data['h'], data['inc_ang'], data['amps'], data['phases']
         else:
-            print(f"WARNING: Existing samples have {len(data['h'])} entries but {num_samples} requested. Regenerating...")
+            print(f"WARNING: Existing samples have {len(data['h'])} entries / "
+                  f"{data['amps'].shape[1]} harmonics but "
+                  f"{num_samples} / {n_harmonics} requested. Regenerating...")
             sys.stdout.flush()
             
-    h, inc_ang, amps, phases = get_lhs_samples(num_samples, seed=seed)
+    h, inc_ang, amps, phases = get_lhs_samples(num_samples, n_harmonics=n_harmonics, seed=seed)
     np.savez(samples_file, h=h, inc_ang=inc_ang, amps=amps, phases=phases)
     print(f"Generated and saved LHS samples to {samples_file}")
     sys.stdout.flush()
@@ -95,10 +98,12 @@ def get_or_create_samples(out_dir, num_samples, seed=42):
 
 def main():
     parser = argparse.ArgumentParser(description="Generate LHS Dataset for Inverse Design (CPU parallel)")
-    parser.add_argument('--num_samples', type=int, default=5000,
+    parser.add_argument('--num_samples', type=int, default=20000,
                         help="Total number of samples to generate")
     parser.add_argument('--batch_size', type=int, default=100,
                         help="Number of samples to save per .pt file")
+    parser.add_argument('--n_harmonics', type=int, default=10,
+                        help="Number of Fourier harmonics describing the grating profile")
     parser.add_argument('--start_batch', type=int, default=None,
                         help="Batch index to start computing (inclusive)")
     parser.add_argument('--end_batch', type=int, default=None,
@@ -136,7 +141,9 @@ def main():
     wavelengths = torch.linspace(300, 1100, 161, dtype=torch.float64) + 1e-3
     
     # Load or generate LHS samples (shared with GPU script)
-    h_arr, inc_ang_arr, amps_arr, phases_arr = get_or_create_samples(out_dir, args.num_samples, seed=args.seed)
+    h_arr, inc_ang_arr, amps_arr, phases_arr = get_or_create_samples(
+        out_dir, args.num_samples, n_harmonics=args.n_harmonics, seed=args.seed
+    )
     
     num_batches = int(np.ceil(args.num_samples / args.batch_size))
     

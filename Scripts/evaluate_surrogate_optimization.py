@@ -130,7 +130,7 @@ def main():
     plt.close()
     
     n_results = len(res["top_results"])
-    fig, axes = plt.subplots(n_results, 3, figsize=(18, 5 * n_results), layout="constrained")
+    fig, axes = plt.subplots(n_results, 4, figsize=(24, 6 * n_results), layout="constrained")
     if n_results == 1:
         axes = np.expand_dims(axes, axis=0)
         
@@ -258,7 +258,7 @@ def main():
         ax.set_title(f"Rank {(idx%2)+1}: {mat_name} (S-Pol)\nTorcwa Abs={rcwa_avg_abs:.3f} | Surr Abs={r['loss']:.4f}{dataset_str2}", fontsize=13)
         ax.set_ylim(-0.05, 1.05)
         
-        # Structure
+        # Structure cross-section
         ax = ax_row[2]
         xs = np.linspace(0, rcwa_config_dict.get("grating_period", 1000), 128)
         ax.plot(xs, profile_np, "k-", lw=1.5)
@@ -269,6 +269,28 @@ def main():
             ax.plot(xs, rec_prof[0].numpy(), "c--", lw=1.5, label="FFT Recovered")
             if idx == 0: ax.legend(fontsize=8)
         ax.set_title(f"Structure Cross-Section\nHeight={h_val:.0f}nm, Inc={inc_ang:.1f}°", fontsize=13)
+        ax.set_xlabel("x (nm)")
+        ax.set_ylabel("Height (nm)")
+
+        # Harmonics amplitudes & phases
+        ax_h = ax_row[3]
+        n_harm = (len(geo) - 2) // 2
+        geo_cpu = geo.cpu()
+        amps_geo   = geo_cpu[:n_harm].numpy()           # raw amplitudes (nm)
+        phases_geo = geo_cpu[n_harm:2*n_harm].numpy()   # raw phases (rad)
+        x_pos = np.arange(1, n_harm + 1)
+        c_amp   = cmap(0.3)
+        c_phase = cmap(0.9)
+        ax_h.bar(x_pos, amps_geo, color=c_amp, edgecolor="black")
+        ax_h.set_ylabel("Amplitude (nm)", color=c_amp)
+        ax_h.tick_params(axis='y', labelcolor=c_amp)
+        ax_h.set_xlabel("Harmonic index")
+        ax_p2 = ax_h.twinx()
+        ax_p2.plot(x_pos, phases_geo, 'o', color=c_phase, markersize=8)
+        ax_p2.set_ylabel("Phase (rad)", color=c_phase)
+        ax_p2.tick_params(axis='y', labelcolor=c_phase)
+        ax_p2.set_ylim(-0.5, 2 * np.pi + 0.5)
+        ax_h.set_title(f"Harmonics Amplitudes & Phases", fontsize=13)
         
     out_path = out_dir / f"bgd_optimization_{args.mode}_{bands_str}.png"
     plt.savefig(out_path)

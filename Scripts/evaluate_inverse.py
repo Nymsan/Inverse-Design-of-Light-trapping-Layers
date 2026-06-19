@@ -132,7 +132,7 @@ def plot_model_dashboard(
     surrogate_preds = forward_model(pred_geo, mat_oh.argmax(dim=-1))
     
     # Setting up the figure
-    fig, axes = plt.subplots(n_samples, 4, figsize=(22, 5 * n_samples), squeeze=False, layout="tight")
+    fig, axes = plt.subplots(n_samples, 4, figsize=(24, 6 * n_samples), squeeze=False, layout="constrained")
     mat_names = list(stats["materials"].keys())
     
     n_harmonics = stats["n_harmonics"]
@@ -192,6 +192,15 @@ def plot_model_dashboard(
         else:
             rcwa_avg_abs = float((rcwa_p.mean() + rcwa_s.mean()) / 2.0)
 
+        # Surrogate in-band absorptance for title
+        if bands:
+            surr_avg_abs = float(
+                (surrogate_preds[i, :n_wl_half].cpu().numpy()[band_mask].mean()
+                 + surrogate_preds[i, n_wl_half:].cpu().numpy()[band_mask].mean()) / 2.0
+            )
+        else:
+            surr_avg_abs = float(surrogate_preds[i].mean().item())
+
         # 2. P-Pol Spectra
         ax_p = axes[i, 0]
         ax_p.plot(WAVELENGTHS, curve[i, :n_wl_half].cpu().numpy(), "k-", lw=2.5, label="Target", zorder=10)
@@ -200,18 +209,19 @@ def plot_model_dashboard(
             ax_p.plot(WAVELENGTHS, best_dataset_curve[:n_wl_half].numpy(), color=c_dataset,
                       linestyle="-", lw=1.8, label=ds_label, alpha=0.75, zorder=9)
         ax_p.plot(WAVELENGTHS, surrogate_preds[i, :n_wl_half].cpu().numpy(), linestyle="--", color=c_surr, lw=2.0, label="Surrogate")
-        ax_p.plot(WAVELENGTHS, rcwa_p, linestyle="-", color=c_physics, lw=2.0, label="Torcwa Physics")
+        ax_p.plot(WAVELENGTHS, rcwa_p, linestyle="-", color=c_physics, lw=2.0, label="Torcwa")
         ax_p.set_xlim(300, 1100); ax_p.set_ylim(-0.05, 1.05)
-        ax_p.set_ylabel("Absorptance (P-Pol)")
+        ax_p.set_xlabel("Wavelength (nm) — P-Pol")
+        ax_p.set_ylabel("Absorptance")
         if bands:
             for bmin, bmax in bands:
                 ax_p.axvspan(bmin, bmax, color="gray", alpha=0.2)
         if i == 0 or is_ideal[i]:
             ax_p.legend(fontsize=9)
-        title_prefix = "Band Target" if is_ideal[i] else "Real Target"
+        title_prefix = f"Band Target ({bands_str})" if is_ideal[i] else f"Real Target #{i+1}"
         ds_str = f" | Dataset Abs={best_dataset_abs:.3f}" if (best_dataset_abs is not None and is_ideal[i]) else ""
-        ax_p.set_title(f"{title_prefix} P-Pol | Torcwa Abs={rcwa_avg_abs:.3f}{ds_str}")
-        
+        ax_p.set_title(f"{title_prefix} | {pred_mat_name}\nTorcwa Abs={rcwa_avg_abs:.3f} | Surr Abs={surr_avg_abs:.3f}{ds_str}")
+
         # 3. S-Pol Spectra
         ax_s = axes[i, 1]
         ax_s.plot(WAVELENGTHS, curve[i, n_wl_half:].cpu().numpy(), "k-", lw=2.5, label="Target", zorder=10)
@@ -219,13 +229,14 @@ def plot_model_dashboard(
             ax_s.plot(WAVELENGTHS, best_dataset_curve[n_wl_half:].numpy(), color=c_dataset,
                       linestyle="-", lw=1.8, alpha=0.75, zorder=9)
         ax_s.plot(WAVELENGTHS, surrogate_preds[i, n_wl_half:].cpu().numpy(), linestyle="--", color=c_surr, lw=2.0, label="Surrogate")
-        ax_s.plot(WAVELENGTHS, rcwa_s, linestyle="-", color=c_physics, lw=2.0, label="Torcwa Physics")
+        ax_s.plot(WAVELENGTHS, rcwa_s, linestyle="-", color=c_physics, lw=2.0, label="Torcwa")
         ax_s.set_xlim(300, 1100); ax_s.set_ylim(-0.05, 1.05)
-        ax_s.set_ylabel("Absorptance (S-Pol)")
+        ax_s.set_xlabel("Wavelength (nm) — S-Pol")
+        ax_s.set_ylabel("Absorptance")
         if bands:
             for bmin, bmax in bands:
                 ax_s.axvspan(bmin, bmax, color="gray", alpha=0.2)
-        ax_s.set_title(f"{title_prefix} S-Pol | Torcwa Avg Abs={rcwa_avg_abs:.3f}{ds_str}")
+        ax_s.set_title(f"{title_prefix} | {pred_mat_name}\nTorcwa Abs={rcwa_avg_abs:.3f} | Surr Abs={surr_avg_abs:.3f}{ds_str}")
         
         # 4. Grating Profile
         ax_g = axes[i, 2]

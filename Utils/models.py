@@ -513,12 +513,13 @@ class TransformerForward(nn.Module):
         return self.head(x_pooled)
 
 def generate_synthetic_targets(B: int, n_wavelengths: int, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
-    """Generate synthetic ideal targets: Gaussians, single-band steps, and multi-band steps.
+    """Generate synthetic ideal targets with a physically motivated distribution.
 
     Distribution:
-      - 1/3  Gaussian peaks (random centre, width)
-      - 1/3  Single rectangular band (random centre, width)
-      - 1/3  Multi-band (2–3 random rectangular bands, union)
+      - 1/3  Gaussian peaks (random centre, width)            – spectral selectivity
+      - 1/3  Single rectangular band (random centre, width)   – band-specific targets
+      - 1/6  Multi-band (2–3 random rectangular bands, union) – multi-resonance capability
+      - 1/6  Broadband all-ones                               – hardest, most solar-relevant goal
 
     Returns:
         targets  – (B, n_wavelengths)  values in [0, 1]
@@ -530,11 +531,13 @@ def generate_synthetic_targets(B: int, n_wavelengths: int, device: torch.device)
     targets = torch.zeros(B, wl_len, device=device)
     weights = torch.full((B, wl_len), 0.1, device=device)
 
-    # Assign each sample to one of three modes
+    # Assign each sample to one of four modes
+    # Thresholds: 0 – 1/3 Gauss | 1/3 – 2/3 single | 2/3 – 5/6 multi | 5/6 – 1 broadband
     rand_mode = torch.rand(B, device=device)
-    mask_gauss   = rand_mode < 1/3
-    mask_single  = (rand_mode >= 1/3) & (rand_mode < 2/3)
-    mask_multi   = rand_mode >= 2/3
+    mask_gauss     = rand_mode < 1/3
+    mask_single    = (rand_mode >= 1/3) & (rand_mode < 2/3)
+    mask_multi     = (rand_mode >= 2/3) & (rand_mode < 5/6)
+    mask_broadband = rand_mode >= 5/6
 
     # --- Gaussians ---
     mu    = torch.rand(B, 1, device=device) * 800 + 300          # centre in [300, 1100]
@@ -559,22 +562,26 @@ def generate_synthetic_targets(B: int, n_wavelengths: int, device: torch.device)
     w_multi = torch.full((B, wl_len), 0.1, device=device)
     max_bands = 3
     for k in range(max_bands):
-        # Only apply this band where the sample needs >= k+1 bands
         active = n_bands_options > k                              # (B,)
         c_k = torch.rand(B, 1, device=device) * 700 + 350        # keep bands well inside [300,1100]
         w_k = torch.rand(B, 1, device=device) * 150 + 30         # narrower bands: [30, 180] nm
-        in_k = (wls >= c_k - w_k / 2) & (wls <= c_k + w_k / 2)  # (B, wl_len)
-        # Union: any wavelength inside at least one band gets 1.0
+        in_k = (wls >= c_k - w_k / 2) & (wls <= c_k + w_k / 2)
         t_multi = torch.where(active.unsqueeze(1) & in_k, torch.ones_like(t_multi), t_multi)
         w_multi = torch.where(active.unsqueeze(1) & in_k, torch.ones_like(w_multi), w_multi)
     targets[mask_multi] = t_multi[mask_multi]
     weights[mask_multi] = w_multi[mask_multi]
+
+    # --- Broadband all-ones (uniform absorption target across full spectrum) ---
+    # Weight mask is uniformly 1.0 so the loss penalises all wavelengths equally.
+    targets[mask_broadband] = 1.0
+    weights[mask_broadband] = 1.0
 
     # Duplicate for s-pol (same target for both polarisations)
     targets = targets.repeat(1, 2)
     weights = weights.repeat(1, 2)
 
     return targets, weights
+
 
 
 class InverseDecoder(nn.Module):
