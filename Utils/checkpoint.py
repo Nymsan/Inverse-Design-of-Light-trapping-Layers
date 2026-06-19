@@ -79,16 +79,32 @@ def _safe_load_state_dict(
     model: nn.Module,
     state_dict: dict[str, torch.Tensor],
 ) -> None:
-    """Load *state_dict* into *model*, expanding ``material_embedding`` if needed."""
-    # Handle material embedding expansion for old checkpoints with fewer materials
-    if "material_embedding.weight" in state_dict:
-        old_emb = state_dict["material_embedding.weight"]
-        current_emb = model.state_dict()["material_embedding.weight"]
-        if old_emb.shape[0] < current_emb.shape[0]:
-            new_emb = current_emb.clone()
-            new_emb[: old_emb.shape[0]] = old_emb
-            state_dict["material_embedding.weight"] = new_emb
-    model.load_state_dict(state_dict, strict=True)
+    """Load *state_dict* into *model*, expanding material-related tensors if needed.
+
+    Handles any key whose suffix matches:
+      - ``material_embedding.weight``  — row-wise expansion (new rows initialised from current model)
+      - ``material_head.weight``       — row-wise expansion
+      - ``material_head.bias``         — row-wise expansion
+    This covers both top-level and nested keys (e.g. ``forward_model.material_embedding.weight``).
+    """
+    MATERIAL_SUFFIXES = (
+        "material_embedding.weight",
+        "material_head.weight",
+        "material_head.bias",
+    )
+    current_sd = model.state_dict()
+    for key, ckpt_val in list(state_dict.items()):
+        if not any(key.endswith(sfx) for sfx in MATERIAL_SUFFIXES):
+            continue
+        if key not in current_sd:
+            continue
+        cur_val = current_sd[key]
+        if ckpt_val.shape[0] < cur_val.shape[0]:
+            # Expand: keep current model's rows, overwrite the ones from the checkpoint
+            new_val = cur_val.clone()
+            new_val[: ckpt_val.shape[0]] = ckpt_val
+            state_dict[key] = new_val
+    model.load_state_dict(state_dict, strict=False)
 
 
 # ---------------------------------------------------------------------------

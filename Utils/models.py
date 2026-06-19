@@ -513,38 +513,69 @@ class TransformerForward(nn.Module):
         return self.head(x_pooled)
 
 def generate_synthetic_targets(B: int, n_wavelengths: int, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
-    """Generate synthetic ideal targets: mix of Gaussians and Step functions. Returns target, weight_mask."""
+    """Generate synthetic ideal targets: Gaussians, single-band steps, and multi-band steps.
+
+    Distribution:
+      - 1/3  Gaussian peaks (random centre, width)
+      - 1/3  Single rectangular band (random centre, width)
+      - 1/3  Multi-band (2–3 random rectangular bands, union)
+
+    Returns:
+        targets  – (B, n_wavelengths)  values in [0, 1]
+        weights  – (B, n_wavelengths)  1.0 in active regions, 0.1 elsewhere
+    """
     wl_len = n_wavelengths // 2
-    wls = torch.linspace(300, 1100, wl_len, device=device).unsqueeze(0).expand(B, -1)
-    
+    wls = torch.linspace(300, 1100, wl_len, device=device).unsqueeze(0).expand(B, -1)  # (B, wl_len)
+
     targets = torch.zeros(B, wl_len, device=device)
-    weights = torch.ones(B, wl_len, device=device) * 0.1
-    
-    # 50% Gaussians, 50% Step functions
-    mask_gauss = torch.rand(B, device=device) < 0.5
-    
-    # Gaussians
-    mu = torch.rand(B, 1, device=device) * 800 + 300
-    sigma = torch.rand(B, 1, device=device) * 150 + 50
-    targets_gauss = torch.exp(-0.5 * ((wls - mu) / sigma)**2)
-    weights_gauss = torch.where(torch.abs(wls - mu) <= sigma, 1.0, 0.1)
-    
-    # Step functions
-    c = torch.rand(B, 1, device=device) * 800 + 300
-    width = torch.rand(B, 1, device=device) * 300 + 50
-    targets_step = ((wls >= c - width / 2) & (wls <= c + width / 2)).float()
-    weights_step = torch.where((wls >= c - width / 2) & (wls <= c + width / 2), 1.0, 0.1)
-    
-    targets[mask_gauss] = targets_gauss[mask_gauss]
-    targets[~mask_gauss] = targets_step[~mask_gauss]
-    weights[mask_gauss] = weights_gauss[mask_gauss]
-    weights[~mask_gauss] = weights_step[~mask_gauss]
-    
-    # Duplicate for s-pol
+    weights = torch.full((B, wl_len), 0.1, device=device)
+
+    # Assign each sample to one of three modes
+    rand_mode = torch.rand(B, device=device)
+    mask_gauss   = rand_mode < 1/3
+    mask_single  = (rand_mode >= 1/3) & (rand_mode < 2/3)
+    mask_multi   = rand_mode >= 2/3
+
+    # --- Gaussians ---
+    mu    = torch.rand(B, 1, device=device) * 800 + 300          # centre in [300, 1100]
+    sigma = torch.rand(B, 1, device=device) * 150 + 50           # width   in [50,  200]
+    t_gauss = torch.exp(-0.5 * ((wls - mu) / sigma) ** 2)
+    w_gauss = torch.where(torch.abs(wls - mu) <= sigma, 1.0, 0.1)
+    targets[mask_gauss] = t_gauss[mask_gauss]
+    weights[mask_gauss] = w_gauss[mask_gauss]
+
+    # --- Single rectangular band ---
+    c_s     = torch.rand(B, 1, device=device) * 800 + 300        # centre in [300, 1100]
+    w_s     = torch.rand(B, 1, device=device) * 300 + 50         # width  in [50,  350]
+    in_band = (wls >= c_s - w_s / 2) & (wls <= c_s + w_s / 2)
+    t_single = in_band.float()
+    w_single = torch.where(in_band, 1.0, 0.1)
+    targets[mask_single] = t_single[mask_single]
+    weights[mask_single] = w_single[mask_single]
+
+    # --- Multi-band (2–3 random rectangular bands, union) ---
+    n_bands_options = torch.randint(2, 4, (B,), device=device)   # 2 or 3 bands per sample
+    t_multi = torch.zeros(B, wl_len, device=device)
+    w_multi = torch.full((B, wl_len), 0.1, device=device)
+    max_bands = 3
+    for k in range(max_bands):
+        # Only apply this band where the sample needs >= k+1 bands
+        active = n_bands_options > k                              # (B,)
+        c_k = torch.rand(B, 1, device=device) * 700 + 350        # keep bands well inside [300,1100]
+        w_k = torch.rand(B, 1, device=device) * 150 + 30         # narrower bands: [30, 180] nm
+        in_k = (wls >= c_k - w_k / 2) & (wls <= c_k + w_k / 2)  # (B, wl_len)
+        # Union: any wavelength inside at least one band gets 1.0
+        t_multi = torch.where(active.unsqueeze(1) & in_k, torch.ones_like(t_multi), t_multi)
+        w_multi = torch.where(active.unsqueeze(1) & in_k, torch.ones_like(w_multi), w_multi)
+    targets[mask_multi] = t_multi[mask_multi]
+    weights[mask_multi] = w_multi[mask_multi]
+
+    # Duplicate for s-pol (same target for both polarisations)
     targets = targets.repeat(1, 2)
     weights = weights.repeat(1, 2)
-    
+
     return targets, weights
+
 
 class InverseDecoder(nn.Module):
     """Maps absorptance curve (+ optional noise z) → normalized geometry [0,1] + Gumbel material."""
@@ -1054,19 +1085,64 @@ class GratingWavelengthDataset(torch.utils.data.Dataset):
             "target": target_wl
         }
 
+class _EMATracker:
+    """Lightweight EMA of model *parameters* (buffers like BN running stats are left untouched).
+
+    After each optimizer step call ``update(model)``.  When validation improves call
+    ``snapshot()`` to save the current EMA weights.  At the end of training call
+    ``restore(model)`` to write the best EMA snapshot back into the model.
+
+    Args:
+        model:  The model whose parameters should be tracked.
+        decay:  EMA decay factor (e.g. 0.999).  Higher = slower update, more smoothing.
+    """
+
+    def __init__(self, model: nn.Module, decay: float = 0.999) -> None:
+        self.decay = decay
+        # Initialise shadow from current model parameters
+        self._shadow: dict[str, torch.Tensor] = {
+            name: param.data.detach().clone()
+            for name, param in model.named_parameters()
+        }
+        self._best_snapshot: dict[str, torch.Tensor] | None = None
+
+    @torch.no_grad()
+    def update(self, model: nn.Module) -> None:
+        """Step the EMA after one optimiser update."""
+        d = self.decay
+        for name, param in model.named_parameters():
+            self._shadow[name].mul_(d).add_(param.data, alpha=1.0 - d)
+
+    def snapshot(self) -> None:
+        """Save the current EMA shadow as the best seen so far."""
+        self._best_snapshot = {k: v.clone() for k, v in self._shadow.items()}
+
+    @torch.no_grad()
+    def restore(self, model: nn.Module) -> None:
+        """Write the best EMA snapshot back into *model* parameters.
+
+        If no snapshot was ever taken (e.g. training lasted 0 epochs) this is a no-op.
+        """
+        src = self._best_snapshot if self._best_snapshot is not None else self._shadow
+        for name, param in model.named_parameters():
+            if name in src:
+                param.data.copy_(src[name])
+
 
 def train_forward_model(
     model: nn.Module, train_loader, val_loader, *,
     epochs: int = 500, lr: float = 1e-3, weight_decay: float = 1e-5,
     patience: int = 100, device: torch.device = torch.device("cpu"),
-    use_bfloat16: bool = False
+    use_bfloat16: bool = False,
+    ema_decay: float = 0.999,
 ) -> dict[str, list[float]]:
     """Train Forward models (MLP, CNN, skipCNN, SIREN)."""
     model = model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=20, min_lr=1e-6)
     criterion = nn.HuberLoss(delta=0.01)
-    best_val, best_state, patience_ctr = float("inf"), None, 0
+    best_val, patience_ctr = float("inf"), 0
+    ema = _EMATracker(model, decay=ema_decay)
     history: dict[str, list[float]] = {"train_loss": [], "val_loss": [], "val_mae": [], "val_max_err": []}
 
     pbar = tqdm(range(1, epochs + 1), desc="Epochs", unit="ep", dynamic_ncols=True, file=sys.stdout)
@@ -1102,6 +1178,7 @@ def train_forward_model(
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+            ema.update(model)
             train_loss_accum += loss.item()
 
         avg_train = train_loss_accum / len(train_loader)
@@ -1146,7 +1223,7 @@ def train_forward_model(
 
         if avg_val < best_val:
             best_val = avg_val
-            best_state = {k: v.clone() for k, v in model.state_dict().items()}
+            ema.snapshot()
             patience_ctr = 0
         else:
             patience_ctr += 1
@@ -1158,8 +1235,7 @@ def train_forward_model(
                              f"best={best_val:.3e} train={avg_train:.3e} val={avg_val:.3e} "
                              f"vMAE={avg_mae:.3f} vMaxE={avg_max_err:.3f}")
 
-    if best_state is not None:
-        model.load_state_dict(best_state)
+    ema.restore(model)
     return history
 
 
@@ -1169,13 +1245,15 @@ def train_tandem(
     patience: int = 100, tau_start: float = 1.0, tau_end: float = 0.1,
     device: torch.device = torch.device("cpu"),
     synthetic_phase: bool = False,
+    ema_decay: float = 0.999,
 ) -> dict[str, list[float]]:
     """Train tandem. Only InverseDecoder params are optimised; forward model stays frozen."""
     tandem = tandem.to(device)
     optimizer = torch.optim.AdamW(tandem.inverse_decoder.parameters(), lr=lr, weight_decay=weight_decay)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=20, min_lr=1e-6)
     criterion = nn.HuberLoss(delta=0.01)
-    best_val, best_state, patience_ctr = float("inf"), None, 0
+    best_val, patience_ctr = float("inf"), 0
+    ema = _EMATracker(tandem.inverse_decoder, decay=ema_decay)
     history: dict[str, list[float]] = {"train_loss": [], "val_loss": [], "val_mae": [], "val_max_err": []}
 
     pbar = tqdm(range(1, epochs + 1), desc="Epochs", unit="ep", dynamic_ncols=True, file=sys.stdout)
@@ -1254,7 +1332,7 @@ def train_tandem(
 
         if avg_val < best_val:
             best_val = avg_val
-            best_state = {k: v.clone() for k, v in tandem.inverse_decoder.state_dict().items()}
+            ema.snapshot()
             patience_ctr = 0
         else:
             patience_ctr += 1
@@ -1266,8 +1344,7 @@ def train_tandem(
                              f"best={best_val:.3e} train={avg_train:.3e} val={avg_val:.3e} "
                              f"vMAE={avg_mae:.3f} vMaxE={avg_max_err:.3f}")
 
-    if best_state is not None:
-        tandem.inverse_decoder.load_state_dict(best_state)
+    ema.restore(tandem.inverse_decoder)
     return history
 
 
@@ -1278,12 +1355,14 @@ def train_cvae(
     device: torch.device = torch.device("cpu"),
     forward_model: Optional[nn.Module] = None,
     synthetic_phase: bool = False,
+    ema_decay: float = 0.999,
 ) -> dict[str, list[float]]:
     """Train C-VAE. All sub-networks trained jointly. Loss = recon + CE + β·KL + γ·margin."""
     cvae = cvae.to(device)
     optimizer = torch.optim.AdamW(cvae.parameters(), lr=lr, weight_decay=weight_decay)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=20, min_lr=1e-6)
-    best_val, best_state, patience_ctr = float("inf"), None, 0
+    best_val, patience_ctr = float("inf"), 0
+    ema = _EMATracker(cvae, decay=ema_decay)
     history: dict[str, list[float]] = {
         "train_loss": [], "val_loss": [],
         "train_recon": [], "train_mat_ce": [], "train_kl": [], "train_margin": [],
@@ -1305,6 +1384,7 @@ def train_cvae(
                 loss = (F.huber_loss(pred_curve, target, delta=0.01, reduction='none') * weight_mask).mean()
                 
                 optimizer.zero_grad(); loss.backward(); optimizer.step()
+                ema.update(cvae)
                 accum["loss"] += loss.item()
             else:
                 geo, mat, target = (batch["geometry"].to(device),
@@ -1312,6 +1392,7 @@ def train_cvae(
                 out = cvae(geo, mat, target, tau=tau)
                 losses = cvae.compute_loss(out, geo, mat)
                 optimizer.zero_grad(); losses["loss"].backward(); optimizer.step()
+                ema.update(cvae)
                 for k in accum:
                     accum[k] += losses[f"loss_{k}"].item() if k != "loss" else losses["loss"].item()
 
@@ -1343,7 +1424,7 @@ def train_cvae(
 
         if avg_val < best_val:
             best_val = avg_val
-            best_state = {k: v.clone() for k, v in cvae.state_dict().items()}
+            ema.snapshot()
             patience_ctr = 0
         else:
             patience_ctr += 1
@@ -1355,8 +1436,7 @@ def train_cvae(
                          val=f"{avg_val:.3e}", kl=f"{accum['kl']/n:.3e}",
                          margin=f"{accum['margin']/n:.3e}", tau=f"{tau:.2f}")
 
-    if best_state is not None:
-        cvae.load_state_dict(best_state)
+    ema.restore(cvae)
     return history
 
 def train_cvae_wishful(
@@ -1365,12 +1445,14 @@ def train_cvae_wishful(
     patience: int = 50, tau_start: float = 0.5, tau_end: float = 0.1,
     alpha_end: float = 0.99, top_k_quantile: float = 0.9,
     device: torch.device = torch.device("cpu"),
+    ema_decay: float = 0.999,
 ) -> dict[str, list[float]]:
     """Wishful thinking finetuning: select top quantile of curves and gradually pull them to 1.0."""
     cvae = cvae.to(device)
     optimizer = torch.optim.AdamW(cvae.parameters(), lr=lr, weight_decay=weight_decay)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=20, min_lr=1e-6)
-    best_val, best_state, patience_ctr = float("inf"), None, 0
+    best_val, patience_ctr = float("inf"), 0
+    ema = _EMATracker(cvae, decay=ema_decay)
     history: dict[str, list[float]] = {
         "train_loss": [], "val_loss": [],
         "train_recon": [], "train_mat_ce": [], "train_kl": [], "train_margin": [],
@@ -1436,7 +1518,7 @@ def train_cvae_wishful(
 
         if avg_val < best_val:
             best_val = avg_val
-            best_state = {k: v.clone() for k, v in cvae.state_dict().items()}
+            ema.snapshot()
             patience_ctr = 0
         else:
             patience_ctr += 1
@@ -1447,8 +1529,7 @@ def train_cvae_wishful(
         pbar.set_postfix(total=f"{history['train_loss'][-1]:.3e}",
                          val=f"{avg_val:.3e}", alpha=f"{alpha:.2f}", tau=f"{tau:.2f}")
 
-    if best_state is not None:
-        cvae.load_state_dict(best_state)
+    ema.restore(cvae)
     return history
 
 

@@ -1,10 +1,10 @@
 #!/bin/sh
-#BSUB -J generate_dataset_cpu[1-300]
+#BSUB -J generate_dataset_cpu[1-600]
 #BSUB -q hpc
 #BSUB -n 4
 #BSUB -R "rusage[mem=4GB]"
 #BSUB -R "span[hosts=1]"
-#BSUB -W 02:00
+#BSUB -W 03:00
 #BSUB -o logs/generate_dataset/%J_%I.out
 #BSUB -e logs/generate_dataset/%J_%I.err
 
@@ -15,19 +15,19 @@ echo "Job starting on $(hostname), Task ID: ${LSB_JOBINDEX}"
 
 export CUDA_VISIBLE_DEVICES=""
 
-# Map LSB_JOBINDEX [1-300] to Material and Batch Index
-if [ ${LSB_JOBINDEX} -le 100 ]; then
+# Map LSB_JOBINDEX [1-600] to Material and Batch Index
+if [ ${LSB_JOBINDEX} -le 200 ]; then
     MATERIAL="Si"
     SEED=42
     BATCH_IDX=$((LSB_JOBINDEX - 1))
-elif [ ${LSB_JOBINDEX} -le 200 ]; then
+elif [ ${LSB_JOBINDEX} -le 400 ]; then
     MATERIAL="TiO2"
     SEED=43
-    BATCH_IDX=$((LSB_JOBINDEX - 101))
+    BATCH_IDX=$((LSB_JOBINDEX - 201))
 else
     MATERIAL="Si3N4"
     SEED=44
-    BATCH_IDX=$((LSB_JOBINDEX - 201))
+    BATCH_IDX=$((LSB_JOBINDEX - 401))
 fi
 
 START_BATCH=${BATCH_IDX}
@@ -39,7 +39,7 @@ echo "Batch Range: ${START_BATCH} to ${END_BATCH}"
 echo "======================================"
 
 uv run --no-sync python Scripts/generate_dataset.py \
-    --num_samples 10000 \
+    --num_samples 20000 \
     --batch_size 100 \
     --order_N 15 \
     --height_per_layer 5.0 \

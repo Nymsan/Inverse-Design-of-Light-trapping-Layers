@@ -35,6 +35,7 @@ from Utils.models import (
 )
 from Utils.utils import generate_test_batch, get_absorptance_curve, RCWAConfig
 from Utils.checkpoint import get_best_forward_model, load_inverse_model
+from Scripts.evaluate_dataset_baseline import get_dataset_baseline
 
 plt.rcParams.update({
     "font.size": 11, "axes.titlesize": 13, "axes.labelsize": 12,
@@ -46,6 +47,16 @@ WAVELENGTHS = np.linspace(300, 1100, 161)
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--ckpt_dir", required=True, help="Path to checkpoint directory")
+    p.add_argument(
+        "--bands", nargs="+", type=float, default=None,
+        metavar="WL",
+        help="Band pairs (nm) for the ideal target step function, e.g. --bands 500 750 850 1000"
+    )
+    p.add_argument(
+        "--material", type=str, default=None,
+        help="Ask stochastic inverse models (GenTandem/CVAE) to predict the given material "
+             "for the band-target rows (resampled up to 16 times). Example: --material TiO2"
+    )
     return p.parse_args()
 
 
@@ -59,7 +70,12 @@ def plot_model_dashboard(
     rcwa_config_dict: dict,
     stats: dict,
     save_path: str,
-    n_wavelengths: int
+    n_wavelengths: int,
+    bands: list[tuple[float, float]] | None = None,
+    best_dataset_curve: torch.Tensor | None = None,
+    best_dataset_abs: float | None = None,
+    best_dataset_mat: str | None = None,
+    requested_material: str | None = None,
 ):
     """
     Creates a comprehensive dashboard for a single inverse model.
@@ -74,20 +90,43 @@ def plot_model_dashboard(
     n_samples = targets.shape[0]
     n_wl_half = n_wavelengths // 2
     
-    # Generate designs
+    is_stochastic = hasattr(inv_model, "sample_diverse_designs") or hasattr(inv_model, "spectrum_encoder")
+    req_mat_idx = MATERIAL_LIBRARY.get(requested_material, -1) if requested_material else -1
+    N_TRIES = 16
+
+    def _sample_one(single_curve: torch.Tensor):
+        """Generate one design for a (1, n_wl) curve tensor."""
+        if hasattr(inv_model, "sample_diverse_designs"):
+            d = inv_model(single_curve, z=torch.randn(1, inv_model.latent_dim, device=device))
+            return d["pred_geometry"], d["material_onehot"]
+        elif hasattr(inv_model, "spectrum_encoder"):
+            z_y = inv_model.spectrum_encoder(single_curve)
+            z_noisy = z_y + torch.randn_like(z_y) * 0.5
+            g, m, _ = inv_model.geometry_decoder(z_noisy, tau=0.1, hard=True)
+            return g, m
+        elif hasattr(inv_model, "inverse_decoder"):
+            g, m, _ = inv_model.inverse_decoder(single_curve, tau=0.1, hard=True)
+            return g, m
+        else:
+            g, m, _ = inv_model(single_curve)
+            return g, m
+
+    # Generate designs — one per target row
+    pred_geo_list, mat_oh_list = [], []
     curve = targets.to(device)
-    if hasattr(inv_model, "sample_diverse_designs"):
-        designs = inv_model(curve, z=torch.randn(n_samples, inv_model.latent_dim, device=device))
-        pred_geo = designs["pred_geometry"]
-        mat_oh = designs["material_onehot"]
-    elif hasattr(inv_model, "spectrum_encoder"):
-        z_y = inv_model.spectrum_encoder(curve)
-        z_noisy = z_y + torch.randn_like(z_y) * 0.5
-        pred_geo, mat_oh, _ = inv_model.geometry_decoder(z_noisy, tau=0.1, hard=True)
-    elif hasattr(inv_model, "inverse_decoder"):
-        pred_geo, mat_oh, _ = inv_model.inverse_decoder(curve, tau=0.1, hard=True)
-    else:
-        pred_geo, mat_oh, _ = inv_model(curve)
+    for i in range(n_samples):
+        single_curve = curve[i:i+1]
+        g, m = _sample_one(single_curve)
+        # For ideal rows of stochastic models, resample if a specific material is requested
+        if is_ideal[i] and is_stochastic and req_mat_idx >= 0:
+            for _ in range(N_TRIES - 1):
+                if m[0].argmax().item() == req_mat_idx:
+                    break
+                g, m = _sample_one(single_curve)
+        pred_geo_list.append(g)
+        mat_oh_list.append(m)
+    pred_geo = torch.cat(pred_geo_list, dim=0)
+    mat_oh = torch.cat(mat_oh_list, dim=0)
         
     # Forward Surrogate Prediction
     surrogate_preds = forward_model(pred_geo, mat_oh.argmax(dim=-1))
@@ -139,28 +178,54 @@ def plot_model_dashboard(
         
         # Use viridis colormap for consistency
         cmap = plt.cm.viridis
-        c_target, c_surr, c_physics = cmap(0.0), cmap(0.5), cmap(0.8)
+        c_surr, c_physics = cmap(0.45), cmap(0.85)
+        c_profile, c_amp, c_phase = cmap(0.65), cmap(0.3), cmap(0.9)
+        c_dataset = cmap(0.15)   # dark indigo — distinct from target (black), surrogate, torcwa
+
         
+        # Compute in-band average absorptance for Torcwa result
+        if bands:
+            band_mask = np.zeros(len(WAVELENGTHS), dtype=bool)
+            for bmin, bmax in bands:
+                band_mask |= (WAVELENGTHS >= bmin) & (WAVELENGTHS <= bmax)
+            rcwa_avg_abs = float((rcwa_p[band_mask].mean() + rcwa_s[band_mask].mean()) / 2.0)
+        else:
+            rcwa_avg_abs = float((rcwa_p.mean() + rcwa_s.mean()) / 2.0)
+
         # 2. P-Pol Spectra
         ax_p = axes[i, 0]
         ax_p.plot(WAVELENGTHS, curve[i, :n_wl_half].cpu().numpy(), "k-", lw=2.5, label="Target", zorder=10)
+        if best_dataset_curve is not None and is_ideal[i]:
+            ds_label = f"Best Dataset ({best_dataset_mat})"
+            ax_p.plot(WAVELENGTHS, best_dataset_curve[:n_wl_half].numpy(), color=c_dataset,
+                      linestyle="-", lw=1.8, label=ds_label, alpha=0.75, zorder=9)
         ax_p.plot(WAVELENGTHS, surrogate_preds[i, :n_wl_half].cpu().numpy(), linestyle="--", color=c_surr, lw=2.0, label="Surrogate")
         ax_p.plot(WAVELENGTHS, rcwa_p, linestyle="-", color=c_physics, lw=2.0, label="Torcwa Physics")
         ax_p.set_xlim(300, 1100); ax_p.set_ylim(-0.05, 1.05)
         ax_p.set_ylabel("Absorptance (P-Pol)")
-        if i == 0:
+        if bands:
+            for bmin, bmax in bands:
+                ax_p.axvspan(bmin, bmax, color="gray", alpha=0.2)
+        if i == 0 or is_ideal[i]:
             ax_p.legend(fontsize=9)
-        title_prefix = "Ideal Target" if is_ideal[i] else "Real Target"
-        ax_p.set_title(f"{title_prefix} P-Pol")
+        title_prefix = "Band Target" if is_ideal[i] else "Real Target"
+        ds_str = f" | Dataset Abs={best_dataset_abs:.3f}" if (best_dataset_abs is not None and is_ideal[i]) else ""
+        ax_p.set_title(f"{title_prefix} P-Pol | Torcwa Abs={rcwa_avg_abs:.3f}{ds_str}")
         
         # 3. S-Pol Spectra
         ax_s = axes[i, 1]
         ax_s.plot(WAVELENGTHS, curve[i, n_wl_half:].cpu().numpy(), "k-", lw=2.5, label="Target", zorder=10)
+        if best_dataset_curve is not None and is_ideal[i]:
+            ax_s.plot(WAVELENGTHS, best_dataset_curve[n_wl_half:].numpy(), color=c_dataset,
+                      linestyle="-", lw=1.8, alpha=0.75, zorder=9)
         ax_s.plot(WAVELENGTHS, surrogate_preds[i, n_wl_half:].cpu().numpy(), linestyle="--", color=c_surr, lw=2.0, label="Surrogate")
         ax_s.plot(WAVELENGTHS, rcwa_s, linestyle="-", color=c_physics, lw=2.0, label="Torcwa Physics")
         ax_s.set_xlim(300, 1100); ax_s.set_ylim(-0.05, 1.05)
         ax_s.set_ylabel("Absorptance (S-Pol)")
-        ax_s.set_title(f"{title_prefix} S-Pol")
+        if bands:
+            for bmin, bmax in bands:
+                ax_s.axvspan(bmin, bmax, color="gray", alpha=0.2)
+        ax_s.set_title(f"{title_prefix} S-Pol | Torcwa Avg Abs={rcwa_avg_abs:.3f}{ds_str}")
         
         # 4. Grating Profile
         ax_g = axes[i, 2]
@@ -172,7 +237,8 @@ def plot_model_dashboard(
         cosines = amps[:, None] * np.cos(arg)
         prof = grating_height / 2.0 + cosines.sum(axis=0)
         
-        ax_g.fill_between(r_grid, 0, prof, color="gray", alpha=0.5)
+        ax_g.fill_between(r_grid, 0, prof, color=c_profile, alpha=0.6)
+        ax_g.plot(r_grid, prof, color=c_profile, lw=1.5)
         ax_g.set_ylim(0, max(120, grating_height * 1.2))
         ax_g.set_xlim(0, 1000)
         ax_g.set_title(f"Predicted Profile ({pred_mat_name})")
@@ -185,14 +251,14 @@ def plot_model_dashboard(
         # 5. Harmonics Bar Plot
         ax_h = axes[i, 3]
         x_pos = np.arange(1, n_harmonics + 1)
-        ax_h.bar(x_pos, amps, color="skyblue", edgecolor="black")
-        ax_h.set_ylabel("Amplitude (nm)", color="C0")
-        ax_h.tick_params(axis='y', labelcolor="C0")
+        ax_h.bar(x_pos, amps, color=c_amp, edgecolor="black")
+        ax_h.set_ylabel("Amplitude (nm)", color=c_amp)
+        ax_h.tick_params(axis='y', labelcolor=c_amp)
         
         ax_p2 = ax_h.twinx()
-        ax_p2.plot(x_pos, phases, 'ro', markersize=8)
-        ax_p2.set_ylabel("Phase (rad)", color="red")
-        ax_p2.tick_params(axis='y', labelcolor="red")
+        ax_p2.plot(x_pos, phases, 'o', color=c_phase, markersize=8)
+        ax_p2.set_ylabel("Phase (rad)", color=c_phase)
+        ax_p2.tick_params(axis='y', labelcolor=c_phase)
         ax_p2.set_ylim(-0.5, 2*np.pi + 0.5)
         
         ax_h.set_title("Harmonics Amplitudes & Phases")
@@ -308,22 +374,79 @@ def main():
     else:
         rcwa_config_dict = {}
 
+    # --- Parse bands ---
+    bands: list[tuple[float, float]] = []
+    if args.bands:
+        if len(args.bands) % 2 != 0:
+            print("Error: --bands must have an even number of arguments (min max pairs).")
+            return
+        for i in range(0, len(args.bands), 2):
+            bands.append((args.bands[i], args.bands[i + 1]))
+
+    bands_str = "_".join([f"{int(b[0])}-{int(b[1])}" for b in bands]) if bands else "full_spectrum"
+    if bands:
+        print(f"\nBands: {bands}")
+        print(f"Building ideal band step-function target (1.0 in-band, 0.0 out-of-band)")
+
+    # --- Dataset baseline (best curve in bands) ---
+    best_dataset_curve: torch.Tensor | None = None
+    best_dataset_abs: float | None = None
+    best_dataset_mat: str | None = None
+    if bands:
+        print("\nScanning dataset for best raw performance in bands...")
+        try:
+            baseline_res, _ = get_dataset_baseline(ckpt_dir, bands)
+            best_score = -1.0
+            for mat, res in baseline_res.items():
+                score = res["avg_abs"].max().item()
+                if score > best_score:
+                    best_score = score
+                    best_dataset_abs = score
+                    best_dataset_mat = mat
+                    best_dataset_curve = res["targets"][res["avg_abs"].argmax()].clone()
+            print(f"  Best dataset structure: {best_dataset_mat}, Avg Abs={best_dataset_abs:.4f}")
+        except Exception as e:
+            import traceback
+            print(f"  Warning: could not load dataset baseline:")
+            traceback.print_exc()
+
     print("\nGenerating comprehensive model dashboards...")
 
     if all_history:
         plot_inverse_loss_curves(all_history, str(eval_dir / "inverse_loss_curves.png"))
-    
-    # We will pick 2 real targets from the batch, and 2 ideal broadband targets.
+
+    # --- Build targets ---
+    # Always include 2 real samples from the test batch
     real_targets = batch["target"][:2]
-    ideal_target = torch.ones(2, n_wavelengths)
-    
-    targets_to_eval = torch.cat([real_targets, ideal_target], dim=0)
-    is_ideal = [False, False, True, True]
-    
+
+    if bands:
+        # Step function: 1.0 inside any band, 0.0 outside — for both p and s polarisations
+        step = np.zeros(len(WAVELENGTHS))
+        for bmin, bmax in bands:
+            step[(WAVELENGTHS >= bmin) & (WAVELENGTHS <= bmax)] = 1.0
+        step_both_pol = np.concatenate([step, step])          # (n_wavelengths,)
+        band_target_1 = torch.from_numpy(step_both_pol).float().unsqueeze(0)
+    else:
+        band_target_1 = torch.ones(1, n_wavelengths)          # broadband fallback
+
     all_metrics = {}
 
     for name, m in inverse_models.items():
-        save_path = str(eval_dir / f"dashboard_{name}.png")
+        # Deterministic models (plain Tandem): only 1 band-target row
+        # Stochastic models (GenTandem, CVAE): 2 band-target rows (different samples)
+        is_deterministic = (
+            hasattr(m, "inverse_decoder")
+            and not hasattr(m, "sample_diverse_designs")
+            and not hasattr(m, "spectrum_encoder")
+        )
+        if is_deterministic:
+            targets_to_eval = torch.cat([real_targets, band_target_1], dim=0)
+            is_ideal = [False, False, True]
+        else:
+            targets_to_eval = torch.cat([real_targets, band_target_1, band_target_1], dim=0)
+            is_ideal = [False, False, True, True]
+
+        save_path = str(eval_dir / f"dashboard_{name}_{bands_str}.png")
         avg_mse = plot_model_dashboard(
             model_name=name,
             inv_model=m,
@@ -333,11 +456,16 @@ def main():
             rcwa_config_dict=rcwa_config_dict,
             stats=stats,
             save_path=save_path,
-            n_wavelengths=n_wavelengths
+            n_wavelengths=n_wavelengths,
+            bands=bands if bands else None,
+            best_dataset_curve=best_dataset_curve,
+            best_dataset_abs=best_dataset_abs,
+            best_dataset_mat=best_dataset_mat,
+            requested_material=args.material,
         )
         all_metrics[name] = {"mse": float(avg_mse)}
 
-    metrics_path = eval_dir / "inverse_metrics.json"
+    metrics_path = eval_dir / f"inverse_metrics_{bands_str}.json"
     with open(metrics_path, "w") as f:
         json.dump(all_metrics, f, indent=2)
 
