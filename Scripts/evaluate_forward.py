@@ -224,17 +224,38 @@ def main():
     all_history = {}
     forward_models = {}
 
+    # Build list of all checkpoint paths to evaluate (base + AL)
+    ckpt_paths = []
     for fname in _FORWARD_FILENAMES:
         p = ckpt_dir / fname
         if p.exists():
+            ckpt_paths.append(p)
+    
+    al_dir = ckpt_dir / "Active_Learning"
+    if al_dir.exists():
+        import re
+        for p in al_dir.glob("*_al*.pt"):
+            if any(p.name.startswith(Path(base_fname).stem) for base_fname in _FORWARD_FILENAMES):
+                ckpt_paths.append(p)
+
+    for p in ckpt_paths:
+        try:
             model, hist, class_name = load_forward_model(
                 p, n_continuous=n_continuous, n_wavelengths=n_wavelengths, n_harmonics=n_harmonics
             )
             model.eval()
-            stem = p.stem
+            
+            # Use 'stem' but differentiate AL iterations
+            if "_al" in p.name:
+                stem = f"{p.stem}"
+            else:
+                stem = p.stem
+                
             forward_models[stem] = model
             all_history[stem] = hist
             print(f"Loaded: {stem} (as {class_name})")
+        except Exception as e:
+            print(f"Failed to load {p.name}: {e}")
 
 
 

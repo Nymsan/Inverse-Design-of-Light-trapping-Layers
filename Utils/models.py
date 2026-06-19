@@ -1058,39 +1058,7 @@ class GratingDataset(torch.utils.data.Dataset):
                 "material_id": self.material_id[idx], "target": self.target[idx]}
 
 
-class GratingWavelengthDataset(torch.utils.data.Dataset):
-    """
-    Wraps GratingDataset (or a Subset) to return exactly ONE wavelength point per sample.
-    The returned target is [2] (P and S polarizations).
-    The physical wavelength value (300 to 1100 nm) is provided as a separate key 'wavelength'.
-    """
-    def __init__(self, base_dataset: torch.utils.data.Dataset, n_wavelengths: int = 322):
-        self.base = base_dataset
-        self.n_wls = n_wavelengths // 2
-        self.wl_vals = torch.linspace(300, 1100, self.n_wls, dtype=torch.float32) + 1e-3
 
-    def __len__(self) -> int:
-        return len(self.base) * self.n_wls
-
-    def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
-        sample_idx = idx // self.n_wls
-        wl_idx = idx % self.n_wls
-        
-        item = self.base[sample_idx]
-        
-        wl_val = self.wl_vals[wl_idx]
-        
-        target = item["target"]
-        p_pol = target[wl_idx]
-        s_pol = target[self.n_wls + wl_idx]
-        target_wl = torch.stack([p_pol, s_pol])
-        
-        return {
-            "geometry": item["geometry"],
-            "wavelength": wl_val,
-            "material_id": item["material_id"],
-            "target": target_wl
-        }
 
 class _EMATracker:
     """Lightweight EMA of model *parameters* (buffers like BN running stats are left untouched).
@@ -1364,7 +1332,7 @@ def train_cvae(
     synthetic_phase: bool = False,
     ema_decay: float = 0.999,
 ) -> dict[str, list[float]]:
-    """Train C-VAE. All sub-networks trained jointly. Loss = recon + CE + β·KL + γ·margin."""
+    """Train C-VAE. All sub-networks trained jointly. Loss = recon + CE + beta·KL + gamma·margin."""
     cvae = cvae.to(device)
     optimizer = torch.optim.AdamW(cvae.parameters(), lr=lr, weight_decay=weight_decay)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=20, min_lr=1e-6)
@@ -1540,79 +1508,4 @@ def train_cvae_wishful(
     return history
 
 
-def train_implicit_forward(
-    model: SIREN, train_loader, val_loader, *,
-    epochs: int = 500, lr: float = 1e-3, weight_decay: float = 1e-5,
-    patience: int = 100, device: torch.device = torch.device("cpu"),
-) -> dict[str, list[float]]:
-    """Train SIREN implicitly directly on individual physical wavelengths."""
-    model = model.to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=20, min_lr=1e-6)
-    criterion = nn.HuberLoss(delta=0.01)
-    best_val, best_state, patience_ctr = float("inf"), None, 0
-    history: dict[str, list[float]] = {"train_loss": [], "val_loss": [], "val_mae": [], "val_max_err": []}
 
-    pbar = tqdm(range(1, epochs + 1), desc="Epochs", unit="ep", dynamic_ncols=True, file=sys.stdout)
-    for epoch in pbar:
-        model.train()
-        train_loss_accum = 0.0
-        for batch in train_loader:
-            geo = batch["geometry"].to(device)
-            mat = batch["material_id"].to(device)
-            wl = batch["wavelength"].to(device).unsqueeze(1) # shape [B, 1]
-            target = batch["target"].to(device)
-            
-            # predict
-            pred = model(geo, mat, wls=wl).squeeze(1)
-            
-            loss = criterion(pred, target)
-            
-            optimizer.zero_grad(); loss.backward(); optimizer.step()
-            train_loss_accum += loss.item()
-
-        avg_train = train_loss_accum / len(train_loader)
-        history["train_loss"].append(avg_train)
-
-        model.eval()
-        val_loss_accum, val_mae_accum, val_max_err_accum = 0.0, 0.0, 0.0
-        with torch.no_grad():
-            for batch in val_loader:
-                geo = batch["geometry"].to(device)
-                mat = batch["material_id"].to(device)
-                wl = batch["wavelength"].to(device).unsqueeze(1)
-                target = batch["target"].to(device)
-                
-                pred = model(geo, mat, wls=wl).squeeze(1)
-                base_loss = criterion(pred, target)
-                val_loss_accum += base_loss.item()
-                
-                abs_err = torch.abs(pred - target)
-                val_mae_accum += abs_err.mean().item()
-                val_max_err_accum += abs_err.max(dim=1).values.mean().item()
-
-        avg_val = val_loss_accum / len(val_loader)
-        avg_mae = val_mae_accum / len(val_loader)
-        avg_max_err = val_max_err_accum / len(val_loader)
-        
-        history["val_loss"].append(avg_val)
-        history["val_mae"].append(avg_mae)
-        history["val_max_err"].append(avg_max_err)
-        scheduler.step(avg_val)
-
-        if avg_val < best_val:
-            best_val = avg_val
-            best_state = {k: v.clone() for k, v in model.state_dict().items()}
-            patience_ctr = 0
-        else:
-            patience_ctr += 1
-            if patience_ctr >= patience:
-                pbar.write(f"Early stopping at epoch {epoch} (best val={best_val:.6e})")
-                break
-
-        pbar.set_postfix_str(f"lr={optimizer.param_groups[0]['lr']:.1e} best={best_val:.3e} "
-                             f"train={avg_train:.3e} val={avg_val:.3e} vMAE={avg_mae:.3f} vMaxE={avg_max_err:.3f}")
-
-    if best_state is not None:
-        model.load_state_dict(best_state)
-    return history

@@ -60,7 +60,7 @@ def process_sample(i, h_arr, inc_ang_arr, amps_arr, phases_arr, wavelengths, arg
 
 from scipy.stats.qmc import LatinHypercube
 
-def get_lhs_samples(num_samples, n_harmonics=10, seed=42):
+def get_lhs_samples(num_samples, n_harmonics=5, seed=42):
     # 2 + 2*n_harmonics dimensions: h, inc_ang, n_harmonics amps, n_harmonics phases
     d = 2 + 2 * n_harmonics
     sampler = LatinHypercube(d=d, seed=seed)
@@ -70,12 +70,12 @@ def get_lhs_samples(num_samples, n_harmonics=10, seed=42):
     h = 500 + 5500 * sample[:, 0]                          # 500 nm to 6000 nm
     inc_ang = 0 + 45 * sample[:, 1]                        # 0 to 45 degrees
     
-    amps   = 0 + 15 * sample[:, 2:2+n_harmonics]           # 0 to 15 nm for each harmonic
+    amps   = 0 + 30 * sample[:, 2:2+n_harmonics]           # 0 to 30 nm for each harmonic
     phases = 0 + 2 * np.pi * sample[:, 2+n_harmonics:d]    # 0 to 2π for each phase
     
     return h, inc_ang, amps, phases
 
-def get_or_create_samples(out_dir, num_samples, n_harmonics=10, seed=42):
+def get_or_create_samples(out_dir, num_samples, n_harmonics=5, seed=42):
     samples_file = os.path.join(out_dir, '_lhs_samples.npz')
     
     if os.path.exists(samples_file):
@@ -102,7 +102,7 @@ def main():
                         help="Total number of samples to generate")
     parser.add_argument('--batch_size', type=int, default=100,
                         help="Number of samples to save per .pt file")
-    parser.add_argument('--n_harmonics', type=int, default=10,
+    parser.add_argument('--n_harmonics', type=int, default=5,
                         help="Number of Fourier harmonics describing the grating profile")
     parser.add_argument('--start_batch', type=int, default=None,
                         help="Batch index to start computing (inclusive)")

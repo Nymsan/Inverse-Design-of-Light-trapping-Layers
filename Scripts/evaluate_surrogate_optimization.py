@@ -29,6 +29,8 @@ def parse_args():
     p.add_argument("--bands", nargs="+", type=float, help="Pairs of wavelength bands to optimize, e.g., --bands 500 750 800 900")
     p.add_argument("--restarts", type=int, default=5000, help="Number of random restarts per material")
     p.add_argument("--steps", type=int, default=300, help="Optimization steps")
+    p.add_argument("--save_dir", type=str, default="Checkpoints/Optimization_Eval")
+    p.add_argument("--al_iter", type=int, default=-1, help="Active learning iteration of surrogate to use (-1 for latest, 0 for base)")
     p.add_argument("--max_inc_deg", type=float, default=30.0, help="Maximum incident angle in degrees (default: 30)")
     p.add_argument("--recovered_harmonics", type=int, default=10, help="Number of harmonics to recover via FFT in profile mode (default: 10)")
     return p.parse_args()
@@ -58,14 +60,18 @@ def main():
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    cnn_path = ckpt_dir / "spatial_cnn.pt"
-    if not cnn_path.exists():
-        print(f"{cnn_path} not found! Please train forward models first.")
-        return
-        
-    model, _, _ = load_forward_model(
-        cnn_path, n_continuous=stats["n_continuous"], n_wavelengths=stats["n_wavelengths"], n_harmonics=stats["n_harmonics"]
+    # Find the best forward model
+    model, fwd_name, _ = get_best_forward_model(
+        ckpt_dir, n_continuous=stats["n_continuous"], n_wavelengths=stats["n_wavelengths"], n_harmonics=stats["n_harmonics"], al_iter=args.al_iter
     )
+    if model is None:
+        print("\n=> ERROR: No forward models found in Checkpoints directory!")
+        return
+    
+    # Extract al_iterations from history if available
+    al_iterations = model.history.get("al_iterations", 0) if hasattr(model, "history") else 0
+    title_suffix = f" (Surrogate: {Path(fwd_name).stem})"
+    
     model = model.to(device)
     model.eval()
     
@@ -291,6 +297,8 @@ def main():
         ax_p2.tick_params(axis='y', labelcolor=c_phase)
         ax_p2.set_ylim(-0.5, 2 * np.pi + 0.5)
         ax_h.set_title(f"Harmonics Amplitudes & Phases", fontsize=13)
+    
+    fig.suptitle(f"Surrogate Optimization: {mat_name}{title_suffix}", fontsize=20, y=1.02)
         
     out_path = out_dir / f"bgd_optimization_{args.mode}_{bands_str}.png"
     plt.savefig(out_path)

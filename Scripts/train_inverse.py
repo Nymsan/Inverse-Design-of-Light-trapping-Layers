@@ -49,7 +49,8 @@ def get_args():
     p.add_argument("--data_dir", nargs="+", required=True)
     p.add_argument("--materials", nargs="+", default=["Si", "TiO2", "Si3N4"])
     p.add_argument("--batch_size", type=int, default=64)
-    p.add_argument("--epochs", type=int, default=500)
+    p.add_argument("--epochs", type=int, default=100, help="Number of epochs for Tandem/Generative")
+    p.add_argument("--al_iter", type=int, default=-1, help="Active learning iteration of surrogate to use (-1 for latest, 0 for base)")
     p.add_argument("--wishful_epochs", type=int, default=100)
     p.add_argument("--synthetic_epochs", type=int, default=100)
     p.add_argument("--lr", type=float, default=1e-3)
@@ -61,6 +62,28 @@ def get_args():
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--device", default=None)
     p.add_argument("--skip", nargs="*", default=[], choices=["tandem", "gen_tandem", "cvae"])
+    
+    # Architecture arguments
+    # InverseDecoder
+    p.add_argument("--inv_conv_channels", type=int, nargs="+", default=[32, 64, 128, 64])
+    p.add_argument("--inv_kernel_size", type=int, default=7)
+    p.add_argument("--inv_fc_dims", type=int, nargs="+", default=[256, 256])
+    p.add_argument("--inv_dropout", type=float, default=0.05)
+    
+    # CVAE
+    p.add_argument("--cvae_geo_enc_conv", type=int, nargs="+", default=[32, 64, 64])
+    p.add_argument("--cvae_geo_enc_kernel", type=int, default=7)
+    p.add_argument("--cvae_geo_enc_fc", type=int, nargs="+", default=[256, 256])
+    p.add_argument("--cvae_geo_enc_dropout", type=float, default=0.05)
+    
+    p.add_argument("--cvae_geo_dec_fc", type=int, nargs="+", default=[256, 256])
+    p.add_argument("--cvae_geo_dec_dropout", type=float, default=0.05)
+    
+    p.add_argument("--cvae_spec_enc_conv", type=int, nargs="+", default=[32, 64, 128, 64])
+    p.add_argument("--cvae_spec_enc_kernel", type=int, default=7)
+    p.add_argument("--cvae_spec_enc_fc", type=int, nargs="+", default=[256, 256])
+    p.add_argument("--cvae_spec_enc_dropout", type=float, default=0.05)
+    
     p.add_argument("--skip_wishful", action="store_true",
                     help="Skip Phase 2 (wishful thinking) training")
     p.add_argument("--skip_synthetic", action="store_true",
@@ -199,7 +222,7 @@ def main():
 
     # Find the best forward model
     forward_model, fwd_name, fwd_loss = get_best_forward_model(
-        ckpt_dir, n_continuous=n_continuous, n_wavelengths=n_wavelengths, n_harmonics=n_harmonics
+        ckpt_dir, n_continuous=n_continuous, n_wavelengths=n_wavelengths, n_harmonics=n_harmonics, al_iter=args.al_iter
     )
     
     if forward_model is not None:
@@ -220,7 +243,8 @@ def main():
         else:
             decoder_kwargs = dict(
                 n_wavelengths=n_wavelengths, n_geometry=n_continuous,
-                n_materials=N_MATERIALS, latent_dim=0,
+                n_materials=N_MATERIALS, latent_dim=0, fc_dims=tuple(args.inv_fc_dims),
+                conv_channels=tuple(args.inv_conv_channels), kernel_size=args.inv_kernel_size, dropout=args.inv_dropout,
                 geo_min=geo_min, geo_max=geo_max,
             )
             decoder = InverseDecoder(**decoder_kwargs)
@@ -264,7 +288,8 @@ def main():
             latent_dim = args.latent_dim_gen
             decoder_kwargs = dict(
                 n_wavelengths=n_wavelengths, n_geometry=n_continuous,
-                n_materials=N_MATERIALS, latent_dim=latent_dim,
+                n_materials=N_MATERIALS, latent_dim=latent_dim, fc_dims=tuple(args.inv_fc_dims),
+                conv_channels=tuple(args.inv_conv_channels), kernel_size=args.inv_kernel_size, dropout=args.inv_dropout,
                 geo_min=geo_min, geo_max=geo_max,
             )
             decoder = InverseDecoder(**decoder_kwargs)
@@ -309,16 +334,18 @@ def main():
         
         geo_enc_kwargs = dict(
             n_continuous=n_continuous, n_materials=N_MATERIALS, embed_dim=8,
-            latent_dim=latent_dim, fc_dims=(256, 256),
+            latent_dim=latent_dim, fc_dims=tuple(args.cvae_geo_enc_fc),
+            conv_channels=tuple(args.cvae_geo_enc_conv), kernel_size=args.cvae_geo_enc_kernel, dropout=args.cvae_geo_enc_dropout,
         )
         geo_dec_kwargs = dict(
             latent_dim=latent_dim, n_geometry=n_continuous,
             n_materials=N_MATERIALS, geo_min=geo_min, geo_max=geo_max,
-            hidden_dims=(256, 256),
+            hidden_dims=tuple(args.cvae_geo_dec_fc), dropout=args.cvae_geo_dec_dropout,
         )
         spec_enc_kwargs = dict(
             n_wavelengths=n_wavelengths, latent_dim=latent_dim,
-            conv_channels=(32, 64, 128, 64), fc_dims=(256, 256),
+            conv_channels=tuple(args.cvae_spec_enc_conv), kernel_size=args.cvae_spec_enc_kernel, 
+            fc_dims=tuple(args.cvae_spec_enc_fc), dropout=args.cvae_spec_enc_dropout,
         )
         cvae_kwargs = dict(
             margin_radius=1.0, beta=1e-3, gamma=1.0,
