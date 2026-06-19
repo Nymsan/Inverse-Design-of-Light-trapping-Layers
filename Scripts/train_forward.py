@@ -46,6 +46,39 @@ def get_args():
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--device", default=None)
     p.add_argument("--skip", nargs="*", default=[], choices=["mlp", "cnn", "skipcnn", "siren", "transformer"])
+    
+    # Architecture arguments
+    # MLP
+    p.add_argument("--mlp_hidden_dims", type=int, nargs="+", default=[512, 768, 512])
+    p.add_argument("--mlp_dropout", type=float, default=0.0)
+    
+    # SpatialCNN
+    p.add_argument("--cnn_conv_channels", type=int, nargs="+", default=[64, 128, 128, 64])
+    p.add_argument("--cnn_kernel_size", type=int, default=7)
+    p.add_argument("--cnn_fc_dims", type=int, nargs="+", default=[512, 128])
+    p.add_argument("--cnn_dropout", type=float, default=0.0)
+    
+    # SkipCNN
+    p.add_argument("--skipcnn_conv_channels", type=int, nargs="+", default=[32, 64, 128, 64])
+    p.add_argument("--skipcnn_kernel_size", type=int, default=7)
+    p.add_argument("--skipcnn_fc_dims", type=int, nargs="+", default=[256, 256])
+    p.add_argument("--skipcnn_dropout", type=float, default=0.0)
+    
+    # SIREN
+    p.add_argument("--siren_conv_channels", type=int, nargs="+", default=[32, 64, 64])
+    p.add_argument("--siren_kernel_size", type=int, default=7)
+    p.add_argument("--siren_fc_dims", type=int, nargs="+", default=[256, 128])
+    p.add_argument("--siren_latent_dim", type=int, default=64)
+    p.add_argument("--siren_omega_0", type=float, default=30.0)
+    p.add_argument("--siren_dropout", type=float, default=0.0)
+    
+    # Transformer
+    p.add_argument("--tf_d_model", type=int, default=128)
+    p.add_argument("--tf_nhead", type=int, default=4)
+    p.add_argument("--tf_dim_feedforward", type=int, default=512)
+    p.add_argument("--tf_num_layers", type=int, default=3)
+    p.add_argument("--tf_dropout", type=float, default=0.0)
+    
     return p.parse_args()
 
 def main():
@@ -114,7 +147,8 @@ def main():
         model_kwargs = dict(
             n_harmonics=n_harmonics, nx=128,
             n_continuous=n_continuous, n_wavelengths=n_wavelengths,
-            n_materials=N_MATERIALS, embed_dim=8, hidden_dims=(512,768,512)
+            n_materials=N_MATERIALS, embed_dim=8, hidden_dims=tuple(args.mlp_hidden_dims),
+            dropout=args.mlp_dropout
         )
         model = ForwardMLP(**model_kwargs)
         n_params = sum(p.numel() for p in model.parameters())
@@ -143,7 +177,8 @@ def main():
         model_kwargs = dict(
             n_harmonics=n_harmonics, nx=128, n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
-            grating_period=1000.0, conv_channels=(64, 128, 128, 64), fc_dims=(512, 128),
+            grating_period=1000.0, conv_channels=tuple(args.cnn_conv_channels), kernel_size=args.cnn_kernel_size,
+            fc_dims=tuple(args.cnn_fc_dims), dropout=args.cnn_dropout,
         )
         model = SpatialCNN(**model_kwargs)
         n_params = sum(p.numel() for p in model.parameters())
@@ -172,7 +207,8 @@ def main():
         model_kwargs = dict(
             n_harmonics=n_harmonics, nx=128, n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
-            grating_period=1000.0, conv_channels=(64, 128, 128, 64), fc_dims=(256, 256),
+            grating_period=1000.0, conv_channels=tuple(args.skipcnn_conv_channels), kernel_size=args.skipcnn_kernel_size,
+            fc_dims=tuple(args.skipcnn_fc_dims), dropout=args.skipcnn_dropout,
         )
         model = SkipCNN(**model_kwargs)
         n_params = sum(p.numel() for p in model.parameters())
@@ -201,8 +237,8 @@ def main():
         model_kwargs = dict(
             n_harmonics=n_harmonics, nx=128, n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
-            conv_channels=(32, 64, 64), kernel_size=7, dropout=0.0,
-            siren_hidden=(256, 256, 256), latent_dim=64, omega_0=30.0,
+            conv_channels=tuple(args.siren_conv_channels), kernel_size=args.siren_kernel_size, dropout=args.siren_dropout,
+            siren_hidden=tuple(args.siren_fc_dims), latent_dim=args.siren_latent_dim, omega_0=args.siren_omega_0,
         )
         model = SIREN(**model_kwargs)
         n_params = sum(p.numel() for p in model.parameters())
@@ -231,7 +267,7 @@ def main():
         model_kwargs = dict(
             n_harmonics=n_harmonics, nx=128, n_continuous=n_continuous, n_wavelengths=n_wavelengths,
             n_materials=N_MATERIALS, embed_dim=8,
-            d_model=128, nhead=4, dim_feedforward=512, num_layers=3, dropout=0.0, grating_period=1000.0,
+            grating_period=1000.0, d_model=args.tf_d_model, nhead=args.tf_nhead, dim_feedforward=args.tf_dim_feedforward, num_layers=args.tf_num_layers, dropout=args.tf_dropout
         )
         model = TransformerForward(**model_kwargs)
         n_params = sum(p.numel() for p in model.parameters())

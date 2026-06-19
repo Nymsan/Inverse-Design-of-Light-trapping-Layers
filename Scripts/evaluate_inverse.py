@@ -34,7 +34,7 @@ from Utils.models import (
     GeometryEncoder, SpectrumEncoder, GeometryDecoder
 )
 from Utils.utils import generate_test_batch, get_absorptance_curve, RCWAConfig
-from Utils.checkpoint import get_best_forward_model, load_inverse_model
+from Utils.checkpoint import get_best_forward_model, load_inverse_model, load_forward_model
 from Scripts.evaluate_dataset_baseline import get_dataset_baseline
 
 plt.rcParams.update({
@@ -76,6 +76,7 @@ def plot_model_dashboard(
     best_dataset_abs: float | None = None,
     best_dataset_mat: str | None = None,
     requested_material: str | None = None,
+    forward_model_name: str = "",
 ):
     """
     Creates a comprehensive dashboard for a single inverse model.
@@ -218,6 +219,10 @@ def plot_model_dashboard(
                 ax_p.axvspan(bmin, bmax, color="gray", alpha=0.2)
         if i == 0 or is_ideal[i]:
             ax_p.legend(fontsize=9)
+        if bands is not None:
+            bands_str = ", ".join([f"{b[0]}-{b[1]}nm" for b in bands])
+        else:
+            bands_str = "Custom"
         title_prefix = f"Band Target ({bands_str})" if is_ideal[i] else f"Real Target #{i+1}"
         ds_str = f" | Dataset Abs={best_dataset_abs:.3f}" if (best_dataset_abs is not None and is_ideal[i]) else ""
         ax_p.set_title(f"{title_prefix} | {pred_mat_name}\nTorcwa Abs={rcwa_avg_abs:.3f} | Surr Abs={surr_avg_abs:.3f}{ds_str}")
@@ -282,6 +287,11 @@ def plot_model_dashboard(
             ax_g.set_xlabel("x (nm)")
             ax_h.set_xlabel("Harmonic Index")
             
+    if forward_model_name:
+        fig.suptitle(f"Model: {model_name} (Frozen Surrogate: {Path(forward_model_name).stem})", fontsize=20, y=1.02)
+    else:
+        fig.suptitle(f"Model: {model_name}", fontsize=20, y=1.02)
+        
     plt.savefig(save_path)
     plt.close()
     print(f"  Saved Dashboard: {save_path}")
@@ -323,6 +333,7 @@ def plot_inverse_loss_curves(all_history: dict, save_path: str):
 
 def main():
     args = parse_args()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ckpt_dir = Path(args.ckpt_dir)
     eval_dir = ckpt_dir / "evaluation" / "inverse"
     eval_dir.mkdir(parents=True, exist_ok=True)
@@ -337,13 +348,7 @@ def main():
 
     batch = generate_test_batch(stats)
     
-    forward_model, fwd_name, fwd_loss = get_best_forward_model(ckpt_dir, n_continuous, n_wavelengths, n_harmonics)
-    if forward_model is not None:
-        forward_model.eval()
-        print(f"\n=> Loaded BEST forward model for evaluation: {fwd_name}")
-    else:
-        print("\n=> ERROR: No forward models found.")
-        return
+
 
     def safe_load_state_dict(model, state_dict):
         current_state = model.state_dict()
@@ -365,18 +370,48 @@ def main():
     for model_file in ["tandem.pt", "generative_tandem.pt", "cvae.pt"]:
         path = ckpt_dir / model_file
         if path.exists():
-            model, hist, metadata = load_inverse_model(
-                path, forward_model=forward_model, dataset_stats=stats,
-                n_continuous=n_continuous, n_wavelengths=n_wavelengths
-            )
-            model.eval()
-            stem = path.stem
-            inverse_models[stem] = model
-            all_history[stem] = hist
+            inv_name = path.stem
+            
+            # Extract the precise forward model name used during training
+            try:
+                ckpt = torch.load(path, map_location="cpu", weights_only=False)
+                fwd_name = ckpt.get("forward_model_name", "")
+                if not fwd_name and "metadata" in ckpt:
+                    fwd_name = ckpt["metadata"].get("forward_model_name", "")
+            except Exception:
+                fwd_name = ""
+                
+            forward_model = None
+            if fwd_name:
+                try:
+                    forward_model, _, _ = load_forward_model(
+                        ckpt_dir / fwd_name,
+                        n_continuous=n_continuous,
+                        n_wavelengths=n_wavelengths,
+                        n_harmonics=n_harmonics
+                    )
+                    forward_model.eval()
+                    forward_model.to(device)
+                    print(f"\n=> Loaded Frozen Surrogate for {inv_name}: {fwd_name}")
+                except Exception as e:
+                    print(f"\n=> ERROR: Failed to load specified surrogate '{fwd_name}': {e}")
+            else:
+                print(f"\n=> WARNING: {inv_name} metadata missing 'forward_model_name'.")
 
-            phases = metadata.get("phases_trained", [])
-            fwd = metadata.get("forward_model_name", "")
-            print(f"Loaded: {stem} (Phases: {phases}, Fwd: {fwd})")
+            try:
+                model, hist, metadata = load_inverse_model(
+                    path, forward_model=forward_model, dataset_stats=stats, n_continuous=n_continuous, n_wavelengths=n_wavelengths
+                )
+                model.eval()
+                model.to(device)
+            except Exception as e:
+                print(f"  Failed to load {inv_name}: {e}")
+                continue
+
+            inverse_models[inv_name] = model
+            all_history[inv_name] = hist
+            model._fwd_name_used = fwd_name
+            print(f"Loaded: {inv_name}")
 
     # Retrieve RCWA Config
     first_batch_file = PROJECT_ROOT / "Data" / f"LHS_Dataset_{mat_names[0]}" / "batch_0000.pt"
@@ -473,6 +508,7 @@ def main():
             best_dataset_abs=best_dataset_abs,
             best_dataset_mat=best_dataset_mat,
             requested_material=args.material,
+            forward_model_name=getattr(m, "_fwd_name_used", ""),
         )
         all_metrics[name] = {"mse": float(avg_mse)}
 

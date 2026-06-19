@@ -29,3 +29,5 @@ try to generate the data with gradient information. And train the models implici
 Rayleight anomal and instability ( crash at wavelength half of grating_period)
 
 Maybe since the forward models now take the profile as a direct input, it can also output the profile as a direct output. Or maybe the surrogate optimization can optimize this?
+
+epistemic and aleatoric noise discussion?

@@ -127,6 +127,7 @@ def save_forward_checkpoint(
             "model_config": model_kwargs,
             "model_state_dict": model.state_dict(),
             "history": history,
+            "al_iterations": history.get("al_iterations", 0),
             "use_bfloat16": use_bfloat16,
         },
         path,
@@ -442,6 +443,7 @@ def get_best_forward_model(
     n_continuous: int | None = None,
     n_wavelengths: int | None = None,
     n_harmonics: int | None = None,
+    al_iter: int = -1,
 ) -> tuple[nn.Module | None, str | None, float]:
     """Scan *ckpt_dir* for forward model checkpoints and return the best.
 
@@ -476,7 +478,53 @@ def get_best_forward_model(
             val_loss = min(history["val_loss"])
             if val_loss < best_loss:
                 best_loss = val_loss
-                best_name = p.stem  # e.g. "skip_cnn"
+                best_name = fname  # e.g. "skip_cnn.pt"
                 best_model = model
 
-    return best_model, best_name, best_loss
+    if best_name is None:
+        return None, None, float("inf")
+
+    # Now resolve the active learning iteration for the best architecture
+    base_stem = Path(best_name).stem # e.g. "skip_cnn"
+    al_dir = ckpt_dir / "Active_Learning"
+    
+    target_path = ckpt_dir / best_name
+    target_name = best_name
+    
+    if al_iter == 0:
+        pass # use base model
+    elif al_iter > 0:
+        candidate = al_dir / f"{base_stem}_al{al_iter}.pt"
+        if candidate.exists():
+            target_path = candidate
+            target_name = f"Active_Learning/{candidate.name}"
+        else:
+            print(f"  [get_best_forward_model] AL iter {al_iter} not found. Using base model.")
+    elif al_iter == -1 and al_dir.exists():
+        # Find highest AL iteration
+        import re
+        highest_al = 0
+        best_candidate = None
+        for p in al_dir.glob(f"{base_stem}_al*.pt"):
+            match = re.search(r"_al(\d+)\.pt$", p.name)
+            if match:
+                val = int(match.group(1))
+                if val > highest_al:
+                    highest_al = val
+                    best_candidate = p
+        if best_candidate is not None:
+            target_path = best_candidate
+            target_name = f"Active_Learning/{best_candidate.name}"
+
+    if target_path != ckpt_dir / best_name:
+        # Load the AL model instead
+        try:
+            best_model, _, _ = load_forward_model(
+                target_path, n_continuous=n_continuous, n_wavelengths=n_wavelengths, n_harmonics=n_harmonics
+            )
+            print(f"  [get_best_forward_model] Automatically selected {target_name}")
+        except Exception as e:
+            print(f"  [get_best_forward_model] Failed to load {target_name}: {e}. Falling back to base.")
+            target_name = best_name
+
+    return best_model, target_name, best_loss

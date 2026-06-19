@@ -16,3 +16,6 @@ Scripts/logs/
 
 # Trained Models
 Checkpoints/
+
+# Naive optimization
+Results/
