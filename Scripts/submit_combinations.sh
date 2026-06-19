@@ -2,7 +2,7 @@
 #BSUB -J gen_curves_combination[1-4]
 #BSUB -o logs/gen_curves_combination_%I.out
 #BSUB -e logs/gen_curves_combination_%I.err
-#BSUB -q gpuls40
+#BSUB -q gpul40s
 #BSUB -gpu "num=1:mode=exclusive_process"
 #BSUB -n 4
 #BSUB -R "rusage[mem=8GB]"
