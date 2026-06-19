@@ -25,7 +25,7 @@ case ${LSB_JOBINDEX} in
             --wavelengths 700 700 1 \
             --nx 500 \
             --ny 500 \
-            --n_jobs 24
+            --n_jobs 32
         ;;
     2)
         echo "Running WITHOUT subpixel smoothing... (100nm)"
@@ -39,7 +39,7 @@ case ${LSB_JOBINDEX} in
             --wavelengths 700 700 1 \
             --nx 500 \
             --ny 500 \
-            --n_jobs 24
+            --n_jobs 32
         ;;
     3)
         echo "Running WITH subpixel smoothing... (1000nm)"
@@ -52,7 +52,7 @@ case ${LSB_JOBINDEX} in
             --wavelengths 700 700 1 \
             --nx 500 \
             --ny 500 \
-            --n_jobs 24
+            --n_jobs 32
         ;;
     4)
         echo "Running WITHOUT subpixel smoothing... (1000nm)"
@@ -66,6 +66,6 @@ case ${LSB_JOBINDEX} in
             --wavelengths 700 700 1 \
             --nx 500 \
             --ny 500 \
-            --n_jobs 24
+            --n_jobs 32
         ;;
 esac
