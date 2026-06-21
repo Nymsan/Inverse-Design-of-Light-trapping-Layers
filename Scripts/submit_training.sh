@@ -76,10 +76,13 @@ echo "Counting parameters for all models..."
 uv run python count_params.py \
     --mlp_hidden_dims $MLP_HIDDEN_DIMS \
     --cnn_conv_channels $CNN_CONV_CHANNELS \
+    --cnn_kernel_size $CNN_KERNEL_SIZE \
     --cnn_fc_dims $CNN_FC_DIMS \
     --skipcnn_conv_channels $SKIPCNN_CONV_CHANNELS \
+    --skipcnn_kernel_size $SKIPCNN_KERNEL_SIZE \
     --skipcnn_fc_dims $SKIPCNN_FC_DIMS \
     --siren_conv_channels $SIREN_CONV_CHANNELS \
+    --siren_kernel_size $SIREN_KERNEL_SIZE \
     --siren_fc_dims $SIREN_FC_DIMS \
     --tf_d_model $TF_D_MODEL \
     --tf_nhead $TF_NHEAD \
@@ -105,7 +108,7 @@ uv run python train_forward.py \
     --lr 2e-3 \
     --patience 200 \
     --val_split 0.05 \
-    --skip siren transformer \
+    --skip \
     --seed 1337 \
     --mlp_hidden_dims $MLP_HIDDEN_DIMS \
     --mlp_dropout $MLP_DROPOUT \
