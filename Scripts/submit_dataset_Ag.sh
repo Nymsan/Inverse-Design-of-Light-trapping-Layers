@@ -4,7 +4,7 @@
 #BSUB -n 4
 #BSUB -R "rusage[mem=4GB]"
 #BSUB -R "span[hosts=1]"
-#BSUB -W 08:00
+#BSUB -W 16:00
 #BSUB -o logs/generate_dataset_Ag/%J_%I.out
 #BSUB -e logs/generate_dataset_Ag/%J_%I.err
 
