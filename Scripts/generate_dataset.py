@@ -67,10 +67,10 @@ def get_lhs_samples(num_samples, n_harmonics=5, seed=42):
     sample = sampler.random(n=num_samples)
     
     # Map from [0, 1] to physical bounds
-    h = 500 + 5500 * sample[:, 0]                          # 500 nm to 6000 nm
+    h = 1000 + 2000 * sample[:, 0]                         # 1000 nm to 3000 nm
     inc_ang = 0 + 45 * sample[:, 1]                        # 0 to 45 degrees
     
-    amps   = 0 + 30 * sample[:, 2:2+n_harmonics]           # 0 to 30 nm for each harmonic
+    amps   = 0 + 15 * sample[:, 2:2+n_harmonics]           # 0 to 15 nm for each harmonic
     phases = 0 + 2 * np.pi * sample[:, 2+n_harmonics:d]    # 0 to 2π for each phase
     
     return h, inc_ang, amps, phases

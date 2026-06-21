@@ -73,15 +73,15 @@ def get_lhs_samples(num_samples, seed=42):
     sampler = LatinHypercube(d=24, seed=seed)
     sample = sampler.random(n=num_samples)
     
-    h = 500 + 2500 * sample[:, 0]            # 500 nm to 3000 nm
-    inc_ang = 0 + 30 * sample[:, 1]          # 0 to 30 degrees
+    h = 1000 + 2000 * sample[:, 0]            # 1000 nm to 3000 nm
+    inc_ang = 0 + 45 * sample[:, 1]          # 0 to 45 degrees
     azi_ang = 0 + 360 * sample[:, 2]         # 0 to 360 degrees
     wavelengths = 300 + 800 * sample[:, 3]   # 300 nm to 1100 nm
     
-    amps_x = 0 + 10 * sample[:, 4:9]         # 0 to 10 nm max
+    amps_x = 0 + 15 * sample[:, 4:9]         # 0 to 15 nm max
     phases_x = 0 + 2 * np.pi * sample[:, 9:14] # 0 to 2*pi
     
-    amps_y = 0 + 10 * sample[:, 14:19]       # 0 to 10 nm max
+    amps_y = 0 + 15 * sample[:, 14:19]       # 0 to 15 nm max
     phases_y = 0 + 2 * np.pi * sample[:, 19:24] # 0 to 2*pi
     
     return h, inc_ang, azi_ang, wavelengths, amps_x, phases_x, amps_y, phases_y
