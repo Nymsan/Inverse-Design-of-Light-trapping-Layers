@@ -61,6 +61,7 @@ def get_args():
     p.add_argument("--target_key", type=str, default="all_film")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--device", default=None)
+    p.add_argument("--embed_dim", type=int, default=8)
     p.add_argument("--skip", nargs="*", default=[], choices=["tandem", "gen_tandem", "cvae"])
     
     # Architecture arguments
@@ -333,7 +334,7 @@ def main():
         latent_dim = args.latent_dim_cvae
         
         geo_enc_kwargs = dict(
-            n_continuous=n_continuous, n_materials=N_MATERIALS, embed_dim=8,
+            n_continuous=n_continuous, n_materials=N_MATERIALS, embed_dim=args.embed_dim,
             latent_dim=latent_dim, fc_dims=tuple(args.cvae_geo_enc_fc),
             conv_channels=tuple(args.cvae_geo_enc_conv), kernel_size=args.cvae_geo_enc_kernel, dropout=args.cvae_geo_enc_dropout,
         )

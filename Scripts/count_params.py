@@ -43,6 +43,7 @@ def get_args():
     p.add_argument("--cvae_spec_enc_conv", type=int, nargs="+", default=[32, 64, 128, 64])
     p.add_argument("--cvae_spec_enc_kernel", type=int, default=7)
     p.add_argument("--cvae_spec_enc_fc", type=int, nargs="+", default=[256, 256])
+    p.add_argument("--embed_dim", type=int, default=8)
     return p.parse_args()
 
 def count_parameters(model):
@@ -56,21 +57,19 @@ n_harmonics = 5
 nx = 128
 n_continuous = 12
 n_wavelengths = 322
-N_MATERIALS = 3
-
-mlp = ForwardMLP(n_wavelengths=n_wavelengths, n_materials=N_MATERIALS, embed_dim=8, n_harmonics=n_harmonics, nx=nx, n_continuous=n_continuous, hidden_dims=tuple(args.mlp_hidden_dims))
+mlp = ForwardMLP(n_wavelengths=n_wavelengths, n_materials=N_MATERIALS, embed_dim=args.embed_dim, n_harmonics=n_harmonics, nx=nx, n_continuous=n_continuous, hidden_dims=tuple(args.mlp_hidden_dims))
 print(f"ForwardMLP: {count_parameters(mlp):,}")
 
-spatial = SpatialCNN(conv_channels=tuple(args.cnn_conv_channels), kernel_size=args.cnn_kernel_size, fc_dims=tuple(args.cnn_fc_dims), n_harmonics=n_harmonics, nx=nx, n_continuous=n_continuous, n_wavelengths=n_wavelengths, n_materials=N_MATERIALS, embed_dim=8)
+spatial = SpatialCNN(conv_channels=tuple(args.cnn_conv_channels), kernel_size=args.cnn_kernel_size, fc_dims=tuple(args.cnn_fc_dims), n_harmonics=n_harmonics, nx=nx, n_continuous=n_continuous, n_wavelengths=n_wavelengths, n_materials=N_MATERIALS, embed_dim=args.embed_dim)
 print(f"SpatialCNN: {count_parameters(spatial):,}")
 
-skip = SkipCNN(conv_channels=tuple(args.skipcnn_conv_channels), kernel_size=args.skipcnn_kernel_size, fc_dims=tuple(args.skipcnn_fc_dims), n_harmonics=n_harmonics, nx=nx, n_continuous=n_continuous, n_wavelengths=n_wavelengths, n_materials=N_MATERIALS, embed_dim=8)
+skip = SkipCNN(conv_channels=tuple(args.skipcnn_conv_channels), kernel_size=args.skipcnn_kernel_size, fc_dims=tuple(args.skipcnn_fc_dims), n_harmonics=n_harmonics, nx=nx, n_continuous=n_continuous, n_wavelengths=n_wavelengths, n_materials=N_MATERIALS, embed_dim=args.embed_dim)
 print(f"SkipCNN: {count_parameters(skip):,}")
 
-siren = SIREN(conv_channels=tuple(args.siren_conv_channels), kernel_size=args.siren_kernel_size, siren_hidden=tuple(args.siren_fc_dims), n_harmonics=n_harmonics, nx=nx, n_continuous=n_continuous, n_wavelengths=n_wavelengths, n_materials=N_MATERIALS, embed_dim=8)
+siren = SIREN(conv_channels=tuple(args.siren_conv_channels), kernel_size=args.siren_kernel_size, siren_hidden=tuple(args.siren_fc_dims), n_harmonics=n_harmonics, nx=nx, n_continuous=n_continuous, n_wavelengths=n_wavelengths, n_materials=N_MATERIALS, embed_dim=args.embed_dim)
 print(f"SIREN: {count_parameters(siren):,}")
 
-transformer = TransformerForward(d_model=args.tf_d_model, nhead=args.tf_nhead, dim_feedforward=args.tf_dim_feedforward, num_layers=args.tf_num_layers, n_harmonics=n_harmonics, nx=nx, n_continuous=n_continuous, n_wavelengths=n_wavelengths, n_materials=N_MATERIALS, embed_dim=8)
+transformer = TransformerForward(d_model=args.tf_d_model, nhead=args.tf_nhead, dim_feedforward=args.tf_dim_feedforward, num_layers=args.tf_num_layers, n_harmonics=n_harmonics, nx=nx, n_continuous=n_continuous, n_wavelengths=n_wavelengths, n_materials=N_MATERIALS, embed_dim=args.embed_dim)
 print(f"TransformerForward: {count_parameters(transformer):,}")
 
 print("\n--- Inverse Models ---")
@@ -85,7 +84,7 @@ gen_tandem = GenerativeTandemNetwork(forward_model=skip, inverse_decoder=gen_tan
 print(f"GenerativeTandemNetwork (Total Trainable Inverse): {count_parameters(gen_tandem_decoder):,}")
 
 # CVAE
-geo_enc = GeometryEncoder(latent_dim=64, conv_channels=tuple(args.cvae_geo_enc_conv), kernel_size=args.cvae_geo_enc_kernel, fc_dims=tuple(args.cvae_geo_enc_fc), n_harmonics=n_harmonics, nx=nx, n_continuous=n_continuous, n_materials=N_MATERIALS, embed_dim=8)
+geo_enc = GeometryEncoder(latent_dim=64, conv_channels=tuple(args.cvae_geo_enc_conv), kernel_size=args.cvae_geo_enc_kernel, fc_dims=tuple(args.cvae_geo_enc_fc), n_harmonics=n_harmonics, nx=nx, n_continuous=n_continuous, n_materials=N_MATERIALS, embed_dim=args.embed_dim)
 geo_dec = GeometryDecoder(latent_dim=64, hidden_dims=tuple(args.cvae_geo_dec_fc), n_geometry=12)
 spec_enc = SpectrumEncoder(latent_dim=64, conv_channels=tuple(args.cvae_spec_enc_conv), kernel_size=args.cvae_spec_enc_kernel, fc_dims=tuple(args.cvae_spec_enc_fc), n_wavelengths=n_wavelengths)
 print(f"ContrastiveVAE (GeometryEncoder): {count_parameters(geo_enc):,}")
