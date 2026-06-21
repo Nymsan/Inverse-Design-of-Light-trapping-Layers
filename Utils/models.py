@@ -163,10 +163,16 @@ class ResBlock1D(nn.Module):
         self.norm2 = nn.BatchNorm1d(out_ch)
         
         if in_ch != out_ch or downsample:
-            self.skip = nn.Sequential(
-                nn.Conv1d(in_ch, out_ch, kernel_size=1, stride=stride),
+            layers = []
+            if downsample:
+                # Use AvgPool to downsample without dropping pixels and without learning new spatial mixings
+                layers.append(nn.AvgPool1d(kernel_size=2, stride=2, ceil_mode=True))
+                
+            layers.extend([
+                nn.Conv1d(in_ch, out_ch, kernel_size=1, stride=1),
                 nn.BatchNorm1d(out_ch)
-            )
+            ])
+            self.skip = nn.Sequential(*layers)
         else:
             self.skip = nn.Identity()
             
@@ -439,24 +445,32 @@ class SpatialCNN(nn.Module):
 
 class TransformerForward(nn.Module):
     def __init__(self, n_harmonics=5, nx=128, n_continuous=12, n_wavelengths=322, n_materials=3, 
-                 embed_dim=8, d_model=128, nhead=4, dim_feedforward=512, num_layers=3, dropout=0.0, grating_period=1000.0):
+                 embed_dim=8, d_model=128, nhead=4, dim_feedforward=512, num_layers=3, dropout=0.0, grating_period=1000.0,
+                 patch_size=8):
         super().__init__()
         self.n_harmonics = n_harmonics
         self.nx = nx
         self.grating_period = grating_period
+        self.patch_size = patch_size
+        self.num_patches = nx // patch_size
         
         self.material_embedding = nn.Embedding(n_materials, embed_dim)
         self.register_buffer("r_grid", torch.linspace(0, grating_period, nx + 1)[:-1])
         self.register_buffer("harmonic_idx", torch.arange(1, n_harmonics + 1, dtype=torch.float32))
         
-        # Token projectors
-        self.spatial_proj = nn.Linear(1, d_model)
+        # Patch projector (Extracts non-overlapping patches from the 1D profile)
+        self.patch_proj = nn.Conv1d(1, d_model, kernel_size=patch_size, stride=patch_size)
+        
+        # Global Token projectors
         self.h_proj = nn.Linear(1, d_model)
         self.inc_ang_proj = nn.Linear(1, d_model)
         self.mat_proj = nn.Linear(embed_dim, d_model)
         
+        # [CLS] Token
+        self.cls_token = nn.Parameter(torch.randn(1, 1, d_model) * 0.02)
+        
         # Positional Encoding (learnable)
-        self.seq_len = nx + 3
+        self.seq_len = self.num_patches + 4  # e.g., 16 patches + h + inc + mat + cls = 20
         self.pos_embed = nn.Parameter(torch.randn(1, self.seq_len, d_model) * 0.02)
         self.pos_drop = nn.Dropout(p=dropout)
         
@@ -488,24 +502,31 @@ class TransformerForward(nn.Module):
         B, L = profile.shape
         abs_profile = profile + h 
         
-        # Project
-        spatial_tokens = self.spatial_proj(abs_profile.view(B, L, 1)) # (B, L, d_model)
+        # Extract and project patches
+        x_prof = abs_profile.view(B, 1, L)
+        patch_tokens = self.patch_proj(x_prof)         # (B, d_model, num_patches)
+        patch_tokens = patch_tokens.transpose(1, 2)    # (B, num_patches, d_model)
+        
+        # Project global tokens
         h_token = self.h_proj(h.view(B, 1)).unsqueeze(1) # (B, 1, d_model)
         inc_token = self.inc_ang_proj(inc_ang.view(B, 1)).unsqueeze(1) # (B, 1, d_model)
         mat_token = self.mat_proj(mat_embed.view(B, -1)).unsqueeze(1) # (B, 1, d_model)
         
-        # Sequence: [h, inc, mat, ...spatial...]
-        x = torch.cat([h_token, inc_token, mat_token, spatial_tokens], dim=1)
+        # Expand [CLS] token for the batch
+        cls_tokens = self.cls_token.expand(B, -1, -1) # (B, 1, d_model)
+        
+        # Sequence: [CLS, h, inc, mat, ...patches...]
+        x = torch.cat([cls_tokens, h_token, inc_token, mat_token, patch_tokens], dim=1)
         
         x = x + self.pos_embed
         x = self.pos_drop(x)
         
-        # Transformer inherently has global bidirectional context
+        # Pass through Transformer
         x = self.transformer(x)
         
-        # Pooling (mean across all valid tokens)
-        x_pooled = x.mean(dim=1)
-        return self.head(x_pooled)
+        # Pooling: Extract ONLY the [CLS] token's output representation (index 0)
+        cls_out = x[:, 0, :]
+        return self.head(cls_out)
 
 def generate_synthetic_targets(B: int, n_wavelengths: int, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
     """Generate synthetic ideal targets with a physically motivated distribution.
@@ -1109,7 +1130,7 @@ def train_forward_model(
     """Train Forward models (MLP, CNN, skipCNN, SIREN)."""
     model = model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=20, min_lr=1e-6)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=20, min_lr=1e-7)
     criterion = nn.HuberLoss(delta=0.01)
     best_val, patience_ctr = float("inf"), 0
     ema = _EMATracker(model, decay=ema_decay)
@@ -1220,7 +1241,7 @@ def train_tandem(
     """Train tandem. Only InverseDecoder params are optimised; forward model stays frozen."""
     tandem = tandem.to(device)
     optimizer = torch.optim.AdamW(tandem.inverse_decoder.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=20, min_lr=1e-6)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=20, min_lr=1e-7)
     criterion = nn.HuberLoss(delta=0.01)
     best_val, patience_ctr = float("inf"), 0
     ema = _EMATracker(tandem.inverse_decoder, decay=ema_decay)
@@ -1330,7 +1351,7 @@ def train_cvae(
     """Train C-VAE. All sub-networks trained jointly. Loss = recon + CE + beta·KL + gamma·margin."""
     cvae = cvae.to(device)
     optimizer = torch.optim.AdamW(cvae.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=20, min_lr=1e-6)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=20, min_lr=1e-7)
     best_val, patience_ctr = float("inf"), 0
     ema = _EMATracker(cvae, decay=ema_decay)
     history: dict[str, list[float]] = {
@@ -1420,7 +1441,7 @@ def train_cvae_wishful(
     """Wishful thinking finetuning: select top quantile of curves and gradually pull them to 1.0."""
     cvae = cvae.to(device)
     optimizer = torch.optim.AdamW(cvae.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=20, min_lr=1e-6)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=20, min_lr=1e-7)
     best_val, patience_ctr = float("inf"), 0
     ema = _EMATracker(cvae, decay=ema_decay)
     history: dict[str, list[float]] = {

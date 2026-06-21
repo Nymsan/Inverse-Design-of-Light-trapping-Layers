@@ -29,48 +29,51 @@ EMBED_DIM="8"
 LATENT_DIM_GEN="32"
 LATENT_DIM_CVAE="64"
 
-# Forward Models
+# --- MLP & General parameters ---
 MLP_HIDDEN_DIMS="512 546 512"
 MLP_DROPOUT="0.0"
 
-CNN_CONV_CHANNELS="48 96 128 64"
+# --- CNN configurations (~800k params) ---
+CNN_CONV_CHANNELS="48 96 128 128 64"
 CNN_KERNEL_SIZE="7"
-CNN_FC_DIMS="352 256"
+CNN_FC_DIMS="384 256"
 CNN_DROPOUT="0.0"
 
-SKIPCNN_CONV_CHANNELS="48 96 112 64"
+# --- SkipCNN configurations (~800k params) ---
+SKIPCNN_CONV_CHANNELS="48 96 96 128 64"
 SKIPCNN_KERNEL_SIZE="7"
 SKIPCNN_FC_DIMS="256 256"
 SKIPCNN_DROPOUT="0.0"
 
-SIREN_CONV_CHANNELS="48 68 68"
+# --- SIREN configurations (~800k params) ---
+SIREN_CONV_CHANNELS="48 78 112 128 64"
 SIREN_KERNEL_SIZE="7"
-SIREN_FC_DIMS="256 246"
+SIREN_FC_DIMS="256 256"
 SIREN_LATENT_DIM="64"
 SIREN_OMEGA_0="30.0"
 SIREN_DROPOUT="0.0"
 
 TF_D_MODEL="128"
 TF_NHEAD="4"
-TF_DIM_FEEDFORWARD="384"
+TF_DIM_FEEDFORWARD="400"
 TF_NUM_LAYERS="4"
 TF_DROPOUT="0.0"
 
 # Inverse Models
-INV_CONV_CHANNELS="48 96 112 64"
+INV_CONV_CHANNELS="48 72 108 128 64"
 INV_KERNEL_SIZE="7"
 INV_FC_DIMS="256 256"
 INV_DROPOUT="0.0"
 
-CVAE_GEO_ENC_CONV="48 72 72"
+CVAE_GEO_ENC_CONV="48 72 108 128 64"
 CVAE_GEO_ENC_KERNEL="7"
 CVAE_GEO_ENC_FC="256 128"
 CVAE_GEO_ENC_DROPOUT="0.0"
 
-CVAE_GEO_DEC_FC="512 512"
+CVAE_GEO_DEC_FC="256 256 256"
 CVAE_GEO_DEC_DROPOUT="0.0"
 
-CVAE_SPEC_ENC_CONV="48 96 112 64"
+CVAE_SPEC_ENC_CONV="48 72 108 128 64"
 CVAE_SPEC_ENC_KERNEL="7"
 CVAE_SPEC_ENC_FC="256 256"
 CVAE_SPEC_ENC_DROPOUT="0.0"
@@ -112,7 +115,7 @@ uv run python train_forward.py \
     --materials Si TiO2 Si3N4 \
     --target_key all_film \
     --epochs 2000 \
-    --batch_size 256 \
+    --batch_size 384 \
     --lr 2e-3 \
     --patience 200 \
     --val_split 0.05 \
@@ -147,7 +150,7 @@ uv run python train_inverse.py \
     --target_key all_film \
     --epochs 2000 \
     --synthetic_epochs 500 \
-    --batch_size 256 \
+    --batch_size 384 \
     --lr 2e-3 \
     --patience 200 \
     --val_split 0.05 \
