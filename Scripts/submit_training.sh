@@ -24,6 +24,9 @@ nvidia-smi
 # Adjust these dimensions to control the parameter count / capacity of the models
 # ==============================================================================
 
+# Global
+EMBED_DIM="8"
+
 # Forward Models
 MLP_HIDDEN_DIMS="512 644 512"
 MLP_DROPOUT="0.05"
@@ -75,6 +78,7 @@ CVAE_SPEC_ENC_DROPOUT="0.05"
 echo "Counting parameters for all models..."
 uv run python count_params.py \
     --mlp_hidden_dims $MLP_HIDDEN_DIMS \
+    --embed_dim $EMBED_DIM \
     --cnn_conv_channels $CNN_CONV_CHANNELS \
     --cnn_kernel_size $CNN_KERNEL_SIZE \
     --cnn_fc_dims $CNN_FC_DIMS \
@@ -110,6 +114,7 @@ uv run python train_forward.py \
     --val_split 0.05 \
     --skip \
     --seed 1337 \
+    --embed_dim $EMBED_DIM \
     --mlp_hidden_dims $MLP_HIDDEN_DIMS \
     --mlp_dropout $MLP_DROPOUT \
     --cnn_conv_channels $CNN_CONV_CHANNELS \
@@ -143,6 +148,7 @@ uv run python train_inverse.py \
     --patience 200 \
     --val_split 0.05 \
     --seed 1337 \
+    --embed_dim $EMBED_DIM \
     --inv_conv_channels $INV_CONV_CHANNELS \
     --inv_kernel_size $INV_KERNEL_SIZE \
     --inv_fc_dims $INV_FC_DIMS \

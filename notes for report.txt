@@ -30,4 +30,33 @@ Rayleight anomal and instability ( crash at wavelength half of grating_period)
 
 Maybe since the forward models now take the profile as a direct input, it can also output the profile as a direct output. Or maybe the surrogate optimization can optimize this?
 
-epistemic and aleatoric noise discussion?
+epistemic and aleatoric noise discussion? As part of this discussion, see below from antigravity.
+
+
+  ### 1. The 10 Harmonics & 1000 nm Period (Feature Size)
+
+  If your grating period (Λ) is 1000 nm, 10 harmonics means your geometry is built using spatial frequencies up to 10 × (2π/1000).
+
+  • The Physics: This gives you a minimum structural feature size of about 100 nm (Λ/10).
+  • The Verdict: This is generally perfectly fine for smooth, curvy structures. However, if your goal is to design incredibly sharp, rectangular nano-pillars with perfectly
+  vertical 90° walls, 10 harmonics won't be enough. You will get "wavy" walls (the Gibbs phenomenon). But for smooth light-trapping profiles, 100 nm resolution is excellent.
+
+  ### 2. RCWA Convergence at 300 nm (The High-Frequency Limit)
+
+  RCWA calculates physics by tracking diffraction orders. The number of propagating diffraction orders inside a high-index material (like Si, n ≈ 4) is roughly 2nΛ/λ.
+
+  • At 1000 nm wavelength: You have about 8 propagating orders. 10 harmonics is more than enough to capture all of them perfectly.
+  • At 300 nm wavelength: You have roughly 2 × 4 × 1000/300 ≈ 26 propagating orders. If your RCWA solver is heavily truncating at 10 harmonics (usually keeping 2N + 1 = 21
+  orders), it might be slightly "starved" for orders at the extreme blue/UV end (300-400nm).
+  • The Verdict: You might notice slightly lower simulation accuracy or tiny numerical artifacts specifically between 300nm and 400nm.
+
+  ### 3. The 5 nm Spectral Resolution (Wood's Anomalies)
+
+  With a 1000 nm period, your structure will experience Guided Mode Resonances and Rayleigh Anomalies (where a diffraction order transitions from trapped to propagating).
+  These occur exactly at integer fractions of the period (e.g., 1000nm, 500nm, 333nm).
+
+  • The Physics: These resonances cause violent, massive spikes in absorptance. Often, these resonance spikes have a linewidth (width) of less than 1 nm.
+  • The Verdict: With a 5 nm stepping resolution, you will almost certainly "step over" and completely miss some of the sharpest resonance spikes.
+  • Is it a problem? It depends on your goal! If you are designing a narrow-band laser filter where you need a mathematically perfect resonance, 5 nm is a huge problem. If
+  you are designing broadband light-trapping for solar cells, it doesn't matter at all! A 1 nm wide spike captures almost zero total solar energy anyway, so missing it in the
+  dataset won't hurt the broadband performance of the neural network.
