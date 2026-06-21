@@ -47,6 +47,7 @@ WAVELENGTHS = np.linspace(300, 1100, 161)
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--ckpt_dir", required=True, help="Path to checkpoint directory")
+    p.add_argument("--force_forward_model", type=str, default=None, help="Force load a specific forward model (e.g. 'skip_cnn.pt')")
     p.add_argument(
         "--bands", nargs="+", type=float, default=None,
         metavar="WL",
@@ -372,14 +373,17 @@ def main():
         if path.exists():
             inv_name = path.stem
             
-            # Extract the precise forward model name used during training
-            try:
-                ckpt = torch.load(path, map_location="cpu", weights_only=False)
-                fwd_name = ckpt.get("forward_model_name", "")
-                if not fwd_name and "metadata" in ckpt:
-                    fwd_name = ckpt["metadata"].get("forward_model_name", "")
-            except Exception:
-                fwd_name = ""
+            # Extract the precise forward model name used during training (or override)
+            if getattr(args, "force_forward_model", None):
+                fwd_name = args.force_forward_model
+            else:
+                try:
+                    ckpt = torch.load(path, map_location="cpu", weights_only=False)
+                    fwd_name = ckpt.get("forward_model_name", "")
+                    if not fwd_name and "metadata" in ckpt:
+                        fwd_name = ckpt["metadata"].get("forward_model_name", "")
+                except Exception:
+                    fwd_name = ""
                 
             forward_model = None
             if fwd_name:

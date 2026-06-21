@@ -1,0 +1,1 @@
+the inversedecoder and geometry encoder and decoder and spectrum encoder all used snake before the latest training.
