@@ -5,7 +5,8 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 from Utils.models import (
     ForwardMLP, SpatialCNN, SkipCNN, SIREN, TransformerForward,
     InverseDecoder, TandemNetwork, GenerativeTandemNetwork,
-    GeometryEncoder, GeometryDecoder, SpectrumEncoder, ContrastiveVAE
+    GeometryEncoder, GeometryDecoder, SpectrumEncoder, ContrastiveVAE,
+    MATERIAL_LIBRARY
 )
 
 import argparse
@@ -34,16 +35,17 @@ def get_args():
     # InverseDecoder
     p.add_argument("--inv_conv_channels", type=int, nargs="+", default=[32, 64, 128, 64])
     p.add_argument("--inv_kernel_size", type=int, default=7)
-    p.add_argument("--inv_fc_dims", type=int, nargs="+", default=[256, 256])
-    # CVAE
-    p.add_argument("--cvae_geo_enc_conv", type=int, nargs="+", default=[32, 64, 64])
+    p.add_argument("--inv_fc_dims", nargs="+", type=int, default=[256, 256])
+    p.add_argument("--cvae_geo_enc_conv", nargs="+", type=int, default=[32, 64, 64])
     p.add_argument("--cvae_geo_enc_kernel", type=int, default=7)
-    p.add_argument("--cvae_geo_enc_fc", type=int, nargs="+", default=[256, 256])
-    p.add_argument("--cvae_geo_dec_fc", type=int, nargs="+", default=[256, 256])
-    p.add_argument("--cvae_spec_enc_conv", type=int, nargs="+", default=[32, 64, 128, 64])
+    p.add_argument("--cvae_geo_enc_fc", nargs="+", type=int, default=[256, 256])
+    p.add_argument("--cvae_geo_dec_fc", nargs="+", type=int, default=[256, 256, 256])
+    p.add_argument("--cvae_spec_enc_conv", nargs="+", type=int, default=[32, 64, 128, 64])
     p.add_argument("--cvae_spec_enc_kernel", type=int, default=7)
-    p.add_argument("--cvae_spec_enc_fc", type=int, nargs="+", default=[256, 256])
+    p.add_argument("--cvae_spec_enc_fc", nargs="+", type=int, default=[256, 256])
     p.add_argument("--embed_dim", type=int, default=8)
+    p.add_argument("--latent_dim_gen", type=int, default=32)
+    p.add_argument("--latent_dim_cvae", type=int, default=64)
     return p.parse_args()
 
 def count_parameters(model):
@@ -57,6 +59,7 @@ n_harmonics = 5
 nx = 128
 n_continuous = 12
 n_wavelengths = 322
+N_MATERIALS = len(MATERIAL_LIBRARY)
 mlp = ForwardMLP(n_wavelengths=n_wavelengths, n_materials=N_MATERIALS, embed_dim=args.embed_dim, n_harmonics=n_harmonics, nx=nx, n_continuous=n_continuous, hidden_dims=tuple(args.mlp_hidden_dims))
 print(f"ForwardMLP: {count_parameters(mlp):,}")
 
@@ -78,15 +81,15 @@ tandem_decoder = InverseDecoder(latent_dim=0, conv_channels=tuple(args.inv_conv_
 print(f"TandemNetwork (InverseDecoder only): {count_parameters(tandem_decoder):,}")
 
 # Generative Tandem
-gen_tandem_decoder = InverseDecoder(latent_dim=32, conv_channels=tuple(args.inv_conv_channels), kernel_size=args.inv_kernel_size, fc_dims=tuple(args.inv_fc_dims), n_geometry=12, n_wavelengths=n_wavelengths, n_materials=N_MATERIALS)
-print(f"GenerativeTandemNetwork (InverseDecoder): {count_parameters(gen_tandem_decoder):,}")
-gen_tandem = GenerativeTandemNetwork(forward_model=skip, inverse_decoder=gen_tandem_decoder, latent_dim=32)
-print(f"GenerativeTandemNetwork (Total Trainable Inverse): {count_parameters(gen_tandem_decoder):,}")
+gen_tandem_inv = InverseDecoder(n_geometry=n_continuous, n_materials=N_MATERIALS, latent_dim=args.latent_dim_gen, fc_dims=tuple(args.inv_fc_dims), conv_channels=tuple(args.inv_conv_channels), kernel_size=args.inv_kernel_size, n_wavelengths=n_wavelengths)
+gen_tandem = GenerativeTandemNetwork(forward_model=mlp, inverse_decoder=gen_tandem_inv, latent_dim=args.latent_dim_gen)
+print(f"GenerativeTandemNetwork (InverseDecoder): {count_parameters(gen_tandem_inv):,}")
+print(f"GenerativeTandemNetwork (Total Trainable Inverse): {count_parameters(gen_tandem.inverse_decoder):,}")
 
 # CVAE
-geo_enc = GeometryEncoder(latent_dim=64, conv_channels=tuple(args.cvae_geo_enc_conv), kernel_size=args.cvae_geo_enc_kernel, fc_dims=tuple(args.cvae_geo_enc_fc), n_harmonics=n_harmonics, nx=nx, n_continuous=n_continuous, n_materials=N_MATERIALS, embed_dim=args.embed_dim)
-geo_dec = GeometryDecoder(latent_dim=64, hidden_dims=tuple(args.cvae_geo_dec_fc), n_geometry=12)
-spec_enc = SpectrumEncoder(latent_dim=64, conv_channels=tuple(args.cvae_spec_enc_conv), kernel_size=args.cvae_spec_enc_kernel, fc_dims=tuple(args.cvae_spec_enc_fc), n_wavelengths=n_wavelengths)
+geo_enc = GeometryEncoder(n_continuous=n_continuous, n_materials=N_MATERIALS, embed_dim=args.embed_dim, latent_dim=args.latent_dim_cvae, fc_dims=tuple(args.cvae_geo_enc_fc), conv_channels=tuple(args.cvae_geo_enc_conv), kernel_size=args.cvae_geo_enc_kernel, n_harmonics=n_harmonics, nx=nx, grating_period=1000.0)
+geo_dec = GeometryDecoder(n_geometry=n_continuous, n_materials=N_MATERIALS, latent_dim=args.latent_dim_cvae, hidden_dims=tuple(args.cvae_geo_dec_fc))
+spec_enc = SpectrumEncoder(latent_dim=args.latent_dim_cvae, fc_dims=tuple(args.cvae_spec_enc_fc), conv_channels=tuple(args.cvae_spec_enc_conv), kernel_size=args.cvae_spec_enc_kernel, n_wavelengths=n_wavelengths)
 print(f"ContrastiveVAE (GeometryEncoder): {count_parameters(geo_enc):,}")
 print(f"ContrastiveVAE (GeometryDecoder): {count_parameters(geo_dec):,}")
 print(f"ContrastiveVAE (SpectrumEncoder): {count_parameters(spec_enc):,}")

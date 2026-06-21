@@ -63,6 +63,7 @@ def get_args():
     p.add_argument("--device", default=None)
     p.add_argument("--embed_dim", type=int, default=8)
     p.add_argument("--skip", nargs="*", default=[], choices=["tandem", "gen_tandem", "cvae"])
+    p.add_argument("--force_forward_model", type=str, default=None, help="Force load a specific forward model (e.g. 'skip_cnn.pt')")
     
     # Architecture arguments
     # InverseDecoder
@@ -223,7 +224,7 @@ def main():
 
     # Find the best forward model
     forward_model, fwd_name, fwd_loss = get_best_forward_model(
-        ckpt_dir, n_continuous=n_continuous, n_wavelengths=n_wavelengths, n_harmonics=n_harmonics, al_iter=args.al_iter
+        ckpt_dir, n_continuous=n_continuous, n_wavelengths=n_wavelengths, n_harmonics=n_harmonics, al_iter=args.al_iter, force_model_name=args.force_forward_model
     )
     
     if forward_model is not None:

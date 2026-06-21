@@ -179,8 +179,10 @@ class ResBlock1D(nn.Module):
         x = self.norm1(x)
         x = self.act1(x)
         x = self.drop1(x)
+        
         x = self.conv2(x)
         x = self.norm2(x)
+        
         return self.drop2(self.act2(x + res))
 
 
@@ -204,15 +206,10 @@ class SIREN(nn.Module):
         in_ch = 1 + 1 + embed_dim + 1
         self.input_norm = nn.BatchNorm1d(in_ch)
         
-        # 1. CNN Encoder (matching SpatialCNN)
+        # 1. CNN Encoder (matching SkipCNN)
         conv_layers = []
         for i, out_ch in enumerate(conv_channels):
-            conv_layers += [
-                nn.Conv1d(in_ch, out_ch, kernel_size, padding=kernel_size // 2, padding_mode="circular"),
-                nn.BatchNorm1d(out_ch), nn.GELU(), nn.Dropout1d(dropout),
-            ]
-            if i < len(conv_channels) - 1:
-                conv_layers.append(nn.MaxPool1d(2))
+            conv_layers.append(ResBlock1D(in_ch, out_ch, kernel_size, dropout, downsample=(i < len(conv_channels) - 1)))
             in_ch = out_ch
         self.encoder_cnn = nn.Sequential(*conv_layers)
         
@@ -222,7 +219,7 @@ class SIREN(nn.Module):
         fc_in = conv_channels[-1] * spatial_dim        
         # Project CNN output to latent vector
         self.encoder_proj = nn.Sequential(
-            SkipLinear(fc_in, 256, activation="snake", norm="layer", dropout=dropout),
+            SkipLinear(fc_in, 256, activation="gelu", norm="layer", dropout=dropout),
             nn.Linear(256, latent_dim)
         )
         
@@ -284,7 +281,7 @@ class SIREN(nn.Module):
         return out
 
 class ForwardMLP(nn.Module):
-    def __init__(self, n_harmonics=5, nx=128, n_continuous=12, n_wavelengths=161, n_materials=3, embed_dim=8, hidden_dims=(512, 512, 512), activation="gelu", norm="layer", dropout=0.0, grating_period=1000.0):
+    def __init__(self, n_harmonics=5, nx=128, n_continuous=12, n_wavelengths=161, n_materials=3, embed_dim=8, hidden_dims=(512, 512, 512), norm="layer", dropout=0.0, grating_period=1000.0):
         super().__init__()
         self.n_harmonics = n_harmonics
         self.nx = nx
@@ -301,7 +298,7 @@ class ForwardMLP(nn.Module):
 
         layers = []
         for h_dim in hidden_dims:
-            layers.append(SkipLinear(in_dim, h_dim, activation=activation, norm=norm, dropout=dropout))
+            layers.append(SkipLinear(in_dim, h_dim, activation="gelu", norm=norm, dropout=dropout))
             in_dim = h_dim
 
         self.trunk = nn.Sequential(*layers)
@@ -336,9 +333,7 @@ class SkipCNN(nn.Module):
         
         conv_layers = []
         for i, out_ch in enumerate(conv_channels):
-            conv_layers.append(ResBlock1D(in_ch, out_ch, kernel_size, dropout))
-            if i < len(conv_channels) - 1:
-                conv_layers.append(nn.MaxPool1d(2))
+            conv_layers.append(ResBlock1D(in_ch, out_ch, kernel_size, dropout, downsample=(i < len(conv_channels) - 1)))
             in_ch = out_ch
         self.conv_backbone = nn.Sequential(*conv_layers)
 
@@ -626,7 +621,7 @@ class InverseDecoder(nn.Module):
         fc_in = conv_channels[-1] * spatial_dim + latent_dim        
         fc_layers = []
         for fc_dim in fc_dims:
-            fc_layers.append(SkipLinear(fc_in, fc_dim, activation="snake", norm="layer", dropout=dropout))
+            fc_layers.append(SkipLinear(fc_in, fc_dim, activation="gelu", norm="layer", dropout=dropout))
             fc_in = fc_dim
         self.fc_head = nn.Sequential(*fc_layers)
 
@@ -778,7 +773,7 @@ class GeometryEncoder(nn.Module):
         fc_in = conv_channels[-1] * spatial_dim        
         fc_layers = []
         for fc_dim in fc_dims:
-            fc_layers.append(SkipLinear(fc_in, fc_dim, activation="snake", norm="layer", dropout=dropout))
+            fc_layers.append(SkipLinear(fc_in, fc_dim, activation="gelu", norm="layer", dropout=dropout))
             fc_in = fc_dim
         self.fc_head = nn.Sequential(*fc_layers)
         
@@ -824,7 +819,7 @@ class GeometryDecoder(nn.Module):
         in_dim = latent_dim
         layers: list[nn.Module] = []
         for h_dim in hidden_dims:
-            layers.append(SkipLinear(in_dim, h_dim, activation="snake", norm="layer", dropout=dropout))
+            layers.append(SkipLinear(in_dim, h_dim, activation="gelu", norm="layer", dropout=dropout))
             in_dim = h_dim
         self.trunk = nn.Sequential(*layers)
         N = (n_geometry - 2) // 2
@@ -878,7 +873,7 @@ class SpectrumEncoder(nn.Module):
         fc_in = conv_channels[-1] * spatial_dim        
         fc_layers = []
         for fc_dim in fc_dims:
-            fc_layers.append(SkipLinear(fc_in, fc_dim, activation="snake", norm="layer", dropout=dropout))
+            fc_layers.append(SkipLinear(fc_in, fc_dim, activation="gelu", norm="layer", dropout=dropout))
             fc_in = fc_dim
             
         self.fc_head = nn.Sequential(*fc_layers)

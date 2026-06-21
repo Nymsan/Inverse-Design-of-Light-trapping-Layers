@@ -15,6 +15,7 @@ from typing import Optional, Sequence
 
 import torch
 import torch.nn as nn
+import re
 
 from Utils.models import (
     N_MATERIALS,
@@ -444,8 +445,12 @@ def get_best_forward_model(
     n_wavelengths: int | None = None,
     n_harmonics: int | None = None,
     al_iter: int = -1,
+    force_model_name: str | None = None,
 ) -> tuple[nn.Module | None, str | None, float]:
     """Scan *ckpt_dir* for forward model checkpoints and return the best.
+
+    If force_model_name is provided (e.g. "skip_cnn.pt"), forces loading that 
+    specific model (and resolves its active learning iterations) instead of checking validation loss.
 
     Checkpoints that cannot be loaded (e.g. stale architecture mismatch) are
     skipped with a warning rather than crashing the caller.
@@ -458,31 +463,47 @@ def get_best_forward_model(
     best_name: str | None = None
     best_loss = float("inf")
 
-    for fname in _FORWARD_FILENAMES:
-        p = ckpt_dir / fname
-        if not p.exists():
-            continue
+    if force_model_name is not None:
+        p = ckpt_dir / force_model_name
+        if p.exists():
+            try:
+                best_model, history, _ = load_forward_model(
+                    p, n_continuous=n_continuous, n_wavelengths=n_wavelengths, n_harmonics=n_harmonics
+                )
+                best_name = force_model_name
+                best_loss = min(history.get("val_loss", [float("inf")])) if "val_loss" in history else float("inf")
+            except Exception as e:
+                print(f"  [get_best_forward_model] Failed to force load {force_model_name}: {e}")
+                return None, None, float("inf")
+        else:
+            print(f"  [get_best_forward_model] Forced model {force_model_name} not found.")
+            return None, None, float("inf")
+    else:
+        for fname in _FORWARD_FILENAMES:
+            p = ckpt_dir / fname
+            if not p.exists():
+                continue
 
-        try:
-            model, history, class_name = load_forward_model(
-                p,
-                n_continuous=n_continuous,
-                n_wavelengths=n_wavelengths,
-                n_harmonics=n_harmonics,
-            )
-        except Exception as e:
-            print(f"  [get_best_forward_model] Skipping {fname}: {e}")
-            continue
+            try:
+                model, history, class_name = load_forward_model(
+                    p,
+                    n_continuous=n_continuous,
+                    n_wavelengths=n_wavelengths,
+                    n_harmonics=n_harmonics,
+                )
+            except Exception as e:
+                print(f"  [get_best_forward_model] Skipping {fname}: {e}")
+                continue
 
-        if "val_loss" in history and len(history["val_loss"]) > 0:
-            val_loss = min(history["val_loss"])
-            if val_loss < best_loss:
-                best_loss = val_loss
-                best_name = fname  # e.g. "skip_cnn.pt"
-                best_model = model
+            if "val_loss" in history and len(history["val_loss"]) > 0:
+                val_loss = min(history["val_loss"])
+                if val_loss < best_loss:
+                    best_loss = val_loss
+                    best_name = fname  # e.g. "skip_cnn.pt"
+                    best_model = model
 
-    if best_name is None:
-        return None, None, float("inf")
+        if best_name is None:
+            return None, None, float("inf")
 
     # Now resolve the active learning iteration for the best architecture
     base_stem = Path(best_name).stem # e.g. "skip_cnn"
@@ -502,7 +523,6 @@ def get_best_forward_model(
             print(f"  [get_best_forward_model] AL iter {al_iter} not found. Using base model.")
     elif al_iter == -1 and al_dir.exists():
         # Find highest AL iteration
-        import re
         highest_al = 0
         best_candidate = None
         for p in al_dir.glob(f"{base_stem}_al*.pt"):
