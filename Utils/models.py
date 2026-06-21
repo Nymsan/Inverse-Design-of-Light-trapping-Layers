@@ -138,7 +138,7 @@ class SineLayer(nn.Module):
     def init_weights(self):
         with torch.no_grad():
             if self.is_first:
-                limit = np.sqrt(3 / self.linear.in_features)
+                limit = 1.0 / self.linear.in_features
                 self.linear.weight.uniform_(-limit, limit)
             else:
                 self.linear.weight.uniform_(-np.sqrt(6 / self.linear.in_features) / self.omega_0, 
