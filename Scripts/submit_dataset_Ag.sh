@@ -4,7 +4,7 @@
 #BSUB -n 4
 #BSUB -R "rusage[mem=4GB]"
 #BSUB -R "span[hosts=1]"
-#BSUB -W 16:00
+#BSUB -W 12:00
 #BSUB -o logs/generate_dataset_Ag/%J_%I.out
 #BSUB -e logs/generate_dataset_Ag/%J_%I.err
 
@@ -41,7 +41,7 @@ echo "======================================"
 uv run --no-sync python Scripts/generate_dataset.py \
     --num_samples 20000 \
     --batch_size 100 \
-    --n_harmonics 10 \
+    --n_harmonics 7 \
     --order_N 20 \
     --height_per_layer 5.0 \
     --grating_period 1000.0 \
