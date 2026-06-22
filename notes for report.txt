@@ -32,6 +32,9 @@ Maybe since the forward models now take the profile as a direct input, it can al
 
 epistemic and aleatoric noise discussion? As part of this discussion, see below from antigravity.
 
+The choice of 2000  (3000 nm)? nm high cells max (both from  a real world thin film perspective before charge carriers recombine, and from fabry perot interference fringes (which gemini says has resonance peak spacing proportional to the thickness of the cavity, delta lambda \propto 1/L, but do check this) and smaller number of harmonics, say 7, to ensure high order scattering noise is kept to a minimum. This fits in nicely with the aleatoric and epistemic noise discussion. (Free spectral range of fabry perot interferometer?)
+
+choice of crystaline silicon for the film, short circuit current, solar spectrum, and poynting vector analysis for absorptance only inside the silicon - i.e. why parasitic absorptance in the backreflector doesnt matter. Beer lambert law for thicker film absorption? 
 
   ### 1. The 10 Harmonics & 1000 nm Period (Feature Size)
 

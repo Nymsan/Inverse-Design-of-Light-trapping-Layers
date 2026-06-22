@@ -251,7 +251,7 @@ def main():
         t0 = time.time()
         hist = train_forward_model(
             model, train_loader, val_loader,
-            epochs=args.epochs, lr=args.lr, patience=args.patience,
+            epochs=args.epochs, lr=args.lr / 10.0, patience=args.patience,
             device=device, use_bfloat16=False
         )
         elapsed = time.time() - t0
@@ -280,7 +280,7 @@ def main():
         t0 = time.time()
         hist = train_forward_model(
             model, train_loader, val_loader,
-            epochs=args.epochs, lr=args.lr, patience=args.patience,
+            epochs=args.epochs, lr=args.lr / 10.0, patience=args.patience,
             device=device, use_bfloat16=True
         )
         elapsed = time.time() - t0

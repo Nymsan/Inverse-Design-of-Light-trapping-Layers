@@ -140,6 +140,11 @@ class SineLayer(nn.Module):
             if self.is_first:
                 limit = 1.0 / self.linear.in_features
                 self.linear.weight.uniform_(-limit, limit)
+                # FIX: The wavelength coordinate is concatenated as the very last feature.
+                # Because in_features is large (65), the default limit (1/65) suppresses 
+                # the wavelength frequency to near zero! We must restore the wavelength 
+                # weights to U(-1, 1) so omega_0 can actually generate high frequencies.
+                self.linear.weight[:, -1].uniform_(-1.0, 1.0)
             else:
                 self.linear.weight.uniform_(-np.sqrt(6 / self.linear.in_features) / self.omega_0, 
                                              np.sqrt(6 / self.linear.in_features) / self.omega_0)
@@ -209,7 +214,7 @@ class SIREN(nn.Module):
         self.seq_len = n_wavelengths // 2
         self.material_embedding = nn.Embedding(n_materials, embed_dim)
         
-        in_ch = 1 + 1 + embed_dim + 1
+        in_ch = 1 + embed_dim + 1 # abs_profile + mat_embed + inc_ang
         self.input_norm = nn.BatchNorm1d(in_ch)
         
         # 1. CNN Encoder (matching SkipCNN)
@@ -220,24 +225,26 @@ class SIREN(nn.Module):
         self.encoder_cnn = nn.Sequential(*conv_layers)
         
         with torch.no_grad():
-            dummy = torch.zeros(1, 1 + 1 + embed_dim + 1, nx)
+            dummy = torch.zeros(1, 1 + embed_dim + 1, nx)
             spatial_dim = self.encoder_cnn(dummy).shape[-1]
         fc_in = conv_channels[-1] * spatial_dim        
         # Project CNN output to latent vector
         self.encoder_proj = nn.Sequential(
             SkipLinear(fc_in, 256, activation="gelu", norm="layer", dropout=dropout),
-            nn.Linear(256, latent_dim)
+            nn.Linear(256, latent_dim),
+            nn.Tanh() # Binds the latent vector to [-1, 1] to prevent SIREN gradient shattering
         )
         
-        # 2. SIREN Decoder
-        siren_in_dim = latent_dim + 1 # latent_vector + 1D normalized wavelength
-        siren_layers = []
+        # 2. SIREN Decoder (with Input Injection)
+        self.siren_in_dim = latent_dim + 1 # latent_vector + 1D normalized wavelength
+        self.siren_layers = nn.ModuleList()
+        
         for i, h_dim in enumerate(siren_hidden):
-            siren_layers.append(SineLayer(siren_in_dim, h_dim, is_first=(i==0), omega_0=omega_0))
-            siren_in_dim = h_dim
+            # Input injection: every layer after the first concatenates the original input
+            in_features = self.siren_in_dim if i == 0 else siren_hidden[i-1] + self.siren_in_dim
+            self.siren_layers.append(SineLayer(in_features, h_dim, is_first=(i==0), omega_0=omega_0))
             
-        self.siren_decoder = nn.Sequential(*siren_layers)
-        self.head = nn.Linear(siren_in_dim, 2)
+        self.head = nn.Linear(siren_hidden[-1], 2)
 
     def forward(self, geometry, material_id, wls=None, profile=None, h=None, inc_ang=None):
         B = geometry.shape[0] if geometry is not None else profile.shape[0]
@@ -245,13 +252,14 @@ class SIREN(nn.Module):
             profile, h, inc_ang = build_profile(geometry, self.n_harmonics, self.nx)
         mat_embed = _embed_material(material_id, self.material_embedding)
         
-        L = profile.shape[1]
-        h_spatial = h.unsqueeze(2).expand(B, 1, L)
-        mat_spatial = mat_embed.unsqueeze(2).expand(B, -1, L)
-        inc_ang_spatial = inc_ang.unsqueeze(2).expand(B, 1, L)
+        B, L = profile.shape
+        abs_profile = profile + h 
         
-        x_list = [profile.unsqueeze(1), h_spatial, mat_spatial, inc_ang_spatial]
-        x = torch.cat(x_list, dim=1)
+        x_prof = abs_profile.view(B, 1, L)
+        x_mat = mat_embed.view(B, -1, 1).expand(B, -1, L)
+        x_inc = inc_ang.view(B, 1, 1).expand(B, 1, L)
+        
+        x = torch.cat([x_prof, x_mat, x_inc], dim=1)
         
         x = self.input_norm(x)
         x = self.encoder_cnn(x)
@@ -278,7 +286,15 @@ class SIREN(nn.Module):
         
         latent_expanded = latent.unsqueeze(1).expand(B, W, -1)
         siren_in = torch.cat([latent_expanded, wls_norm], dim=-1)
-        out = torch.sigmoid(self.head(self.siren_decoder(siren_in)))
+        
+        x_siren = siren_in
+        for i, layer in enumerate(self.siren_layers):
+            if i > 0:
+                # Inject the original input into all intermediate layers
+                x_siren = torch.cat([x_siren, siren_in], dim=-1)
+            x_siren = layer(x_siren)
+            
+        out = torch.sigmoid(self.head(x_siren))
         
         if return_flat:
             p_pol = out[..., 0]
@@ -365,13 +381,15 @@ class SkipCNN(nn.Module):
         mat_embed = _embed_material(material_id, self.material_embedding)
         
         B, L = profile.shape
-        abs_profile = profile + h 
+        abs_profile = profile + h
         
         x_prof = abs_profile.view(B, 1, L)
-        x_mat = mat_embed.view(B, -1, 1).expand(B, -1, L)
-        x_inc = inc_ang.view(B, 1, 1).expand(B, 1, L)
+        mat_spatial = mat_embed.unsqueeze(2).expand(B, -1, L)
+        inc_ang_spatial = inc_ang.unsqueeze(2).expand(B, 1, L)
         
-        x = torch.cat([x_prof, x_mat, x_inc], dim=1)
+        x_list = [x_prof, mat_spatial, inc_ang_spatial]
+        x = torch.cat(x_list, dim=1)
+        
         x = self.input_norm(x)
         x = self.conv_backbone(x)
         x = x.view(B, -1)
@@ -390,7 +408,7 @@ class SpatialCNN(nn.Module):
         self.register_buffer("r_grid", torch.linspace(0, grating_period, nx + 1)[:-1])
         self.register_buffer("harmonic_idx", torch.arange(1, n_harmonics + 1, dtype=torch.float32))
 
-        in_ch = 1 + embed_dim + 1
+        in_ch = 1 + embed_dim + 1 # abs_profile + mat_embed + inc_ang
         self.input_norm = nn.BatchNorm1d(in_ch)
         
         conv_layers = []
@@ -429,13 +447,15 @@ class SpatialCNN(nn.Module):
         mat_embed = _embed_material(material_id, self.material_embedding)
         
         B, L = profile.shape
-        abs_profile = profile + h 
+        abs_profile = profile + h
         
         x_prof = abs_profile.view(B, 1, L)
-        x_mat = mat_embed.view(B, -1, 1).expand(B, -1, L)
-        x_inc = inc_ang.view(B, 1, 1).expand(B, 1, L)
+        mat_spatial = mat_embed.unsqueeze(2).expand(B, -1, L)
+        inc_ang_spatial = inc_ang.unsqueeze(2).expand(B, 1, L)
         
-        x = torch.cat([x_prof, x_mat, x_inc], dim=1)
+        x_list = [x_prof, mat_spatial, inc_ang_spatial]
+        x = torch.cat(x_list, dim=1)
+        
         x = self.input_norm(x)
         x = self.conv_backbone(x)
         x = x.view(B, -1)
@@ -451,41 +471,47 @@ class TransformerForward(nn.Module):
         self.n_harmonics = n_harmonics
         self.nx = nx
         self.grating_period = grating_period
-        self.patch_size = patch_size
-        self.num_patches = nx // patch_size
         
         self.material_embedding = nn.Embedding(n_materials, embed_dim)
         self.register_buffer("r_grid", torch.linspace(0, grating_period, nx + 1)[:-1])
         self.register_buffer("harmonic_idx", torch.arange(1, n_harmonics + 1, dtype=torch.float32))
         
-        # Patch projector (Extracts non-overlapping patches from the 1D profile)
-        self.patch_proj = nn.Conv1d(1, d_model, kernel_size=patch_size, stride=patch_size)
+        # 1. CNN Stem (Extracts local curvature/slope into 8 tokens instead of raw patches)
+        self.stem = nn.Sequential(
+            nn.Conv1d(1, d_model // 2, kernel_size=5, stride=4, padding=2, padding_mode="circular"),
+            nn.GELU(),
+            nn.Conv1d(d_model // 2, d_model, kernel_size=5, stride=4, padding=2, padding_mode="circular"),
+        )
+        self.num_patches = nx // 16 # 128 / 16 = 8 spatial tokens
         
-        # Global Token projectors
-        self.h_proj = nn.Linear(1, d_model)
+        # Standard Normalization (Exactly mirrors CNNs)
+        in_ch = 1 + embed_dim + 1 # abs_profile + mat_embed + inc_ang
+        self.input_norm = nn.BatchNorm1d(in_ch)
+        
+        # 2. Global Physical Tokens
         self.inc_ang_proj = nn.Linear(1, d_model)
         self.mat_proj = nn.Linear(embed_dim, d_model)
         
-        # [CLS] Token
-        self.cls_token = nn.Parameter(torch.randn(1, 1, d_model) * 0.02)
+        # 3. Readout Tokens (4 tokens * 128 dims = Guaranteed 512D Information Bottleneck)
+        self.num_readouts = 4
+        self.readout_tokens = nn.Parameter(torch.randn(1, self.num_readouts, d_model) * 0.02)
         
-        # Positional Encoding (learnable)
-        self.seq_len = self.num_patches + 4  # e.g., 16 patches + h + inc + mat + cls = 20
+        # Positional Encoding
+        self.seq_len = self.num_readouts + 2 + self.num_patches  # 4 readouts + 2 globals (inc, mat) + 8 patches = 14
         self.pos_embed = nn.Parameter(torch.randn(1, self.seq_len, d_model) * 0.02)
         self.pos_drop = nn.Dropout(p=dropout)
         
-        # Transformer Layers
+        # 4. Transformer Layers
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model, nhead=nhead, dim_feedforward=dim_feedforward, 
             dropout=dropout, batch_first=True, activation="gelu"
         )
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
         
-        # Output Head
+        # 5. Output Head (Receives the flattened 512D vector from the 4 readout tokens)
         self.head = nn.Sequential(
-            nn.LayerNorm(d_model),
-            nn.Linear(d_model, 256),
-            nn.GELU(),
+            nn.LayerNorm(self.num_readouts * d_model),
+            SkipLinear(self.num_readouts * d_model, 256, activation="gelu", norm="layer", dropout=dropout),
             nn.Linear(256, n_wavelengths),
             nn.Sigmoid()
         )
@@ -500,23 +526,45 @@ class TransformerForward(nn.Module):
         mat_embed = _embed_material(material_id, self.material_embedding)
         
         B, L = profile.shape
-        abs_profile = profile + h 
+        # NOTE: Transformer mirrors CNNs exactly now
+        abs_profile = profile + h
         
-        # Extract and project patches
         x_prof = abs_profile.view(B, 1, L)
-        patch_tokens = self.patch_proj(x_prof)         # (B, d_model, num_patches)
-        patch_tokens = patch_tokens.transpose(1, 2)    # (B, num_patches, d_model)
+        x_mat = mat_embed.view(B, -1, 1).expand(B, -1, L)
+        x_inc = inc_ang.view(B, 1, 1).expand(B, 1, L)
+        
+        x = torch.cat([x_prof, x_mat, x_inc], dim=1)
+        
+        # 1. Standard Single BatchNorm
+        x = self.input_norm(x)
+        
+        # Slice the normalized parameters back out!
+        # x shape: (B, 10, L)
+        # channel 0: abs_profile
+        # channel 1-8: mat_embed
+        # channel 9: inc_ang
+        
+        prof_norm = x[:, 0:1, :]
+        mat_norm_spatial = x[:, 1:-1, :]
+        inc_norm_spatial = x[:, -1:, :]
+        
+        # Collapse spatial dimension back to scalars for global tokens (since they are identical across L)
+        inc_norm = inc_norm_spatial[:, :, 0]     # (B, 1)
+        mat_norm = mat_norm_spatial[:, :, 0]     # (B, embed_dim)
+        
+        # Extract patch features via CNN stem
+        patch_tokens = self.stem(prof_norm)               # (B, d_model, 8)
+        patch_tokens = patch_tokens.transpose(1, 2)       # (B, 8, d_model)
         
         # Project global tokens
-        h_token = self.h_proj(h.view(B, 1)).unsqueeze(1) # (B, 1, d_model)
-        inc_token = self.inc_ang_proj(inc_ang.view(B, 1)).unsqueeze(1) # (B, 1, d_model)
-        mat_token = self.mat_proj(mat_embed.view(B, -1)).unsqueeze(1) # (B, 1, d_model)
+        inc_token = self.inc_ang_proj(inc_norm).unsqueeze(1)     # (B, 1, d_model)
+        mat_token = self.mat_proj(mat_norm).unsqueeze(1)         # (B, 1, d_model)
         
-        # Expand [CLS] token for the batch
-        cls_tokens = self.cls_token.expand(B, -1, -1) # (B, 1, d_model)
+        # Expand Readout tokens for the batch
+        readouts = self.readout_tokens.expand(B, -1, -1)               # (B, 4, d_model)
         
-        # Sequence: [CLS, h, inc, mat, ...patches...]
-        x = torch.cat([cls_tokens, h_token, inc_token, mat_token, patch_tokens], dim=1)
+        # Sequence: [READOUTS(4), inc(1), mat(1), PATCHES(8)] -> Total 14
+        x = torch.cat([readouts, inc_token, mat_token, patch_tokens], dim=1)
         
         x = x + self.pos_embed
         x = self.pos_drop(x)
@@ -524,9 +572,11 @@ class TransformerForward(nn.Module):
         # Pass through Transformer
         x = self.transformer(x)
         
-        # Pooling: Extract ONLY the [CLS] token's output representation (index 0)
-        cls_out = x[:, 0, :]
-        return self.head(cls_out)
+        # Pooling: Extract the 4 Readout tokens and flatten them to 512 dimensions!
+        readout_out = x[:, 0:self.num_readouts, :]     # (B, 4, d_model)
+        readout_flat = readout_out.reshape(B, -1)      # (B, 512)
+        
+        return self.head(readout_flat)
 
 def generate_synthetic_targets(B: int, n_wavelengths: int, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
     """Generate synthetic ideal targets with a physically motivated distribution.
