@@ -23,7 +23,7 @@ nvidia-smi
 # Pipeline Toggles
 # ==============================================================================
 TRAIN_FORWARD=true
-TRAIN_INVERSE=false
+TRAIN_INVERSE=true
 
 # ==============================================================================
 # Model Architecture Hyperparameters
@@ -123,7 +123,7 @@ if [ "$TRAIN_FORWARD" = true ]; then
         --materials Si TiO2 Si3N4 \
         --target_key all_film \
         --epochs 2000 \
-        --batch_size 384 \
+        --batch_size 512 \
         --lr 2e-3 \
         --patience 200 \
         --val_split 0.05 \
@@ -161,7 +161,7 @@ if [ "$TRAIN_INVERSE" = true ]; then
         --target_key all_film \
         --epochs 2000 \
         --synthetic_epochs 500 \
-        --batch_size 384 \
+        --batch_size 512 \
         --lr 2e-3 \
         --patience 200 \
         --val_split 0.05 \

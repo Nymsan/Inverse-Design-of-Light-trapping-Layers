@@ -48,7 +48,7 @@ class BatchedSurrogateOptimizer:
         
         return target, mask
 
-    def optimize_geometry(self, bands: List[Tuple[float, float]], n_restarts: int = 10000, steps: int = 300, lr: float = 0.1, allowed_materials: list[int] = None, top_k: int = 2) -> dict:
+    def optimize_geometry(self, bands: List[Tuple[float, float]], n_restarts: int = 10000, steps: int = 300, lr: float = 0.1, allowed_materials: list[int] = None, top_k: int = 2, show_progress: bool = True) -> dict:
         self.forward_model.eval()
         target, mask = self._get_target_and_mask(bands)
         
@@ -69,7 +69,7 @@ class BatchedSurrogateOptimizer:
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=steps)
         
         history = torch.zeros((steps, n_allowed), device=self.device)
-        pbar = tqdm(range(steps), desc="Optimizing Geometry")
+        pbar = tqdm(range(steps), desc="Optimizing Geometry", disable=not show_progress)
         for step in pbar:
             optimizer.zero_grad()
             pred = self.forward_model(geometry=geo, material_id=mat)
@@ -129,7 +129,7 @@ class BatchedSurrogateOptimizer:
             "allowed_materials": allowed_materials
         }
 
-    def optimize_profile(self, bands: List[Tuple[float, float]], n_restarts: int = 10000, steps: int = 300, lr: float = 5.0, allowed_materials: list[int] = None, top_k: int = 2) -> dict:
+    def optimize_profile(self, bands: List[Tuple[float, float]], n_restarts: int = 10000, steps: int = 300, lr: float = 5.0, allowed_materials: list[int] = None, top_k: int = 2, show_progress: bool = True) -> dict:
         self.forward_model.eval()
         target, mask = self._get_target_and_mask(bands)
         
@@ -157,7 +157,7 @@ class BatchedSurrogateOptimizer:
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=steps)
         
         history = torch.zeros((steps, n_allowed), device=self.device)
-        pbar = tqdm(range(steps), desc="Optimizing Profile")
+        pbar = tqdm(range(steps), desc="Optimizing Profile", disable=not show_progress)
         for step in pbar:
             optimizer.zero_grad()
             pred = self.forward_model(profile=profile, h=h, inc_ang=inc_ang, material_id=mat)

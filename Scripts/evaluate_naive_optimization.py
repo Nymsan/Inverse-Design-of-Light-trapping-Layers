@@ -139,7 +139,7 @@ class TorcwaObjective:
 
 # ---------------------------------------------------------------------------
 # We will use SciPy's L-BFGS-B with finite difference approximation (`jac='2-point'`) 
-# because Torcwa's RCWAConfig expects floats for `h` and `inc_ang`, making full 
+# because RCWAConfig expects floats for `h` and `inc_ang`, making full 
 # autograd through all parameters tricky without modifying Torcwa's internals.
 # Finite difference is slower per step but guaranteed to be correct for all 12 params.
 # ---------------------------------------------------------------------------

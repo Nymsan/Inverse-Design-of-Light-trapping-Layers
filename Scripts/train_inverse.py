@@ -51,8 +51,6 @@ def get_args():
     p.add_argument("--batch_size", type=int, default=64)
     p.add_argument("--epochs", type=int, default=100, help="Number of epochs for Tandem/Generative")
     p.add_argument("--al_iter", type=int, default=-1, help="Active learning iteration of surrogate to use (-1 for latest, 0 for base)")
-    p.add_argument("--wishful_epochs", type=int, default=100)
-    p.add_argument("--synthetic_epochs", type=int, default=100)
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--patience", type=int, default=100)
     p.add_argument("--val_split", type=float, default=0.01)
@@ -85,11 +83,6 @@ def get_args():
     p.add_argument("--cvae_spec_enc_kernel", type=int, default=7)
     p.add_argument("--cvae_spec_enc_fc", type=int, nargs="+", default=[256, 256])
     p.add_argument("--cvae_spec_enc_dropout", type=float, default=0.05)
-    
-    p.add_argument("--skip_wishful", action="store_true",
-                    help="Skip Phase 2 (wishful thinking) training")
-    p.add_argument("--skip_synthetic", action="store_true",
-                    help="Skip Phase 3 (synthetic curves) training")
     return p.parse_args()
 
 
@@ -110,61 +103,15 @@ def _train_model_3phase(
         hist = train_fn(
             model, train_loader, val_loader,
             epochs=args.epochs, lr=args.lr, patience=args.patience,
-            device=device, synthetic_phase=False,
+            device=device, forward_model=forward_model
         )
     else:
         hist = train_fn(
             model, train_loader, val_loader,
             epochs=args.epochs, lr=args.lr, patience=args.patience,
-            device=device, synthetic_phase=False,
+            device=device
         )
     phases_trained.append("real")
-
-    # --- Phase 2: Wishful thinking (optional, default on) ---
-    if not args.skip_wishful and args.wishful_epochs > 0:
-        if is_cvae:
-            print(f"\n  Phase 2: Wishful thinking ({args.wishful_epochs} epochs)")
-            hist_wishful = train_cvae_wishful(
-                model, train_loader, val_loader,
-                epochs=args.wishful_epochs, lr=args.lr * 0.1,
-                patience=min(args.patience, 50),
-                device=device,
-            )
-            for k in hist:
-                hist[k].extend(hist_wishful.get(k, []))
-            phases_trained.append("wishful")
-        else:
-            print(f"\n  Phase 2: Wishful thinking — skipped for {model_name} (only supported for CVAE)")
-    elif args.skip_wishful:
-        print("\n  Phase 2: Wishful thinking — SKIPPED (--skip_wishful)")
-
-    # --- Phase 3: Synthetic curves (optional, default on) ---
-    if not args.skip_synthetic and args.synthetic_epochs > 0:
-        if is_cvae:
-            if forward_model is not None:
-                print(f"\n  Phase 3: Synthetic curves ({args.synthetic_epochs} epochs)")
-                hist_synth = train_fn(
-                    model, train_loader, val_loader,
-                    epochs=args.synthetic_epochs, lr=args.lr, patience=args.patience,
-                    device=device, forward_model=forward_model, synthetic_phase=True,
-                )
-                for k in hist:
-                    hist[k].extend(hist_synth.get(k, []))
-                phases_trained.append("synthetic")
-            else:
-                print("\n  WARNING: Skipping Phase 3 for CVAE as forward_model is missing.")
-        else:
-            print(f"\n  Phase 3: Synthetic curves ({args.synthetic_epochs} epochs)")
-            hist_synth = train_fn(
-                model, train_loader, val_loader,
-                epochs=args.synthetic_epochs, lr=args.lr, patience=args.patience,
-                device=device, synthetic_phase=True,
-            )
-            for k in hist:
-                hist[k].extend(hist_synth.get(k, []))
-            phases_trained.append("synthetic")
-    elif args.skip_synthetic:
-        print("\n  Phase 3: Synthetic curves — SKIPPED (--skip_synthetic)")
 
     elapsed = time.time() - t0
     return hist, phases_trained, elapsed

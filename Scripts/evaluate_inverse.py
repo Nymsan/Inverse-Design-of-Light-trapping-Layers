@@ -224,9 +224,9 @@ def plot_model_dashboard(
             bands_str = ", ".join([f"{b[0]}-{b[1]}nm" for b in bands])
         else:
             bands_str = "Custom"
-        title_prefix = f"Band Target ({bands_str})" if is_ideal[i] else f"Real Target #{i+1}"
-        ds_str = f" | Dataset Abs={best_dataset_abs:.3f}" if (best_dataset_abs is not None and is_ideal[i]) else ""
-        ax_p.set_title(f"{title_prefix} | {pred_mat_name}\nTorcwa Abs={rcwa_avg_abs:.3f} | Surr Abs={surr_avg_abs:.3f}{ds_str}")
+        title_prefix = f"Band Target ({bands_str})" if is_ideal[i] else f"Dataset Sample"
+        ds_str = f"\nBest in Dataset: {best_dataset_mat} (Abs={best_dataset_abs:.3f})" if (best_dataset_abs is not None and is_ideal[i]) else ""
+        ax_p.set_title(f"{title_prefix} (P-Pol) | Predicted: {pred_mat_name}\nTorcwa Abs={rcwa_avg_abs:.3f} | Surr Abs={surr_avg_abs:.3f}{ds_str}")
 
         # 3. S-Pol Spectra
         ax_s = axes[i, 1]
@@ -242,7 +242,7 @@ def plot_model_dashboard(
         if bands:
             for bmin, bmax in bands:
                 ax_s.axvspan(bmin, bmax, color="gray", alpha=0.2)
-        ax_s.set_title(f"{title_prefix} | {pred_mat_name}\nTorcwa Abs={rcwa_avg_abs:.3f} | Surr Abs={surr_avg_abs:.3f}{ds_str}")
+        ax_s.set_title(f"{title_prefix} (S-Pol) | Predicted: {pred_mat_name}\nTorcwa Abs={rcwa_avg_abs:.3f} | Surr Abs={surr_avg_abs:.3f}{ds_str}")
         
         # 4. Grating Profile
         ax_g = axes[i, 2]
@@ -466,8 +466,8 @@ def main():
         plot_inverse_loss_curves(all_history, str(eval_dir / "inverse_loss_curves.png"))
 
     # --- Build targets ---
-    # Always include 2 real samples from the test batch
-    real_targets = batch["target"][:2]
+    # Always include 1 real sample from the test batch
+    real_targets = batch["target"][:1]
 
     if bands:
         # Step function: 1.0 inside any band, 0.0 outside — for both p and s polarisations

@@ -9,6 +9,7 @@ import numpy as np
 from pathlib import Path
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+import random
 from torch.utils.data import DataLoader, TensorDataset, ConcatDataset
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -61,7 +62,7 @@ def evaluate_oracle(geometries: torch.Tensor, mat_name: str, stats: dict, device
         base_config.grating_material = mat_name
         base_config.reflector_type = 'pec'
         
-    wavelengths = torch.linspace(300, 1100, stats["n_wavelengths"] // 2, dtype=torch.float64, device=device)
+    wavelengths = torch.linspace(300, 1100, stats["n_wavelengths"] // 2, dtype=torch.float64, device=device) + 1e-3
     
     true_curves = []
     
@@ -106,43 +107,51 @@ def save_al_dataset(geometries: torch.Tensor, curves: torch.Tensor, mat_name: st
     torch.save({"geometries": new_geos, "curves": new_curves}, mat_file)
     print(f"Saved {len(geometries)} new AL samples. Total AL pool for {mat_name}: {len(new_geos)}")
 
-def finetune_surrogate(model: nn.Module, mat_name: str, stats: dict, al_dir: Path, 
-                       epochs: int = 5, lr: float = 1e-4, batch_size: int = 256):
+def finetune_surrogate(model: nn.Module, trained_materials: list, stats: dict, al_dir: Path, 
+                       epochs: int = 1000, lr: float = 1e-4, batch_size: int = 256, patience: int = 50):
     """Finetune the surrogate model on a mix of the AL dataset and a slice of the original dataset to prevent forgetting."""
     device = next(model.parameters()).device
     model.train()
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
     criterion = nn.MSELoss()
     
-    # 1. Load AL Data
-    al_geos, al_curves = load_al_dataset(mat_name, al_dir)
-    if al_geos is None:
+    all_geos_norm = []
+    all_mat_idxs = []
+    all_curves = []
+    data_files_dict = {}
+    
+    for mat_name in trained_materials:
+        # 1. Load AL Data
+        al_geos, al_curves = load_al_dataset(mat_name, al_dir)
+        mat_idx = list(MATERIAL_LIBRARY.keys()).index(mat_name)
+        
+        if al_geos is not None:
+            # Normalize AL geos
+            al_geos_norm = (al_geos - stats["geo_min"]) / (stats["geo_max"] - stats["geo_min"])
+            al_geos_norm = torch.clamp(al_geos_norm, 0.0, 1.0)
+            
+            al_mat_idx = torch.full((al_geos_norm.shape[0],), mat_idx, dtype=torch.long)
+            
+            all_geos_norm.append(al_geos_norm)
+            all_mat_idxs.append(al_mat_idx)
+            all_curves.append(al_curves)
+            
+        # 2. Load Original Data (to prevent catastrophic forgetting)
+        orig_dir = PROJECT_ROOT / "Data" / f"LHS_Dataset_{mat_name}"
+        all_batch_files = list(orig_dir.glob("batch_*.pt"))
+        if all_batch_files:
+            selected_files = random.sample(all_batch_files, min(2, len(all_batch_files)))
+            data_files_dict[mat_name] = [str(f) for f in selected_files]
+            
+    if len(all_geos_norm) == 0:
         return model
         
-    # Normalize AL geos
-    al_geos_norm = (al_geos - stats["geo_min"]) / (stats["geo_max"] - stats["geo_min"])
-    al_geos_norm = torch.clamp(al_geos_norm, 0.0, 1.0)
-    
-    # Material index
-    mat_idx = list(MATERIAL_LIBRARY.keys()).index(mat_name)
-    al_mat_idx = torch.full((al_geos_norm.shape[0],), mat_idx, dtype=torch.long)
-    al_dataset = TensorDataset(al_geos_norm, al_mat_idx, al_curves)
-    
-    # 2. Load Original Data (to prevent catastrophic forgetting)
-    # We'll load just batch 0 and 1 (200 samples) as an anchor
-    orig_dir = PROJECT_ROOT / "Data" / f"LHS_Dataset_{mat_name}"
-    orig_files = []
-    for i in range(2):
-        b_file = orig_dir / f"batch_{i:04d}.pt"
-        if b_file.exists():
-            orig_files.append(str(b_file))
-            
-    if orig_files:
+    al_dataset = TensorDataset(torch.cat(all_geos_norm), torch.cat(all_mat_idxs), torch.cat(all_curves))
+        
+    if data_files_dict:
         orig_ds = GratingDataset(
-            {mat_name: orig_files}, 
-            target_key="A_film_normal", 
-            geo_min=stats["geo_min"], 
-            geo_max=stats["geo_max"]
+            data_files=data_files_dict, target_key="A_film_normal",
+            geo_min=stats["geo_min"], geo_max=stats["geo_max"]
         )
         # orig_ds returns (geometry, material, target)
         orig_geos = orig_ds.geometry
@@ -157,12 +166,15 @@ def finetune_surrogate(model: nn.Module, mat_name: str, stats: dict, al_dir: Pat
 
     dataloader = DataLoader(full_dataset, batch_size=batch_size, shuffle=True)
     
-    print(f"\nFinetuning Surrogate on {len(full_dataset)} samples ({len(al_geos)} AL + {len(full_dataset)-len(al_geos)} Orig) for {epochs} epochs...")
+    print(f"\nFinetuning Surrogate on {len(full_dataset)} samples ({len(al_geos)} AL + {len(full_dataset)-len(al_geos)} Orig) for up to {epochs} epochs...")
     
     model.train()
     for p in model.parameters():
         p.requires_grad = True
         
+    patience_counter = 0
+    best_loss = float('inf')
+    
     pbar = tqdm(range(epochs), desc="Finetuning Surrogate", leave=False)
     for epoch in pbar:
         epoch_loss = 0.0
@@ -175,8 +187,19 @@ def finetune_surrogate(model: nn.Module, mat_name: str, stats: dict, al_dir: Pat
             optimizer.step()
             epoch_loss += loss.item() * len(g_b)
         
-        pbar.set_postfix(Loss=f"{epoch_loss/len(full_dataset):.4f}")
+        avg_loss = epoch_loss / len(full_dataset)
+        pbar.set_postfix(Loss=f"{avg_loss:.4f}")
         
+        if avg_loss < best_loss - 1e-6:
+            best_loss = avg_loss
+            patience_counter = 0
+        else:
+            patience_counter += 1
+            
+        if patience_counter >= patience:
+            print(f"  -> Early stopping at epoch {epoch+1} (loss={best_loss:.4f})")
+            break
+            
     return model
 
 def main():
@@ -189,7 +212,11 @@ def main():
     args = parser.parse_args()
 
     device = torch.device(args.device)
-    ckpt_dir = PROJECT_ROOT / args.ckpt_dir
+    provided_path = Path(args.ckpt_dir)
+    if provided_path.is_absolute() or provided_path.exists():
+        ckpt_dir = provided_path.resolve()
+    else:
+        ckpt_dir = PROJECT_ROOT / args.ckpt_dir
     al_dir = PROJECT_ROOT / "Data" / "Active_Learning_Dataset"
     
     print("="*60)
@@ -244,28 +271,31 @@ def main():
     for it in range(args.iterations):
         al_iterations += 1
         print(f"\n>>> ACTIVE LEARNING ITERATION {it+1}/{args.iterations} (Global AL Iteration: {al_iterations}) <<<")
+        trained_materials = list(stats["materials"].keys())
+        valid_mat_indices = [list(MATERIAL_LIBRARY.keys()).index(m) for m in trained_materials]
         
-        for mat_idx, mat_name in enumerate(MATERIAL_LIBRARY.keys()):
+        # 1. Propose candidates via Surrogate Optimization (Batched across ALL materials)
+        forward_model.eval()
+        opt = BatchedSurrogateOptimizer(forward_model, geo_min, geo_max, device, nx=128)
+        
+        proposed_geos_per_mat = {m: [] for m in trained_materials}
+        bands_per_proposal = []
+        
+        for _ in tqdm(range(args.proposals_per_mat), desc=f"Proposing targets (Batched)"):
+            bands = get_random_bands()
+            bands_per_proposal.append(bands)
+            opt_res = opt.optimize_geometry(bands, allowed_materials=valid_mat_indices, n_restarts=1000, steps=100, lr=0.1, top_k=1, show_progress=False)
+            
+            for r in opt_res["top_results"]:
+                mat_idx = r["material_idx"]
+                mat_name = list(MATERIAL_LIBRARY.keys())[mat_idx]
+                proposed_geos_per_mat[mat_name].append(r["geometry"])
+                
+        for mat_name in trained_materials:
             print(f"\n--- Material: {mat_name} ---")
+            mat_idx = list(MATERIAL_LIBRARY.keys()).index(mat_name)
             
-            # 1. Propose candidates via Surrogate Optimization
-            forward_model.eval()
-            opt = BatchedSurrogateOptimizer(forward_model, geo_min, geo_max, device, nx=128)
-            
-            proposed_geos = []
-            surr_losses = []
-            
-            for _ in range(args.proposals_per_mat):
-                bands = get_random_bands()
-                # Use fewer restarts to save time during AL inner loop
-                opt_res = opt.optimize_geometry(bands, allowed_materials=[mat_idx], n_restarts=1000, steps=100, lr=0.1, top_k=1)
-                for r in opt_res["top_results"]:
-                    # AL dataset expects unnormalized flat geometry array (not a profile)
-                    geo = r["geometry"] 
-                    proposed_geos.append(geo)
-                    surr_losses.append(r["loss"])
-                    
-            proposed_geos = torch.stack(proposed_geos).cpu()
+            proposed_geos = torch.stack(proposed_geos_per_mat[mat_name]).cpu()
             
             # 2. Oracle Verification (Torcwa)
             true_curves = evaluate_oracle(proposed_geos, mat_name, stats, device)
@@ -284,20 +314,28 @@ def main():
             fig, axes = plt.subplots(n_plots, 2, figsize=(10, 3 * n_plots), squeeze=False, layout="constrained")
             wls = WAVELENGTHS
             for p_idx in range(n_plots):
+                target_bands = bands_per_proposal[p_idx]
+                
                 # P-pol
                 ax_p = axes[p_idx, 0]
                 ax_p.plot(wls, true_curves[p_idx][:len(wls)].numpy(), label="Torcwa", color="black", lw=2)
                 ax_p.plot(wls, surr_preds[p_idx][:len(wls)].cpu().numpy(), label="Surrogate", color="red", linestyle="--", lw=2)
+                for bmin, bmax in target_bands:
+                    ax_p.axvspan(bmin, bmax, color='gray', alpha=0.2)
                 ax_p.set_title(f"Proposal {p_idx+1} P-pol | MAE: {torch.nn.functional.l1_loss(surr_preds[p_idx], true_curves_gpu[p_idx]).item():.4f}")
                 ax_p.grid(True, alpha=0.3)
                 ax_p.set_ylabel("Absorptance")
+                ax_p.set_ylim(-0.05, 1.05)
                 
                 # S-pol
                 ax_s = axes[p_idx, 1]
                 ax_s.plot(wls, true_curves[p_idx][len(wls):].numpy(), label="Torcwa", color="black", lw=2)
                 ax_s.plot(wls, surr_preds[p_idx][len(wls):].cpu().numpy(), label="Surrogate", color="red", linestyle="--", lw=2)
+                for bmin, bmax in target_bands:
+                    ax_s.axvspan(bmin, bmax, color='gray', alpha=0.2)
                 ax_s.set_title(f"Proposal {p_idx+1} S-pol")
                 ax_s.grid(True, alpha=0.3)
+                ax_s.set_ylim(-0.05, 1.05)
                 
                 if p_idx == n_plots - 1:
                     ax_p.set_xlabel("Wavelength (nm)")
@@ -317,9 +355,10 @@ def main():
             # 3. Save new data
             save_al_dataset(proposed_geos, true_curves, mat_name, al_dir)
             
-            # 4. Finetune Surrogate
-            forward_model = finetune_surrogate(forward_model, mat_name, stats, al_dir, epochs=5, lr=5e-5)
-            
+        # 4. Finetune Surrogate (across all materials simultaneously)
+        print("\n--- Finetuning Surrogate (All Materials) ---")
+        forward_model = finetune_surrogate(forward_model, trained_materials, stats, al_dir)
+        
         # Save intermediate finetuned checkpoint globally
         history["val_loss"] = [mae_discrepancy] # arbitrary fallback
         history["al_iterations"] = al_iterations
