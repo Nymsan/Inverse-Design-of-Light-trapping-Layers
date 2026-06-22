@@ -19,11 +19,25 @@ from Utils.models import MATERIAL_LIBRARY, N_MATERIALS
 from Utils.utils import get_absorptance_curve, RCWAConfig
 from Utils.checkpoint import load_forward_model, _FORWARD_FILENAMES
 
-def get_lhs_samples(num_samples, n_harmonics=20, seed=42):
+def get_lhs_samples(num_samples, geo_min, geo_max, n_harmonics=20, seed=42):
+    geo_min_np = geo_min.cpu().numpy()
+    geo_max_np = geo_max.cpu().numpy()
+    
+    n_harmonics_train = (len(geo_max_np) - 2) // 2
+    
+    h_min = geo_min_np[-2]
+    h_max = geo_max_np[-2]
+    inc_min = geo_min_np[-1]
+    inc_max = geo_max_np[-1]
+    
+    amp_max_train = np.max(geo_max_np[0:2*n_harmonics_train:2])
+    
     sampler = qmc.LatinHypercube(d=2 + n_harmonics * 2, seed=seed)
     sample = sampler.random(n=num_samples)
-    l_bounds = [50.0, 0.0] + [0.0] * n_harmonics + [0.0] * n_harmonics
-    u_bounds = [500.0, 60.0] + [2.5] * n_harmonics + [2*np.pi] * n_harmonics
+    
+    l_bounds = [h_min, inc_min] + [0.0] * n_harmonics + [0.0] * n_harmonics
+    u_bounds = [h_max, inc_max] + [amp_max_train] * n_harmonics + [2*np.pi] * n_harmonics
+    
     scaled_sample = qmc.scale(sample, l_bounds, u_bounds)
     h = scaled_sample[:, 0]
     inc_ang = scaled_sample[:, 1]
@@ -34,7 +48,8 @@ def get_lhs_samples(num_samples, n_harmonics=20, seed=42):
 def parse_args():
     p = argparse.ArgumentParser(description="Evaluate forward models on generalized high-harmonic dataset")
     p.add_argument("--ckpt_dir", default="Checkpoints/Si_TiO2_Si3N4", help="Path to checkpoint dir")
-    p.add_argument("--num_samples", type=int, default=5, help="Number of 20-harmonic samples to simulate")
+    p.add_argument("--num_samples", type=int, default=5, help="Number of high-harmonic samples to simulate")
+    p.add_argument("--n_harmonics", type=int, default=20, help="Number of harmonics to evaluate generalization on")
     return p.parse_args()
 
 def main():
@@ -52,10 +67,10 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    n_harmonics_test = 20
+    n_harmonics_test = args.n_harmonics
     
     print(f"Generating {args.num_samples} LHS samples with {n_harmonics_test} harmonics...")
-    h, inc_ang, amps, phases = get_lhs_samples(args.num_samples, n_harmonics=n_harmonics_test)
+    h, inc_ang, amps, phases = get_lhs_samples(args.num_samples, stats["geo_min"], stats["geo_max"], n_harmonics=n_harmonics_test)
     
     WAVELENGTHS = np.linspace(300, 1100, stats["n_wavelengths"] // 2)
     first_batch_file = PROJECT_ROOT / "Data" / f"LHS_Dataset_{trained_mat_names[0]}" / "batch_0000.pt"
@@ -141,22 +156,36 @@ def main():
         cmap = plt.cm.viridis
         c_surr, c_physics = cmap(0.5), cmap(0.8)
         
-        fig, axes = plt.subplots(args.num_samples, 2, figsize=(10, 3 * args.num_samples), squeeze=False)
+        fig, axes = plt.subplots(args.num_samples, 2, figsize=(12, 3.5 * args.num_samples), squeeze=False)
         for i in range(args.num_samples):
             ax_p = axes[i, 0]
             ax_s = axes[i, 1]
             n_wl = stats["n_wavelengths"] // 2
             
+            h_val = float(h[i])
+            inc_val = float(inc_ang[i])
+            mat_name = sampled_materials[i]
+            
+            title_p = f"Sample {i+1} ({mat_name}) - P-Pol\nh: {h_val:.1f}nm, inc: {inc_val:.1f}°"
+            title_s = f"Sample {i+1} ({mat_name}) - S-Pol\nh: {h_val:.1f}nm, inc: {inc_val:.1f}°"
+            
             ax_p.plot(WAVELENGTHS, physics_targets[i, :, 0].numpy(), "k-", lw=2, label="Torcwa Physics")
             ax_p.plot(WAVELENGTHS, preds[i, :n_wl].numpy(), linestyle="--", color=c_surr, lw=2, label="Surrogate")
-            ax_p.set_title(f"Sample {i+1} ({sampled_materials[i]}) - P-Pol")
+            ax_p.set_title(title_p)
             ax_p.set_ylim(-0.05, 1.05)
-            if i == 0: ax_p.legend(fontsize=8)
+            if i == 0: ax_p.legend(fontsize=8, loc='upper left')
             
             ax_s.plot(WAVELENGTHS, physics_targets[i, :, 1].numpy(), "k-", lw=2, label="Torcwa Physics")
             ax_s.plot(WAVELENGTHS, preds[i, n_wl:].numpy(), linestyle="--", color=c_surr, lw=2, label="Surrogate")
-            ax_s.set_title(f"Sample {i+1} ({sampled_materials[i]}) - S-Pol")
+            ax_s.set_title(title_s)
             ax_s.set_ylim(-0.05, 1.05)
+            
+            # Add text box with harmonics in the s-pol plot
+            amps_str = ", ".join([f"{a:.2f}" for a in amps[i][:5]]) + "..."
+            phases_str = ", ".join([f"{p:.2f}" for p in phases[i][:5]]) + "..."
+            text_str = f"Amps (first 5):\n{amps_str}\nPhases (first 5):\n{phases_str}"
+            ax_s.text(1.05, 0.5, text_str, transform=ax_s.transAxes, fontsize=8,
+                      verticalalignment='center', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
             
         plt.tight_layout()
         save_path = out_dir / f"dashboard_{name}.png"

@@ -154,17 +154,18 @@ class SineLayer(nn.Module):
 
 
 class ResBlock1D(nn.Module):
-    def __init__(self, in_ch, out_ch, kernel_size=7, dropout=0.05, downsample=False, activation="gelu"):
+    def __init__(self, in_ch, out_ch, kernel_size=7, dropout=0.05, downsample=False, activation="gelu", circular_padding=True):
         super().__init__()
         stride = 2 if downsample else 1
-        pad_mode = "zeros" if downsample else "circular"
+        pad_mode_1 = "zeros" if downsample or not circular_padding else "circular"
+        pad_mode_2 = "circular" if circular_padding else "zeros"
         
-        self.conv1 = nn.Conv1d(in_ch, out_ch, kernel_size, stride=stride, padding=kernel_size // 2, padding_mode=pad_mode)
+        self.conv1 = nn.Conv1d(in_ch, out_ch, kernel_size, stride=stride, padding=kernel_size // 2, padding_mode=pad_mode_1)
         self.norm1 = nn.BatchNorm1d(out_ch)
         self.act1 = _make_activation(activation, out_ch)
         self.drop1 = nn.Dropout1d(dropout)
         
-        self.conv2 = nn.Conv1d(out_ch, out_ch, kernel_size, stride=1, padding=kernel_size // 2, padding_mode="circular")
+        self.conv2 = nn.Conv1d(out_ch, out_ch, kernel_size, stride=1, padding=kernel_size // 2, padding_mode=pad_mode_2)
         self.norm2 = nn.BatchNorm1d(out_ch)
         
         if in_ch != out_ch or downsample:
@@ -216,6 +217,7 @@ class SIREN(nn.Module):
         
         in_ch = 1 + embed_dim + 1 # abs_profile + mat_embed + inc_ang
         self.input_norm = nn.BatchNorm1d(in_ch)
+        self.h_norm = nn.BatchNorm1d(1)
         
         # 1. CNN Encoder (matching SkipCNN)
         conv_layers = []
@@ -227,7 +229,7 @@ class SIREN(nn.Module):
         with torch.no_grad():
             dummy = torch.zeros(1, 1 + embed_dim + 1, nx)
             spatial_dim = self.encoder_cnn(dummy).shape[-1]
-        fc_in = conv_channels[-1] * spatial_dim        
+        fc_in = conv_channels[-1] * spatial_dim + 1  # + 1 for explicit h injection
         # Project CNN output to latent vector
         self.encoder_proj = nn.Sequential(
             SkipLinear(fc_in, 256, activation="gelu", norm="layer", dropout=dropout),
@@ -264,6 +266,12 @@ class SIREN(nn.Module):
         x = self.input_norm(x)
         x = self.encoder_cnn(x)
         x = x.view(B, -1)
+        
+        # Explicit h injection
+        h_flat = h.view(B, 1)
+        h_flat_norm = self.h_norm(h_flat)
+        x = torch.cat([x, h_flat_norm], dim=1)
+        
         latent = self.encoder_proj(x)
         
         if wls is None:
@@ -352,6 +360,7 @@ class SkipCNN(nn.Module):
 
         in_ch = 1 + embed_dim + 1 # abs_profile + mat_embed + inc_ang
         self.input_norm = nn.BatchNorm1d(in_ch)
+        self.h_norm = nn.BatchNorm1d(1)
         
         conv_layers = []
         for i, out_ch in enumerate(conv_channels):
@@ -362,7 +371,7 @@ class SkipCNN(nn.Module):
         with torch.no_grad():
             dummy = torch.zeros(1, 1 + embed_dim + 1, nx)
             spatial_nx = self.conv_backbone(dummy).shape[-1]
-        fc_in = conv_channels[-1] * spatial_nx        
+        fc_in = conv_channels[-1] * spatial_nx + 1   # + 1 for explicit h injection
         fc_layers = []
         for fc_dim in fc_dims:
             fc_layers.append(SkipLinear(fc_in, fc_dim, activation="gelu", norm="layer", dropout=dropout))
@@ -393,6 +402,12 @@ class SkipCNN(nn.Module):
         x = self.input_norm(x)
         x = self.conv_backbone(x)
         x = x.view(B, -1)
+        
+        # Explicit h injection
+        h_flat = h.view(B, 1)
+        h_flat_norm = self.h_norm(h_flat)
+        x = torch.cat([x, h_flat_norm], dim=1)
+        
         return self.fc_head(x)
 
 class SpatialCNN(nn.Module):
@@ -410,6 +425,7 @@ class SpatialCNN(nn.Module):
 
         in_ch = 1 + embed_dim + 1 # abs_profile + mat_embed + inc_ang
         self.input_norm = nn.BatchNorm1d(in_ch)
+        self.h_norm = nn.BatchNorm1d(1)
         
         conv_layers = []
         for i, out_ch in enumerate(conv_channels):
@@ -428,7 +444,7 @@ class SpatialCNN(nn.Module):
         with torch.no_grad():
             dummy = torch.zeros(1, 1 + embed_dim + 1, nx)
             spatial_nx = self.conv_backbone(dummy).shape[-1]
-        fc_in = conv_channels[-1] * spatial_nx        
+        fc_in = conv_channels[-1] * spatial_nx + 1   # + 1 for explicit h injection
         fc_layers = []
         for fc_dim in fc_dims:
             fc_layers.append(SkipLinear(fc_in, fc_dim, activation="gelu", norm="layer", dropout=dropout))
@@ -459,6 +475,12 @@ class SpatialCNN(nn.Module):
         x = self.input_norm(x)
         x = self.conv_backbone(x)
         x = x.view(B, -1)
+        
+        # Explicit h injection
+        h_flat = h.view(B, 1)
+        h_flat_norm = self.h_norm(h_flat)
+        x = torch.cat([x, h_flat_norm], dim=1)
+        
         return self.fc_head(x)
 
 
@@ -487,8 +509,10 @@ class TransformerForward(nn.Module):
         # Standard Normalization (Exactly mirrors CNNs)
         in_ch = 1 + embed_dim + 1 # abs_profile + mat_embed + inc_ang
         self.input_norm = nn.BatchNorm1d(in_ch)
+        self.h_norm = nn.BatchNorm1d(1)
         
         # 2. Global Physical Tokens
+        self.h_proj = nn.Linear(1, d_model)
         self.inc_ang_proj = nn.Linear(1, d_model)
         self.mat_proj = nn.Linear(embed_dim, d_model)
         
@@ -497,7 +521,7 @@ class TransformerForward(nn.Module):
         self.readout_tokens = nn.Parameter(torch.randn(1, self.num_readouts, d_model) * 0.02)
         
         # Positional Encoding
-        self.seq_len = self.num_readouts + 2 + self.num_patches  # 4 readouts + 2 globals (inc, mat) + 8 patches = 14
+        self.seq_len = self.num_readouts + 3 + self.num_patches  # 4 readouts + 3 globals (h, inc, mat) + 8 patches = 15
         self.pos_embed = nn.Parameter(torch.randn(1, self.seq_len, d_model) * 0.02)
         self.pos_drop = nn.Dropout(p=dropout)
         
@@ -557,14 +581,16 @@ class TransformerForward(nn.Module):
         patch_tokens = patch_tokens.transpose(1, 2)       # (B, 8, d_model)
         
         # Project global tokens
+        h_norm = self.h_norm(h.view(B, 1))
+        h_token = self.h_proj(h_norm).unsqueeze(1)               # (B, 1, d_model)
         inc_token = self.inc_ang_proj(inc_norm).unsqueeze(1)     # (B, 1, d_model)
         mat_token = self.mat_proj(mat_norm).unsqueeze(1)         # (B, 1, d_model)
         
         # Expand Readout tokens for the batch
         readouts = self.readout_tokens.expand(B, -1, -1)               # (B, 4, d_model)
         
-        # Sequence: [READOUTS(4), inc(1), mat(1), PATCHES(8)] -> Total 14
-        x = torch.cat([readouts, inc_token, mat_token, patch_tokens], dim=1)
+        # Sequence: [READOUTS(4), h(1), inc(1), mat(1), PATCHES(8)] -> Total 15
+        x = torch.cat([readouts, h_token, inc_token, mat_token, patch_tokens], dim=1)
         
         x = x + self.pos_embed
         x = self.pos_drop(x)
@@ -577,78 +603,6 @@ class TransformerForward(nn.Module):
         readout_flat = readout_out.reshape(B, -1)      # (B, 512)
         
         return self.head(readout_flat)
-
-def generate_synthetic_targets(B: int, n_wavelengths: int, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
-    """Generate synthetic ideal targets with a physically motivated distribution.
-
-    Distribution:
-      - 1/3  Gaussian peaks (random centre, width)            – spectral selectivity
-      - 1/3  Single rectangular band (random centre, width)   – band-specific targets
-      - 1/6  Multi-band (2–3 random rectangular bands, union) – multi-resonance capability
-      - 1/6  Broadband all-ones                               – hardest, most solar-relevant goal
-
-    Returns:
-        targets  – (B, n_wavelengths)  values in [0, 1]
-        weights  – (B, n_wavelengths)  1.0 in active regions, 0.1 elsewhere
-    """
-    wl_len = n_wavelengths // 2
-    wls = torch.linspace(300, 1100, wl_len, device=device).unsqueeze(0).expand(B, -1)  # (B, wl_len)
-
-    targets = torch.zeros(B, wl_len, device=device)
-    weights = torch.full((B, wl_len), 0.1, device=device)
-
-    # Assign each sample to one of four modes
-    # Thresholds: 0 – 1/3 Gauss | 1/3 – 2/3 single | 2/3 – 5/6 multi | 5/6 – 1 broadband
-    rand_mode = torch.rand(B, device=device)
-    mask_gauss     = rand_mode < 1/3
-    mask_single    = (rand_mode >= 1/3) & (rand_mode < 2/3)
-    mask_multi     = (rand_mode >= 2/3) & (rand_mode < 5/6)
-    mask_broadband = rand_mode >= 5/6
-
-    # --- Gaussians ---
-    mu    = torch.rand(B, 1, device=device) * 800 + 300          # centre in [300, 1100]
-    sigma = torch.rand(B, 1, device=device) * 150 + 50           # width   in [50,  200]
-    t_gauss = torch.exp(-0.5 * ((wls - mu) / sigma) ** 2)
-    w_gauss = torch.where(torch.abs(wls - mu) <= sigma, 1.0, 0.1)
-    targets[mask_gauss] = t_gauss[mask_gauss]
-    weights[mask_gauss] = w_gauss[mask_gauss]
-
-    # --- Single rectangular band ---
-    c_s     = torch.rand(B, 1, device=device) * 800 + 300        # centre in [300, 1100]
-    w_s     = torch.rand(B, 1, device=device) * 300 + 50         # width  in [50,  350]
-    in_band = (wls >= c_s - w_s / 2) & (wls <= c_s + w_s / 2)
-    t_single = in_band.float()
-    w_single = torch.where(in_band, 1.0, 0.1)
-    targets[mask_single] = t_single[mask_single]
-    weights[mask_single] = w_single[mask_single]
-
-    # --- Multi-band (2–3 random rectangular bands, union) ---
-    n_bands_options = torch.randint(2, 4, (B,), device=device)   # 2 or 3 bands per sample
-    t_multi = torch.zeros(B, wl_len, device=device)
-    w_multi = torch.full((B, wl_len), 0.1, device=device)
-    max_bands = 3
-    for k in range(max_bands):
-        active = n_bands_options > k                              # (B,)
-        c_k = torch.rand(B, 1, device=device) * 700 + 350        # keep bands well inside [300,1100]
-        w_k = torch.rand(B, 1, device=device) * 150 + 30         # narrower bands: [30, 180] nm
-        in_k = (wls >= c_k - w_k / 2) & (wls <= c_k + w_k / 2)
-        t_multi = torch.where(active.unsqueeze(1) & in_k, torch.ones_like(t_multi), t_multi)
-        w_multi = torch.where(active.unsqueeze(1) & in_k, torch.ones_like(w_multi), w_multi)
-    targets[mask_multi] = t_multi[mask_multi]
-    weights[mask_multi] = w_multi[mask_multi]
-
-    # --- Broadband all-ones (uniform absorption target across full spectrum) ---
-    # Weight mask is uniformly 1.0 so the loss penalises all wavelengths equally.
-    targets[mask_broadband] = 1.0
-    weights[mask_broadband] = 1.0
-
-    # Duplicate for s-pol (same target for both polarisations)
-    targets = targets.repeat(1, 2)
-    weights = weights.repeat(1, 2)
-
-    return targets, weights
-
-
 
 class InverseDecoder(nn.Module):
     """Maps absorptance curve (+ optional noise z) → normalized geometry [0,1] + Gumbel material."""
@@ -682,7 +636,7 @@ class InverseDecoder(nn.Module):
         
         conv_layers = []
         for i, out_ch in enumerate(conv_channels):
-            conv_layers.append(ResBlock1D(in_ch, out_ch, kernel_size, dropout, downsample=(i < len(conv_channels) - 1)))
+            conv_layers.append(ResBlock1D(in_ch, out_ch, kernel_size, dropout, downsample=(i < len(conv_channels) - 1), circular_padding=False))
             in_ch = out_ch
         self.conv_backbone = nn.Sequential(*conv_layers)
         
@@ -934,7 +888,7 @@ class SpectrumEncoder(nn.Module):
         
         conv_layers = []
         for i, out_ch in enumerate(conv_channels):
-            conv_layers.append(ResBlock1D(in_ch, out_ch, kernel_size, dropout, downsample=(i < len(conv_channels) - 1)))
+            conv_layers.append(ResBlock1D(in_ch, out_ch, kernel_size, dropout, downsample=(i < len(conv_channels) - 1), circular_padding=False))
             in_ch = out_ch
         self.conv_backbone = nn.Sequential(*conv_layers)
         
@@ -1020,7 +974,23 @@ class ContrastiveVAE(nn.Module):
         pred_norm = (out["recon_geometry"] - geo_min) / (geo_max - geo_min + 1e-9)
         targ_norm = (geometry - geo_min) / (geo_max - geo_min + 1e-9)
         
-        loss_recon = F.huber_loss(pred_norm, targ_norm, delta=0.01)
+        N = (self.geometry_decoder.n_geometry - 2) // 2
+        idx_amp = list(range(0, 2 * N, 2))
+        idx_phase = list(range(1, 2 * N, 2))
+        idx_other = list(range(2 * N, self.geometry_decoder.n_geometry))
+        
+        # Convert (normalized_amp, phase) to Fourier coefficients (x, y)
+        # We scale by +1 / 2 to keep the variance similar to the [0, 1] variables
+        pred_x = (pred_norm[:, idx_amp] * torch.cos(out["recon_geometry"][:, idx_phase]) + 1.0) / 2.0
+        pred_y = (pred_norm[:, idx_amp] * torch.sin(out["recon_geometry"][:, idx_phase]) + 1.0) / 2.0
+        
+        targ_x = (targ_norm[:, idx_amp] * torch.cos(geometry[:, idx_phase]) + 1.0) / 2.0
+        targ_y = (targ_norm[:, idx_amp] * torch.sin(geometry[:, idx_phase]) + 1.0) / 2.0
+        
+        pred_tensor = torch.cat([pred_x, pred_y, pred_norm[:, idx_other]], dim=1)
+        targ_tensor = torch.cat([targ_x, targ_y, targ_norm[:, idx_other]], dim=1)
+        
+        loss_recon = F.huber_loss(pred_tensor, targ_tensor, delta=0.01)
         loss_mat_ce = F.cross_entropy(out["recon_material_logits"], material_id)
         loss_kl = self.kl_divergence(out["mu_x"], out["logvar_x"])
         loss_margin = self.margin_loss(out["z_x"], out["z_y"], self.margin_radius)
@@ -1285,7 +1255,6 @@ def train_tandem(
     epochs: int = 500, lr: float = 1e-3, weight_decay: float = 1e-5,
     patience: int = 100, tau_start: float = 1.0, tau_end: float = 0.1,
     device: torch.device = torch.device("cpu"),
-    synthetic_phase: bool = False,
     ema_decay: float = 0.999,
 ) -> dict[str, list[float]]:
     """Train tandem. Only InverseDecoder params are optimised; forward model stays frozen."""
@@ -1304,26 +1273,20 @@ def train_tandem(
         tandem.train()
         train_loss_accum = 0.0
         for batch in train_loader:
-            if synthetic_phase:
-                target, weight_mask = generate_synthetic_targets(batch["target"].shape[0], batch["target"].shape[-1], device)
-            else:
-                target = batch["target"].to(device)
+            target = batch["target"].to(device)
             out = tandem(target, tau=tau)
             pred = out["predicted_curve"]
             
-            if synthetic_phase:
-                loss = (torch.nn.functional.mse_loss(pred, target, reduction='none') * weight_mask).mean()
-            else:
-                base_loss = criterion(pred, target)
-                wl = target.shape[-1] // 2
-                # Spectral Loss (FFT Magnitude) - insensitive to small peak shifts
-                fft_pred_p = torch.fft.rfft(pred[:, :wl], dim=-1).abs()
-                fft_pred_s = torch.fft.rfft(pred[:, wl:], dim=-1).abs()
-                fft_target_p = torch.fft.rfft(target[:, :wl], dim=-1).abs()
-                fft_target_s = torch.fft.rfft(target[:, wl:], dim=-1).abs()
-                
-                spectral_loss = (criterion(fft_pred_p, fft_target_p) + criterion(fft_pred_s, fft_target_s)) / wl
-                loss = base_loss + 0.5 * spectral_loss
+            base_loss = criterion(pred, target)
+            wl = target.shape[-1] // 2
+            # Spectral Loss (FFT Magnitude) - insensitive to small peak shifts
+            fft_pred_p = torch.fft.rfft(pred[:, :wl], dim=-1).abs()
+            fft_pred_s = torch.fft.rfft(pred[:, wl:], dim=-1).abs()
+            fft_target_p = torch.fft.rfft(target[:, :wl], dim=-1).abs()
+            fft_target_s = torch.fft.rfft(target[:, wl:], dim=-1).abs()
+            
+            spectral_loss = (criterion(fft_pred_p, fft_target_p) + criterion(fft_pred_s, fft_target_s)) / wl
+            loss = base_loss + 0.5 * spectral_loss
             
             optimizer.zero_grad(); loss.backward(); optimizer.step()
             train_loss_accum += loss.item()
@@ -1337,26 +1300,19 @@ def train_tandem(
         val_max_err_accum = 0.0
         with torch.no_grad():
             for batch in val_loader:
-                if synthetic_phase:
-                    target, weight_mask = generate_synthetic_targets(batch["target"].shape[0], batch["target"].shape[-1], device)
-                else:
-                    target = batch["target"].to(device)
+                target = batch["target"].to(device)
                 out = tandem(target, tau=tau)
                 pred = out["predicted_curve"]
                 
-                if synthetic_phase:
-                    loss = (torch.nn.functional.mse_loss(pred, target, reduction='none') * weight_mask).mean()
-                    val_loss_accum += loss.item()
-                else:
-                    base_loss = criterion(pred, target)
-                    wl = target.shape[-1] // 2
-                    fft_pred_p = torch.fft.rfft(pred[:, :wl], dim=-1).abs()
-                    fft_pred_s = torch.fft.rfft(pred[:, wl:], dim=-1).abs()
-                    fft_target_p = torch.fft.rfft(target[:, :wl], dim=-1).abs()
-                    fft_target_s = torch.fft.rfft(target[:, wl:], dim=-1).abs()
-                    
-                    spectral_loss = (criterion(fft_pred_p, fft_target_p) + criterion(fft_pred_s, fft_target_s)) / wl
-                    val_loss_accum += (base_loss + 0.5 * spectral_loss).item()
+                base_loss = criterion(pred, target)
+                wl = target.shape[-1] // 2
+                fft_pred_p = torch.fft.rfft(pred[:, :wl], dim=-1).abs()
+                fft_pred_s = torch.fft.rfft(pred[:, wl:], dim=-1).abs()
+                fft_target_p = torch.fft.rfft(target[:, :wl], dim=-1).abs()
+                fft_target_s = torch.fft.rfft(target[:, wl:], dim=-1).abs()
+                
+                spectral_loss = (criterion(fft_pred_p, fft_target_p) + criterion(fft_pred_s, fft_target_s)) / wl
+                val_loss_accum += (base_loss + 0.5 * spectral_loss).item()
                 
                 abs_err = torch.abs(pred - target)
                 val_mae_accum += abs_err.mean().item()
@@ -1395,7 +1351,6 @@ def train_cvae(
     patience: int = 100, tau_start: float = 1.0, tau_end: float = 0.1,
     device: torch.device = torch.device("cpu"),
     forward_model: Optional[nn.Module] = None,
-    synthetic_phase: bool = False,
     ema_decay: float = 0.999,
 ) -> dict[str, list[float]]:
     """Train C-VAE. All sub-networks trained jointly. Loss = recon + CE + beta·KL + gamma·margin."""
@@ -1416,26 +1371,14 @@ def train_cvae(
         cvae.train()
         accum = {"loss": 0.0, "recon": 0.0, "mat_ce": 0.0, "kl": 0.0, "margin": 0.0}
         for batch in train_loader:
-            if synthetic_phase:
-                assert forward_model is not None, "Forward model required for synthetic phase in CVAE"
-                target, weight_mask = generate_synthetic_targets(batch["target"].shape[0], batch["target"].shape[-1], device)
-                z_y = cvae.spectrum_encoder(target)
-                pred_geo, mat_oh, _ = cvae.geometry_decoder(z_y, tau=tau, hard=True)
-                pred_curve = forward_model(geometry=pred_geo, material_id=mat_oh)
-                loss = (F.huber_loss(pred_curve, target, delta=0.01, reduction='none') * weight_mask).mean()
-                
-                optimizer.zero_grad(); loss.backward(); optimizer.step()
-                ema.update(cvae)
-                accum["loss"] += loss.item()
-            else:
-                geo, mat, target = (batch["geometry"].to(device),
-                                    batch["material_id"].to(device), batch["target"].to(device))
-                out = cvae(geo, mat, target, tau=tau)
-                losses = cvae.compute_loss(out, geo, mat)
-                optimizer.zero_grad(); losses["loss"].backward(); optimizer.step()
-                ema.update(cvae)
-                for k in accum:
-                    accum[k] += losses[f"loss_{k}"].item() if k != "loss" else losses["loss"].item()
+            geo, mat, target = (batch["geometry"].to(device),
+                                batch["material_id"].to(device), batch["target"].to(device))
+            out = cvae(geo, mat, target, tau=tau)
+            losses = cvae.compute_loss(out, geo, mat)
+            optimizer.zero_grad(); losses["loss"].backward(); optimizer.step()
+            ema.update(cvae)
+            for k in accum:
+                accum[k] += losses[f"loss_{k}"].item() if k != "loss" else losses["loss"].item()
 
         n = len(train_loader)
         history["train_loss"].append(accum["loss"] / n)
@@ -1444,117 +1387,27 @@ def train_cvae(
 
         cvae.eval()
         val_accum = 0.0
-        with torch.no_grad():
-            for batch in val_loader:
-                if synthetic_phase:
-                    target, weight_mask = generate_synthetic_targets(batch["target"].shape[0], batch["target"].shape[-1], device)
-                    z_y = cvae.spectrum_encoder(target)
-                    pred_geo, mat_oh, _ = cvae.geometry_decoder(z_y, tau=tau, hard=True)
-                    pred_curve = forward_model(geometry=pred_geo, material_id=mat_oh)
-                    loss = (F.huber_loss(pred_curve, target, delta=0.01, reduction='none') * weight_mask).mean()
-                    val_accum += loss.item()
-                else:
-                    geo, mat, target = (batch["geometry"].to(device),
-                                        batch["material_id"].to(device), batch["target"].to(device))
-                    losses = cvae.compute_loss(cvae(geo, mat, target, tau=tau), geo, mat)
-                    val_accum += losses["loss"].item()
-
-        avg_val = val_accum / len(val_loader)
-        history["val_loss"].append(avg_val)
-        scheduler.step(avg_val)
-
-        if avg_val < best_val:
-            best_val = avg_val
-            ema.snapshot()
-            patience_ctr = 0
-        else:
-            patience_ctr += 1
-            if patience_ctr >= patience:
-                pbar.write(f"Early stopping at epoch {epoch} (best val={best_val:.6e})")
-                break
-
-        pbar.set_postfix(total=f"{history['train_loss'][-1]:.3e}",
-                         val=f"{avg_val:.3e}", kl=f"{accum['kl']/n:.3e}",
-                         margin=f"{accum['margin']/n:.3e}", tau=f"{tau:.2f}")
-
-    ema.restore(cvae)
-    return history
-
-def train_cvae_wishful(
-    cvae: ContrastiveVAE, train_loader, val_loader, *,
-    epochs: int = 100, lr: float = 1e-4, weight_decay: float = 1e-5,
-    patience: int = 50, tau_start: float = 0.5, tau_end: float = 0.1,
-    alpha_end: float = 0.99, top_k_quantile: float = 0.9,
-    device: torch.device = torch.device("cpu"),
-    ema_decay: float = 0.999,
-) -> dict[str, list[float]]:
-    """Wishful thinking finetuning: select top quantile of curves and gradually pull them to 1.0."""
-    cvae = cvae.to(device)
-    optimizer = torch.optim.AdamW(cvae.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=20, min_lr=1e-7)
-    best_val, patience_ctr = float("inf"), 0
-    ema = _EMATracker(cvae, decay=ema_decay)
-    history: dict[str, list[float]] = {
-        "train_loss": [], "val_loss": [],
-        "train_recon": [], "train_mat_ce": [], "train_kl": [], "train_margin": [],
-    }
-
-    pbar = tqdm(range(1, epochs + 1), desc="Finetune CVAE", unit="ep", dynamic_ncols=True, file=sys.stdout)
-    for epoch in pbar:
-        tau = tau_start + (tau_end - tau_start) * (epoch - 1) / max(epochs - 1, 1)
-        alpha = alpha_end * (epoch - 1) / max(epochs - 1, 1)
-
-        cvae.train()
-        accum = {"loss": 0.0, "recon": 0.0, "mat_ce": 0.0, "kl": 0.0, "margin": 0.0}
-        n_batches = 0
-        for batch in train_loader:
-            geo, mat, target = (batch["geometry"].to(device),
-                                batch["material_id"].to(device), batch["target"].to(device))
-            
-            means = target.mean(dim=-1)
-            threshold = torch.quantile(means, top_k_quantile)
-            mask = means >= threshold
-            if not mask.any(): continue
-            
-            geo, mat, target = geo[mask], mat[mask], target[mask]
-            
-            # Wishful thinking: shift curve towards 1.0
-            target = target + alpha * (1.0 - target)
-            
-            out = cvae(geo, mat, target, tau=tau)
-            losses = cvae.compute_loss(out, geo, mat)
-            optimizer.zero_grad(); losses["loss"].backward(); optimizer.step()
-            for k in accum:
-                accum[k] += losses[f"loss_{k}"].item() if k != "loss" else losses["loss"].item()
-            n_batches += 1
-
-        if n_batches == 0: continue
-
-        history["train_loss"].append(accum["loss"] / n_batches)
-        for k in ("recon", "mat_ce", "kl", "margin"):
-            history[f"train_{k}"].append(accum[k] / n_batches)
-
-        cvae.eval()
-        val_accum = 0.0
-        n_val = 0
+        val_mae_accum = 0.0
         with torch.no_grad():
             for batch in val_loader:
                 geo, mat, target = (batch["geometry"].to(device),
                                     batch["material_id"].to(device), batch["target"].to(device))
-                means = target.mean(dim=-1)
-                threshold = torch.quantile(means, top_k_quantile)
-                mask = means >= threshold
-                if not mask.any(): continue
-                geo, mat, target = geo[mask], mat[mask], target[mask]
-                target = target + alpha * (1.0 - target)
-                
                 losses = cvae.compute_loss(cvae(geo, mat, target, tau=tau), geo, mat)
                 val_accum += losses["loss"].item()
-                n_val += 1
+                
+                if forward_model is not None:
+                    z_y = cvae.spectrum_encoder(target)
+                    pred_geo, pred_mat, _ = cvae.geometry_decoder(z_y, tau=tau, hard=True)
+                    pred_curve = forward_model(pred_geo, pred_mat)
+                    val_mae_accum += torch.abs(pred_curve - target).mean().item()
 
-        if n_val == 0: continue
-        avg_val = val_accum / n_val
+        avg_val = val_accum / len(val_loader)
+        avg_mae = val_mae_accum / len(val_loader) if forward_model is not None else 0.0
         history["val_loss"].append(avg_val)
+        if forward_model is not None:
+            if "val_mae" not in history: history["val_mae"] = []
+            history["val_mae"].append(avg_mae)
+            
         scheduler.step(avg_val)
 
         if avg_val < best_val:
@@ -1567,11 +1420,16 @@ def train_cvae_wishful(
                 pbar.write(f"Early stopping at epoch {epoch} (best val={best_val:.6e})")
                 break
 
-        pbar.set_postfix(total=f"{history['train_loss'][-1]:.3e}",
-                         val=f"{avg_val:.3e}", alpha=f"{alpha:.2f}", tau=f"{tau:.2f}")
+        postfix = {
+            "total": f"{history['train_loss'][-1]:.3e}",
+            "val": f"{avg_val:.3e}",
+            "kl": f"{accum['kl']/n:.3e}",
+            "margin": f"{accum['margin']/n:.3e}",
+            "tau": f"{tau:.2f}"
+        }
+        if forward_model is not None:
+            postfix["vMAE"] = f"{avg_mae:.3f}"
+        pbar.set_postfix(**postfix)
 
     ema.restore(cvae)
     return history
-
-
-

@@ -20,7 +20,7 @@ from Utils.models import N_MATERIALS, build_profile, MATERIAL_LIBRARY
 from Scripts.evaluate_dataset_baseline import get_dataset_baseline
 from Utils.surrogate_optimization import BatchedSurrogateOptimizer, recover_geometry_from_profile
 from Utils.utils import RCWAConfig, get_absorptance_curve
-from Utils.checkpoint import load_forward_model
+from Utils.checkpoint import load_forward_model, get_best_forward_model
 
 def parse_args():
     p = argparse.ArgumentParser(description="Evaluate Batched Surrogate Optimizer")
@@ -31,8 +31,10 @@ def parse_args():
     p.add_argument("--steps", type=int, default=300, help="Optimization steps")
     p.add_argument("--save_dir", type=str, default="Checkpoints/Optimization_Eval")
     p.add_argument("--al_iter", type=int, default=-1, help="Active learning iteration of surrogate to use (-1 for latest, 0 for base)")
-    p.add_argument("--max_inc_deg", type=float, default=30.0, help="Maximum incident angle in degrees (default: 30)")
+    p.add_argument("--max_inc_deg", type=float, default=None, help="Maximum incident angle in degrees (default: None, takes max from dataset)")
     p.add_argument("--recovered_harmonics", type=int, default=10, help="Number of harmonics to recover via FFT in profile mode (default: 10)")
+    p.add_argument("--top_k", type=int, default=1, help="Number of top structures to show and simulate per material")
+    p.add_argument("--force_forward_model", type=str, default=None, help="Force load a specific forward model (e.g. 'siren.pt')")
     return p.parse_args()
 
 def main():
@@ -62,7 +64,7 @@ def main():
     
     # Find the best forward model
     model, fwd_name, _ = get_best_forward_model(
-        ckpt_dir, n_continuous=stats["n_continuous"], n_wavelengths=stats["n_wavelengths"], n_harmonics=stats["n_harmonics"], al_iter=args.al_iter
+        ckpt_dir, n_continuous=stats["n_continuous"], n_wavelengths=stats["n_wavelengths"], n_harmonics=stats["n_harmonics"], al_iter=args.al_iter, force_model_name=args.force_forward_model
     )
     if model is None:
         print("\n=> ERROR: No forward models found in Checkpoints directory!")
@@ -87,12 +89,13 @@ def main():
     print(f"Running Batched Surrogate Optimization (Mode: {args.mode})")
     print(f"Bands: {bands if bands else 'Full Spectrum 300-1100nm'}")
     
-    print(f"Clamping Incident Angle to {args.max_inc_deg} degrees")
+    actual_max_inc = args.max_inc_deg if args.max_inc_deg is not None else geo_max[-1].item()
+    print(f"Clamping Incident Angle to {actual_max_inc:.2f} degrees")
     
     opt = BatchedSurrogateOptimizer(model, geo_min, geo_max, device, nx=128, max_inc_deg=args.max_inc_deg)
     
     if args.mode == "geometry":
-        res = opt.optimize_geometry(bands, n_restarts=args.restarts, steps=args.steps, lr=0.05, allowed_materials=valid_mat_indices)
+        res = opt.optimize_geometry(bands, n_restarts=args.restarts, steps=args.steps, lr=0.05, allowed_materials=valid_mat_indices, top_k=args.top_k)
         geo = res["best_geometry"]
         profile, h_tensor, inc_tensor = build_profile(geo.unsqueeze(0), stats["n_harmonics"], nx=128)
         profile = profile[0]
@@ -100,7 +103,7 @@ def main():
         inc_ang = geo[-1].item()
         
     elif args.mode == "profile":
-        res = opt.optimize_profile(bands, n_restarts=args.restarts, steps=args.steps, lr=5.0, allowed_materials=valid_mat_indices)
+        res = opt.optimize_profile(bands, n_restarts=args.restarts, steps=args.steps, lr=5.0, allowed_materials=valid_mat_indices, top_k=args.top_k)
         profile = res["best_profile"]
         geo = recover_geometry_from_profile(profile, res["best_h"], res["best_inc_ang"], nx=128)
         h_val = res["best_h"].item()
@@ -172,7 +175,7 @@ def main():
             geo = recover_geometry_from_profile(r["profile"], r["h"], r["inc_ang"], nx=128, n_harmonics=args.recovered_harmonics)
         
         n_fourier = len(geo) - 2
-        px = geo[:n_fourier].unsqueeze(0).cpu()
+        px = geo[:n_fourier].view(-1, 2).cpu()
         
         base_config = RCWAConfig(**rcwa_config_dict)
         base_config.h = h_val

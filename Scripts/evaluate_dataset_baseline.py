@@ -32,7 +32,7 @@ plt.rcParams.update({
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--ckpt_dir", required=True, help="Path to checkpoint directory")
-    p.add_argument("--top_k", type=int, default=3, help="Number of top structures to show per material")
+    p.add_argument("--top_k", type=int, default=1, help="Number of top structures to show per material")
     p.add_argument("--bands", nargs="+", type=float, help="Pairs of wavelength bands to evaluate, e.g., --bands 500 750 800 900")
     return p.parse_args()
 
@@ -195,7 +195,7 @@ def main():
                 ax_g.set_xlabel("x (nm)")
                 ax_h.set_xlabel("Harmonic Index")
                 
-        plt.suptitle(f"Top {args.top_k} Structures in Dataset: {mat_name}", fontsize=18)
+        plt.suptitle(f"Top {args.top_k} Structure(s) in Dataset: {mat_name}", fontsize=18)
         
         bands_str = "_".join([f"{int(b[0])}-{int(b[1])}" for b in bands]) if bands else "full_spectrum"
         save_path = out_dir / f"baseline_{mat_name}_{bands_str}.png"
