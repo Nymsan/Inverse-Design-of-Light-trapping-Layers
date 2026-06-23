@@ -3,6 +3,7 @@
 #BSUB -q gpul40s
 #BSUB -n 8
 #BSUB -R "rusage[mem=32G]"
+#BSUB -R "span[hosts=1]"
 #BSUB -gpu "num=1:mode=exclusive_process"
 #BSUB -W 24:00
 #BSUB -o logs/naive_opt_%J.out
@@ -27,7 +28,7 @@ echo "========================================="
 # This is incredibly fast compared to DE.
 for MAT in "Si" "TiO2" "Si3N4"; do
     echo "Starting $MAT optimization..."
-    uv run python Scripts/evaluate_naive_optimization.py \
+    uv run python evaluate_naive_optimization.py \
         --material $MAT \
         --method lbfgs \
         --max_evals 5000 \
