@@ -1,9 +1,9 @@
 \section{Methods and theory}
 \label{sec:methods}
-
+% Introduction to methods chosen here.
 \subsection{Rigorous coupled wave analysis}
 \label{classical_solvers}
-This section aims to introduce the concept of rigorous coupled wave analysis (RCWA), a method in numerical photonics suited well
+This subsection will introduce the concept of rigorous coupled wave analysis (RCWA), a method in numerical photonics suited well
 for stacked periodic structures in the x and y axis with a period $\Lambda_x,\Lambda_y$ respectively, and where each layer is homogeneous in the z-direction\cite{torcwa}.
 The structure's optical properties are completely described by the relative permitivity and relative permeability of each layer, meaning that each structure
 will have a geometry described by
@@ -18,12 +18,15 @@ and
 \end{equation}
 where $m$ and $n$ are integers and the subscript $N$ denotes the $N$'th layer of the structure. For the entirety of this project, the designed
 fourier patterned light trapping layers will be designed using silicon ($Si$), Titanium Dioxide ($TiO_2$) and Silicon Nitride ($Si_3N_4$), which
-are all nonmagnetic, so the relative permeability $\mu = 1$. The equations actually solved for are of course the Maxwell equations, here given in the form
+are all nonmagnetic, so the relative permeability $\mu = 1$. The equations solved for are of course the Maxwell equations, namely Faraday's law
 \begin{equation}
 \label{eq:faraday}
+\nabla \times \mathbf{E} = -\mu_0\mu(x,y)\mathbf{H}
 \end{equation}
+and Ampere's law
 \begin{equation}
 \label{eq:ampere}
+\nabla \times \mathbf{H} = \epsilon_0\epsilon(x,y)\mathbf{E}
 \end{equation}
 
 

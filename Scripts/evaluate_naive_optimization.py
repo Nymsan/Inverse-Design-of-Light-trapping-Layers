@@ -254,7 +254,7 @@ def main():
                     method='L-BFGS-B',
                     bounds=bounds,
                     jac='2-point', # Finite differences for gradients
-                    options={'maxfun': evals_left, 'ftol': 1e-6}
+                    options={'maxfun': evals_left, 'ftol': 1e-3}
                 )
                 obj.pbar.close()
                 print(f"L-BFGS-B Finished. Best MAE: {res_lbfgs.fun:.4f}")
