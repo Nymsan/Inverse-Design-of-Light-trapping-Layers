@@ -13,7 +13,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(PROJECT_ROOT))
 
 from Utils.utils import RCWAConfig, get_absorptance_curve
-from Utils.models import build_profile
+from Utils.models import build_profile, MATERIAL_LIBRARY
 
 # Default RCWA base configuration
 rcwa_config_dict = {
@@ -21,15 +21,6 @@ rcwa_config_dict = {
     'order_N': 15,
     'nx': 128,
     'height_per_layer': 5.0,
-}
-
-MATERIAL_LIBRARY = {
-    "Si": "Si",
-    "Si_Ag": "Si_Ag",
-    "TiO2": "TiO2",
-    "TiO2_Ag": "TiO2_Ag",
-    "Si3N4": "Si3N4",
-    "Si3N4_Ag": "Si3N4_Ag"
 }
 
 def parse_bands(bands_args: list[float]) -> list[tuple[float, float]]:
@@ -108,7 +99,7 @@ class TorcwaObjective:
             params_y=None,
             wavelengths=self.eval_wavelengths,
             config=self.base_config,
-            show_progress=False,
+            show_progress=True,
             requires_grad=requires_grad
         )
         
@@ -154,6 +145,7 @@ def main():
     parser.add_argument('--maxiter', type=int, default=1000, help="Max generations (steps) for DE")
     parser.add_argument('--device', type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument('--out_dir', type=str, default="Naive_Optimization")
+    parser.add_argument('--material', type=str, default=None, help="Specific material to optimize. If not set, runs all materials sequentially.")
     args = parser.parse_args()
 
     device = torch.device(args.device)
@@ -171,7 +163,8 @@ def main():
     print(f"Method: {args.method.upper()}")
 
     # Add 1e-3 offset to avoid perfect symmetry/singular matrices in Torcwa
-    WAVELENGTHS = np.linspace(300, 1100, 161) + 1e-3
+    # Reduced to 81 points (10nm resolution) to fit within 24h
+    WAVELENGTHS = np.linspace(300, 1100, 81) + 1e-3
     
     if bands:
         mask = np.zeros(len(WAVELENGTHS), dtype=bool)
@@ -195,7 +188,9 @@ def main():
 
     results_list = []
 
-    for mat_name in MATERIAL_LIBRARY.keys():
+    mats_to_run = [args.material] if args.material else list(MATERIAL_LIBRARY.keys())
+    
+    for mat_name in mats_to_run:
         print(f"\n" + "="*50)
         print(f"Optimizing {mat_name}...")
         
@@ -232,8 +227,11 @@ def main():
         if 'lbfgs' in args.method:
             print("Running L-BFGS-B (Finite Differences)...")
             
-            # Initial guess: if DE ran, use its result, else use middle of bounds
-            x0 = best_x if best_x is not None else np.array([(b[0]+b[1])/2 for b in bounds])
+            # Initial guess: if DE ran, use its result, else use a random valid point for the 1 restart
+            if best_x is not None:
+                x0 = best_x
+            else:
+                x0 = np.array([np.random.uniform(b[0], b[1]) for b in bounds])
             
             evals_left = args.max_evals - obj.eval_count
             if evals_left > 0:

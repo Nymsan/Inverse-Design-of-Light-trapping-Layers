@@ -346,8 +346,8 @@ def main():
         best_geo_for_mat = best_dataset_geo.get(mat_name)
         if best_geo_for_mat is not None:
             n_harm_data = (len(best_geo_for_mat) - 2) // 2
-            amps_data = best_geo_for_mat[:n_harm_data].numpy()
-            phases_data = best_geo_for_mat[n_harm_data:2*n_harm_data].numpy()
+            amps_data = best_geo_for_mat[0:2*n_harm_data:2].numpy()
+            phases_data = best_geo_for_mat[1:2*n_harm_data:2].numpy()
             h_data = best_geo_for_mat[-2].item()
             inc_data = best_geo_for_mat[-1].item()
             
