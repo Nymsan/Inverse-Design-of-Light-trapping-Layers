@@ -27,7 +27,7 @@ def parse_args():
     p.add_argument("--ckpt_dir", default="Checkpoints/Si_TiO2_Si3N4", help="Path to checkpoint dir")
     p.add_argument("--mode", choices=["geometry", "profile", "de"], default="geometry", help="Optimization mode")
     p.add_argument("--bands", nargs="+", type=float, help="Pairs of wavelength bands to optimize, e.g., --bands 500 750 800 900")
-    p.add_argument("--h_val", type=float, help="Target height in nm (fixes height during evaluation)")
+    p.add_argument("--h_val", nargs="+", type=float, help="Target height in nm, or range (min max) (fixes/bounds height during evaluation)")
     p.add_argument("--inc_val", type=float, default=None, help="Target incident angle in degrees (fixes angle during evaluation)")
     p.add_argument("--restarts", type=int, default=5000, help="Number of random restarts per material")
     p.add_argument("--steps", type=int, default=300, help="Optimization steps")
@@ -228,7 +228,7 @@ def main():
             params_y=None,
             wavelengths=torch.from_numpy(WAVELENGTHS).double(),
             config=base_config,
-            show_progress=False
+            show_progress=True
         )
         rcwa_p = A_film[:, 0].cpu().numpy()
         rcwa_s = A_film[:, 1].cpu().numpy()
@@ -248,8 +248,9 @@ def main():
         avg_abs_s = np.mean(rcwa_s[mask])
         rcwa_avg_abs = float((avg_abs_p + avg_abs_s) / 2.0)
         
+        rank = (idx % args.top_k) + 1
         metrics = {
-            "rank": (idx % 2) + 1,
+            "rank": rank,
             "surrogate_loss": r["loss"],
             "rcwa_mae": rcwa_mae,
             "rcwa_avg_abs": rcwa_avg_abs,
@@ -317,7 +318,7 @@ def main():
             rec_prof, _, _ = build_profile(geo.unsqueeze(0).cpu(), n_harm_recovered, nx=128)
             ax.plot(xs, rec_prof[0].numpy(), color=cmap(0.9), linestyle="--", lw=2, label="FFT Recovered")
             if idx == 0: ax.legend(fontsize=12)
-        ax.set_title(f"Structure Cross-Section\nHeight={h_val:.0f}nm, Inc={inc_ang:.1f}°", fontsize=16)
+        ax.set_title(f"Structure Cross-Section\nFilm Height={h_val:.0f}nm, Inc Ang={inc_ang:.1f}°", fontsize=16)
         ax.set_xlabel("x (nm)", fontsize=14)
         ax.set_ylabel("Height (nm)", fontsize=14)
         ax.tick_params(axis='both', which='major', labelsize=12)
@@ -357,7 +358,7 @@ def main():
             ax_h2.tick_params(axis='y', labelcolor=c_amp, labelsize=12)
             ax_h2.tick_params(axis='x', labelsize=12)
             ax_h2.set_xlabel("Harmonic index", fontsize=14)
-            ax_h2.set_title(f"Dataset Best (h={h_data:.0f}nm, i={inc_data:.0f}°)", fontsize=16)
+            ax_h2.set_title(f"Dataset Best\n(Film Height={h_data:.0f}nm, Inc Ang={inc_data:.0f}°)", fontsize=16)
             
             ax_p3 = ax_h2.twinx()
             ax_p3.plot(x_pos_data, phases_data, 'o', color=c_phase, markersize=10, markeredgecolor="black")

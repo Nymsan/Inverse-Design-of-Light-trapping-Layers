@@ -51,7 +51,7 @@ def get_args():
     p.add_argument("--materials", nargs="+", default=["Si", "TiO2", "Si3N4"])
     p.add_argument("--batch_size", type=int, default=64)
     p.add_argument("--epochs", type=int, default=100, help="Number of epochs for Tandem/Generative")
-    p.add_argument("--al_iter", type=int, default=-1, help="Active learning iteration of surrogate to use (-1 for latest, 0 for base)")
+
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--patience", type=int, default=100)
     p.add_argument("--val_split", type=float, default=0.01)
@@ -174,9 +174,9 @@ def main():
         geo_min = train_set.geometry.min(dim=0).values
         geo_max = train_set.geometry.max(dim=0).values
 
-    # Find the best forward model
+    # Find the best forward model (hardcoded to al_iter=0 to always use the clean base surrogate)
     forward_model, fwd_name, fwd_loss = get_best_forward_model(
-        ckpt_dir, n_continuous=n_continuous, n_wavelengths=n_wavelengths, n_harmonics=n_harmonics, al_iter=args.al_iter, force_model_name=args.force_forward_model
+        ckpt_dir, n_continuous=n_continuous, n_wavelengths=n_wavelengths, n_harmonics=n_harmonics, al_iter=0, force_model_name=args.force_forward_model
     )
     
     if forward_model is not None:

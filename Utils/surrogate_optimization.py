@@ -16,8 +16,13 @@ class BatchedSurrogateOptimizer:
             self.geo_max[-1] = min(self.geo_max[-1].item(), max_inc_deg)
             
         if h_val is not None:
-            self.geo_min[-2] = h_val
-            self.geo_max[-2] = h_val
+            if isinstance(h_val, list) and len(h_val) == 2:
+                self.geo_min[-2] = h_val[0]
+                self.geo_max[-2] = h_val[1]
+            else:
+                h_target = h_val[0] if isinstance(h_val, list) else h_val
+                self.geo_min[-2] = h_target
+                self.geo_max[-2] = h_target
             
         if inc_val is not None:
             self.geo_min[-1] = inc_val
@@ -79,7 +84,7 @@ class BatchedSurrogateOptimizer:
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=steps)
         
         history = torch.zeros((steps, n_allowed), device=self.device)
-        pbar = tqdm(range(steps), desc="Optimizing Geometry", disable=not show_progress, leave=False)
+        pbar = tqdm(range(steps), desc="Optimizing Geometry", disable=not show_progress, leave=True)
         for step in pbar:
             optimizer.zero_grad()
             pred = self.forward_model(geometry=geo, material_id=mat)
@@ -299,7 +304,7 @@ class BatchedSurrogateOptimizer:
             
         history = torch.zeros((generations, n_allowed), device=self.device)
         
-        pbar = tqdm(range(generations), desc="Optimizing DE", disable=not show_progress, leave=False)
+        pbar = tqdm(range(generations), desc="Optimizing DE", disable=not show_progress, leave=True)
         for gen in pbar:
             # Learning Rate Schedule: High F for exploration, drop by half for the last 33% of generations to polish local minima
             current_F = F if gen < (generations * 2 / 3) else F / 2.0

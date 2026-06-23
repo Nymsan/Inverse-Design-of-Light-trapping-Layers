@@ -15,13 +15,6 @@ sys.path.append(str(PROJECT_ROOT))
 from Utils.utils import RCWAConfig, get_absorptance_curve
 from Utils.models import build_profile, MATERIAL_LIBRARY
 
-# Default RCWA base configuration
-rcwa_config_dict = {
-    'grating_period': 1000.0,
-    'order_N': 15,
-    'nx': 128,
-    'height_per_layer': 5.0,
-}
 
 def parse_bands(bands_args: list[float]) -> list[tuple[float, float]]:
     if not bands_args:
@@ -55,7 +48,15 @@ class TorcwaObjective:
         self.bounds = bounds
         self.use_penalty = use_penalty
         
-        # Setup base config
+        # Extract config from first available dataset batch
+        rcwa_config_dict = {}
+        try:
+            mat_dir = Path(__file__).resolve().parent.parent / "Data" / f"LHS_Dataset_{mat_name}"
+            first_batch = next(mat_dir.glob("batch_*.pt"))
+            rcwa_config_dict = torch.load(first_batch, map_location="cpu", weights_only=False).get("metadata", {}).get("config", {})
+        except StopIteration:
+            pass
+            
         self.base_config = RCWAConfig(**rcwa_config_dict)
         if mat_name.endswith("_Ag"):
             self.base_config.grating_material = mat_name[:-3]

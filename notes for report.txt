@@ -40,6 +40,8 @@ choice of crystaline silicon for the film, short circuit current, solar spectrum
 
 Discuss other papers broadband performance, and comb aliasing perhaps
 
+Yablonovitch limit
+
   ### 1. The 10 Harmonics & 1000 nm Period (Feature Size)
 
   If your grating period (Λ) is 1000 nm, 10 harmonics means your geometry is built using spatial frequencies up to 10 × (2π/1000).

@@ -22,16 +22,16 @@ nvidia-smi
 # ==============================================================================
 # Pipeline Toggles
 # ==============================================================================
-TRAIN_FORWARD=true
-TRAIN_INVERSE=false
+TRAIN_FORWARD=false
+TRAIN_INVERSE=true
 
-EVAL_DATASET_BASELINE=false
-EVAL_FORWARD=false
-EVAL_INVERSE=false
-EVAL_GENERALIZATION=false
-EVAL_SURROGATE_OPT=false
+EVAL_DATASET_BASELINE=true
+EVAL_FORWARD=true
+EVAL_INVERSE=true
+EVAL_GENERALIZATION=true
+EVAL_SURROGATE=true
 EVAL_INVERSE_OPT=true
-TRAIN_ACTIVE_LEARNING=false
+TRAIN_ACTIVE_LEARNING=true
 EVAL_IMPLICIT=true
 # ==============================================================================
 # Model Architecture Hyperparameters
@@ -128,11 +128,11 @@ if [ "$TRAIN_FORWARD" = true ]; then
     echo -e "\n=== Starting Forward Training ==="
     uv run python train_forward.py \
         --data_dir ../Data \
-        --dataset_prefixes LHS_Dataset LHS_Dataset_Deep \
+        --dataset_prefixes LHS_Dataset \
         --materials Si TiO2 Si3N4 \
         --target_key all_film \
         --epochs 2000 \
-        --batch_size 1024 \
+        --batch_size 768 \
         --lr 2e-3 \
         --patience 200 \
         --val_split 0.05 \
@@ -166,11 +166,11 @@ if [ "$TRAIN_INVERSE" = true ]; then
     echo -e "\n=== Starting Inverse Training ==="
     uv run python train_inverse.py \
         --data_dir ../Data \
-        --dataset_prefixes LHS_Dataset LHS_Dataset_Deep \
+        --dataset_prefixes LHS_Dataset \
         --materials Si TiO2 Si3N4 \
         --target_key all_film \
         --epochs 2000 \
-        --batch_size 1024 \
+        --batch_size 768 \
         --lr 2e-3 \
         --patience 200 \
         --val_split 0.05 \
@@ -199,30 +199,19 @@ if [ "$EVAL_DATASET_BASELINE" = true ]; then
     uv run python evaluate_dataset_baseline.py --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4
 fi
 
-if [ "$EVAL_INVERSE_OPT" = true ]; then
-    echo -e "\n=== Evaluating Inverse Model Optimization (Latent/Target Space) ==="
-    uv run python evaluate_inverse_optimization.py \
-        --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4 \
-        --steps 1000 \
-        --h_val 2000 \
-        --inc_val 1e-3
-fi
 
 if [ "$TRAIN_ACTIVE_LEARNING" = true ]; then
-    echo -e "\n=== Cleaning Old Active Learning Data ==="
-    rm -rf ../Data/Active_Learning_Dataset
-    
     echo -e "\n=== Running Active Learning ==="
     uv run python train_active_learning.py \
         --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4 \
         --mode geometry \
-        --iterations 5 \
-        --proposals_per_mat 8 \
-        --restarts 1000 \
-        --steps 300 \
-        --h_val 2000 \
+        --iterations 3 \
+        --proposals_per_mat 4 \
+        --restarts 3000 \
+        --steps 500 \
+        --h_val 1500 2500 \
         --inc_val 1e-3 \
-        --expand_amps 40.0
+        --expand_amps 50.0
 fi
 
 if [ "$EVAL_FORWARD" = true ]; then
@@ -240,10 +229,10 @@ fi
 
 if [ "$EVAL_SURROGATE" = true ]; then
     echo -e "\n=== Evaluating Surrogate Optimization (Geometry) ==="
-    uv run python evaluate_surrogate_optimization.py --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4 --mode geometry --restarts 10000 --steps 300 --h_val 2000 --inc_val 1e-3 --expand_amps 40.0
+    uv run python evaluate_surrogate_optimization.py --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4 --mode geometry --restarts 3000 --steps 500 --h_val 2000 --inc_val 1e-3 --expand_amps 50.0
     
     echo -e "\n=== Evaluating Surrogate Optimization (Differential Evolution) ==="
-    uv run python evaluate_surrogate_optimization.py --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4 --mode de --restarts 10000 --steps 300 --h_val 2000 --inc_val 1e-3 --expand_amps 40.0
+    uv run python evaluate_surrogate_optimization.py --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4 --mode de --restarts 3000 --steps 500 --h_val 2000 --inc_val 1e-3 --expand_amps 50.0
 fi
 
 if [ "$EVAL_INVERSE" = true ]; then
@@ -254,6 +243,15 @@ fi
 if [ "$EVAL_IMPLICIT" = true ]; then
     echo -e "\n=== Evaluating Implicit Models ==="
     uv run python evaluate_implicit_model.py --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4
+fi
+
+if [ "$EVAL_INVERSE_OPT" = true ]; then
+    echo -e "\n=== Evaluating Inverse Model Optimization (Latent/Target Space) ==="
+    uv run python evaluate_inverse_optimization.py \
+        --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4 \
+        --steps 1000 \
+        --h_val 2000 \
+        --inc_val 1e-3
 fi
 
 echo "Job completed at $(date)"
