@@ -192,7 +192,7 @@ def main():
     # Bounds for the 15 parameters
     # x = [h, a1..a7, p1..p7]
     bounds = [
-        (1000.0, 3000.0),  # h (nm)
+        (500.0, 4000.0),  # h (nm)
     ]
     bounds += [(0.0, 30.0)] * 7    # amps (nm)
     bounds += [(0.0, 2*np.pi)] * 7 # phases (rad)

@@ -23,7 +23,7 @@ echo "=== Starting Naive Torcwa Optimization ==="
 echo "Material: $MAT_NAME"
 echo "Resolution: 10 nm (81 wavelengths)"
 echo "Method: L-BFGS-B (Gradients via Finite Difference)"
-echo "Budget: 1000 Torcwa evaluations"
+echo "Budget: 300 Torcwa evaluations"
 echo "Queue: gpul40s"
 echo "========================================="
 
@@ -32,7 +32,7 @@ echo "=== Phase 1: Penalized Optimization ==="
 uv run python evaluate_naive_optimization.py \
     --material $MAT_NAME \
     --method lbfgs \
-    --max_evals 1000 \
+    --max_evals 300 \
     --out_dir Naive_Optimization_Penalized \
     --penalty
 
@@ -41,7 +41,7 @@ echo "=== Phase 2: Unrestrained Optimization ==="
 uv run python evaluate_naive_optimization.py \
     --material $MAT_NAME \
     --method lbfgs \
-    --max_evals 1000 \
+    --max_evals 300 \
     --out_dir Naive_Optimization_Unrestrained
 
 echo "=== Naive Torcwa Optimization Complete for $MAT_NAME ==="
