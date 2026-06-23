@@ -1,11 +1,11 @@
 \section{Methods and theory}
 \label{sec:methods}
 % Introduction to methods chosen here.
-\subsection{Rigorous coupled wave analysis}
+\subsection{Rigorous Coupled Wave Analysis}
 \label{classical_solvers}
-This subsection will introduce the concept of rigorous coupled wave analysis (RCWA), a method in numerical photonics suited well
+This subsection will introduce the concept of Rigorous Coupled Wave Analysis (RCWA), a method in numerical photonics suited well
 for stacked periodic structures in the x and y axis with a period $\Lambda_x,\Lambda_y$ respectively, and where each layer is homogeneous in the z-direction\cite{torcwa}.
-The structure's optical properties are completely described by the relative permitivity and relative permeability of each layer, meaning that each structure
+The structure's optical properties are completely described by the relative permitivity $\epsilon$ and relative permeability $\mu$ of each layer, meaning that each structure
 will have a geometry described by
 \begin{equation}
 \label{eq:permittivity_periodicity}
@@ -17,17 +17,72 @@ and
 \mu(x,y,z)_N = \mu(x + m \cdot \Lambda_x, y + n \cdot \Lambda_y)_N, m,n \in \mathbb{Z},
 \end{equation}
 where $m$ and $n$ are integers and the subscript $N$ denotes the $N$'th layer of the structure. For the entirety of this project, the designed
-fourier patterned light trapping layers will be designed using silicon ($Si$), Titanium Dioxide ($TiO_2$) and Silicon Nitride ($Si_3N_4$), which
-are all nonmagnetic, so the relative permeability $\mu = 1$. The equations solved for are of course the Maxwell equations, namely Faraday's law
+fourier patterned light trapping layers will be designed using crystalline silicon ($Si$), Titanium Dioxide ($TiO_2$) and Silicon Nitride ($Si_3N_4$), which
+are all nonmagnetic, so the relative permeability $\mu = 1$. In general, $\epsilon$ and $\mu$ will be $3 \times 3$ tensors, but for isotropic and linear materials this is 
+a bit simpler. The equations solved for are of course the Maxwell equations, namely Faraday's law
 \begin{equation}
 \label{eq:faraday}
-\nabla \times \mathbf{E} = -\mu_0\mu(x,y)\mathbf{H}
+\nabla \times \mathbf{E} = -\mu_0\mu(x,y)\frac{\partial\mathbf{H}}{\partial t}
 \end{equation}
 and Ampere's law
 \begin{equation}
 \label{eq:ampere}
-\nabla \times \mathbf{H} = \epsilon_0\epsilon(x,y)\mathbf{E}
+\nabla \times \mathbf{H} = \epsilon_0\epsilon(x,y)\frac{\partial\mathbf{E}}{\partial t},
 \end{equation}
+Where $\epsilon_0$ and $\mu_0$ are the vacuum permitivity and vacuum permeability respectively. The structures are assumed free of charge and current,
+$$
+\nabla \cdot (\epsilon \mathbf{E}) = 0
+$$
+and
+$$
+\nabla \cdot (\mu \mathbf{H}) = 0.
+$$
+At a single frequency, the time dependency of Maxwell's equations may be solved by plane waves, see \cite{griffiths} section 9.2.1 for example,
+meaning
+\begin{equation}
+\label{eq:planewaveE}
+\mathbf{E} = \mathbf{E}_0 \exp{i(\mathbf{k}\cdot\mathbf{r} - \omega t)}
+\end{equation}
+and
+\begin{equation}
+\label{eq:planewaveH}
+\mathbf{H} = \mathbf{H}_0 \exp{i(\mathbf{k}\cdot\mathbf{r} - \omega t)},
+\end{equation}
+Where $\mathbf{E}_0$ and $\mathbf{H}_0$ are the (complex) amplitudes of the fields, with the physical fields being the real parts of
+$\mathbf{E}$ and $\mathbf{H}$, $\mathbf{k}$ being the wavevector, i.e. the spatial frequency, and $\omega$ being the frequency of the fields, also given by the dispersion relation
+$\omega = \frac{c|\mathbf{k}|}{n(\lambda)}$, where $\lambda$ is the wavelength of the light.
+
+Inserting equations \ref{eq:planewaveE} and \ref{eq:planewaveH} in equations \ref{eq:faraday} and \ref{eq:ampere} converts the time derivative to
+an algebraic factor of $-i\omega t$, meaning that the equations appear in their time harmonic form, common to many frequency domain numerical methods in photonics,
+\begin{equation}
+\label{eq:THfaraday}
+\nabla \times \mathbf{E} = i\omega\mu_0\mu(x,y)\mathbf{H}
+\end{equation}
+\begin{equation}
+\label{eq:THampere}
+\nabla \times \mathbf{H} = -i\omega\mu_0\mu(x,y)\mathbf{E}.
+\end{equation}
+Owing to the periodicity of the system, see equations \ref{eq:permittivity_periodicity} and  \ref{eq:permeability_periodicity}, both the electromagnetic fields and the permitivity and permeability may
+be written as fourier series in the x- and y-directions as below,
+\begin{equation}
+\label{eq:fourierPermitivity}
+\epsilon(x,y) = \sum_{m=-M}^{M}\sum_{n=-N}^{N}\epsilon_{m,n}\exp{i(mL_xx+nL_yy)},
+\end{equation}
+\begin{equation}
+\label{eq:fourierPermeability}
+\mu(x,y) = \sum_{m=-M}^{M}\sum_{n=-N}^{N}\mu_{m,n}\exp{i(mL_xx+nL_yy)},
+\end{equation}
+\begin{equation}
+\label{eq:fourierFaraday}
+\mathbf{E} = \exp{i\mathbf{k}\cdot\mathbf{r}}\sum_{m=-M}^{M}\sum_{n=-N}^{N}\mathbf{E}_{m,n}\exp{i(mL_xx+nL_yy)},
+\end{equation}
+\begin{equation}
+\label{eq:fourierAmpere}
+\mathbf{H} = \exp{i\mathbf{k}\cdot\mathbf{r}}\sum_{m=-M}^{M}\sum_{n=-N}^{N}\mathbf{H}_{m,n}\exp{i(mL_xx+nL_yy)},
+\end{equation}
+where $L_x = \frac{2\pi}{\Lambda_x}$ and $L_y = \frac{2\pi}{\Lambda_y}$, 
+and the parameters $\epsilon_{m,n}, \mu_{m,n}, \mathbf{E}_{m,n}$ and $\mathbf{H}_{m,n}$ are the fourier amplitudes of the $m,n$'th diffraction order.
+
 
 
 % Detail the rigorous coupled-wave analysis (Torcwa) and any classical optimization approaches used for data generation or baseline comparisons.

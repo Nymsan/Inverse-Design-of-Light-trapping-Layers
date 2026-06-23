@@ -24,12 +24,7 @@ from Utils.models import GratingDataset, MATERIAL_LIBRARY
 
 WAVELENGTHS = np.linspace(300, 1100, 161)
 
-rcwa_config_dict = {
-    'grating_period': 1000.0,
-    'order_N': 15,
-    'nx': 128,
-    'height_per_layer': 5.0,
-}
+
 
 def get_random_bands():
     """Generate a random target band for active learning discovery."""
@@ -46,7 +41,16 @@ def evaluate_oracle(geometries: torch.Tensor, mat_name: str, stats: dict, device
     n_samples = geometries.shape[0]
     n_harmonics = stats["n_harmonics"]
     n_fourier = n_harmonics * 2
-    
+
+    # Extract config from first available dataset batch
+    rcwa_config_dict = {}
+    try:
+        prefix = stats.get("dataset_prefixes", ["LHS_Dataset"])[0]
+        mat_dir = PROJECT_ROOT / "Data" / f"{prefix}_{mat_name}"
+        first_batch = next(mat_dir.glob("batch_*.pt"))
+        rcwa_config_dict = torch.load(first_batch, map_location="cpu", weights_only=False).get("metadata", {}).get("config", {})
+    except StopIteration:
+        pass
     base_config = RCWAConfig(**rcwa_config_dict)
     if mat_name.endswith("_Ag"):
         base_config.grating_material = mat_name[:-3]
@@ -204,7 +208,7 @@ def main():
     parser.add_argument('--ckpt_dir', type=str, default="Checkpoints/Si_TiO2_Si3N4", help="Directory containing the forward surrogate")
     parser.add_argument('--al_iter', type=int, default=-1, help="Active learning iteration of surrogate to use (-1 for latest, 0 for base)")
     parser.add_argument('--force_forward_model', type=str, default=None, help="Force active learning to use a specific forward model (e.g. skip_cnn.pt)")
-    parser.add_argument('--h_val', type=float, default=None, help="Constrain the active learning exploration to a specific height (nm)")
+    parser.add_argument('--h_val', nargs="+", type=float, default=None, help="Constrain the active learning exploration to a specific height (nm) or range (min max)")
     parser.add_argument('--inc_val', type=float, default=None, help="Constrain the active learning exploration to a specific incident angle (degrees)")
     parser.add_argument('--expand_amps', type=float, default=None, help="Temporarily expand the maximum amplitude bounds (e.g., to 25.0 nm) for Active Learning")
     args = parser.parse_args()

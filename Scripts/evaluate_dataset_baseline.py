@@ -34,7 +34,7 @@ def parse_args():
     p.add_argument("--ckpt_dir", required=True, help="Path to checkpoint directory")
     p.add_argument("--top_k", type=int, default=1, help="Number of top structures to show per material")
     p.add_argument("--bands", nargs="+", type=float, help="Pairs of wavelength bands to evaluate, e.g., --bands 500 750 800 900")
-    p.add_argument("--h_val", type=float, help="Target height in nm")
+    p.add_argument("--h_val", nargs="+", type=float, help="Target height in nm, or range (min max)")
     p.add_argument("--h_tolerance", type=float, default=0.5, help="Tolerance for height matching")
     p.add_argument("--inc_val", type=float, default=None, help="Target incident angle in degrees (e.g., 0.0 for normal)")
     p.add_argument("--inc_tolerance", type=float, default=0.5, help="Tolerance for incident angle matching")
@@ -75,7 +75,7 @@ def get_dataset_baseline(ckpt_dir: Path, bands=None, h_val=None, h_tolerance=0.5
             inc_ang = data["inc_ang"]
             
             # Use normal incidence if explicitly requested, otherwise use oblique and filter
-            if inc_val is not None and inc_val == 0.0:
+            if inc_val is not None and inc_val <= 1e-3:
                 A_film = data["A_film_normal"]
                 inc_ang_eff = torch.zeros_like(inc_ang)
             else:
@@ -86,8 +86,12 @@ def get_dataset_baseline(ckpt_dir: Path, bands=None, h_val=None, h_tolerance=0.5
             
             valid_mask = (batch_targets.max(dim=1).values <= 1.05)
             if h_val is not None:
-                valid_mask &= (torch.abs(h - h_val) <= h_tolerance)
-            if inc_val is not None and inc_val != 0.0:
+                if isinstance(h_val, list) and len(h_val) == 2:
+                    valid_mask &= (h >= h_val[0]) & (h <= h_val[1])
+                else:
+                    h_target = h_val[0] if isinstance(h_val, list) else h_val
+                    valid_mask &= (torch.abs(h - h_target) <= h_tolerance)
+            if inc_val is not None and inc_val > 1e-3:
                 valid_mask &= (torch.abs(inc_ang - inc_val) <= inc_tolerance)
             
             if not valid_mask.any():
@@ -108,7 +112,14 @@ def get_dataset_baseline(ckpt_dir: Path, bands=None, h_val=None, h_tolerance=0.5
         geos = torch.cat(all_geos, dim=0)
         
         num_matched = len(targets)
-        h_str = f"h={h_val}±{h_tolerance}nm" if h_val is not None else "all heights"
+        if h_val is not None:
+            if isinstance(h_val, list) and len(h_val) == 2:
+                h_str = f"h=[{h_val[0]}, {h_val[1]}]nm"
+            else:
+                h_target = h_val[0] if isinstance(h_val, list) else h_val
+                h_str = f"h={h_target}±{h_tolerance}nm"
+        else:
+            h_str = "all heights"
         band_str = "matched bands" if bands else "full spectrum"
         print(f"[{mat_name}] Dataset Baseline: Found {num_matched} valid structures for {h_str} in {band_str}.")
         
@@ -217,7 +228,7 @@ def main():
                 ax_xs = axes[i, 2]
                 ax_xs.plot(r_grid, prof, "k-", lw=2)
                 ax_xs.fill_between(r_grid, 0, prof, color="tab:blue", alpha=0.3)
-                ax_xs.set_title(f"Structure (h={h_nm:.0f}nm, inc={inc_ang:.1f}°)", fontsize=14)
+                ax_xs.set_title(f"Structure (Film Height={h_nm:.0f}nm, Inc Ang={inc_ang:.1f}°)", fontsize=14)
                 ax_xs.set_ylim(0, max(120, grating_height * 1.2))
                 ax_xs.set_xlim(0, 1000)
                 ax_xs.set_ylabel("Thickness (nm)")
