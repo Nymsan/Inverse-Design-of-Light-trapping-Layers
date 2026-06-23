@@ -58,7 +58,11 @@ def plot_loss_curves(all_history: dict, save_path: str):
             continue
         epochs = range(1, len(hist["train_loss"]) + 1)
         ax.semilogy(epochs, hist["train_loss"], label="Train", alpha=0.8)
-        ax.semilogy(epochs, hist["val_loss"], label="Val", alpha=0.8)
+        if "val_loss" in hist:
+            val_epochs = range(1, len(hist["val_loss"]) + 1)
+            # If val_loss matches train_loss length exactly, plot them together. Otherwise just plot the available points
+            marker = "o" if len(hist["val_loss"]) == 1 else None
+            ax.semilogy(val_epochs, hist["val_loss"], label="Val", alpha=0.8, marker=marker)
         ax.set_xlabel("Epoch")
         ax.set_ylabel("Combined Loss")
         ax.set_title(name.replace("_", " ").title())
@@ -107,7 +111,7 @@ def plot_forward_parity(models: dict[str, nn.Module], val_loader, save_path: str
 
 
 @torch.no_grad()
-def plot_spectrum_samples(models: dict[str, nn.Module], val_loader, save_path: str, n_wavelengths: int):
+def plot_spectrum_samples(models: dict[str, nn.Module], val_loader, save_path: str, n_wavelengths: int, n_harmonics: int):
     if not models:
         return
     batch = next(iter(val_loader))
@@ -115,8 +119,13 @@ def plot_spectrum_samples(models: dict[str, nn.Module], val_loader, save_path: s
     
     selected_indices = []
     mat_counts = {}
-    for idx, m_id in enumerate(mat.numpy()):
-        m_id = m_id.item()
+    import random
+    indices = list(range(len(mat.numpy())))
+    random.seed(42)  # For reproducibility across models
+    random.shuffle(indices)
+    
+    for idx in indices:
+        m_id = mat[idx].item()
         if mat_counts.get(m_id, 0) < 2:
             selected_indices.append(idx)
             mat_counts[m_id] = mat_counts.get(m_id, 0) + 1
@@ -134,7 +143,7 @@ def plot_spectrum_samples(models: dict[str, nn.Module], val_loader, save_path: s
     colors = plt.cm.viridis(np.linspace(0, 1, len(models)))
 
     for (name, model), color in zip(models.items(), colors):
-        fig, axes = plt.subplots(n_samples, 4, figsize=(20, 3 * n_samples), squeeze=False, layout="constrained")
+        fig, axes = plt.subplots(n_samples, 5, figsize=(25, 3 * n_samples), squeeze=False, layout="constrained")
         
         for i, idx in enumerate(selected_indices):
             pred = model(geo[idx:idx+1], mat[idx:idx+1])
@@ -172,6 +181,35 @@ def plot_spectrum_samples(models: dict[str, nn.Module], val_loader, save_path: s
                     ax_err.set_title(f"Error ({pol_label})")
                 if i == n_samples - 1:
                     ax_err.set_xlabel("Wavelength (nm)")
+
+            # Plot Parameters
+            ax_geo = axes[i, 4]
+            h_val = geo[idx, -2].item()
+            inc_val = geo[idx, -1].item()
+            
+            n_fourier = n_harmonics * 2
+            amps = geo[idx, :n_harmonics].numpy()
+            phases = geo[idx, n_harmonics:n_fourier].numpy()
+            x_pos = np.arange(1, n_harmonics + 1)
+            
+            cmap = plt.get_cmap("viridis")
+            c_amp = cmap(0.3)
+            c_phase = cmap(0.9)
+            
+            ax_geo.bar(x_pos, amps, color=c_amp, edgecolor="black")
+            ax_geo.set_ylabel("Amplitude (nm)", color=c_amp, fontsize=10)
+            ax_geo.tick_params(axis='y', labelcolor=c_amp, labelsize=9)
+            ax_geo.tick_params(axis='x', labelsize=9)
+            
+            ax_p2 = ax_geo.twinx()
+            ax_p2.plot(x_pos, phases, 'o', color=c_phase, markersize=5, markeredgecolor="black")
+            ax_p2.set_ylabel("Phase (rad)", color=c_phase, fontsize=10)
+            ax_p2.tick_params(axis='y', labelcolor=c_phase, labelsize=9)
+            ax_p2.set_ylim(-0.5, 2 * np.pi + 0.5)
+            
+            ax_geo.set_title(f"h: {h_val:.0f}nm, inc: {inc_val:.0f}°", fontsize=11)
+            if i == n_samples - 1:
+                ax_geo.set_xlabel("Harmonic index")
 
         model_save_path = save_path.replace(".png", f"_{name}.png")
         plt.savefig(model_save_path)
@@ -266,9 +304,9 @@ def main():
     if forward_models:
         plot_forward_parity(forward_models, val_loader,
                            str(eval_dir / "forward_parity.png"), n_wavelengths)
-        plot_spectrum_samples(forward_models, val_loader,
-                             str(eval_dir / "forward_spectrum_samples.png"), n_wavelengths)
-
+        plot_spectrum_samples(
+            forward_models, val_loader, str(eval_dir / "forward_predictions.png"), n_wavelengths, n_harmonics
+        )
         print("\nComputing metrics...")
         metrics = compute_metrics(forward_models, val_loader, n_wavelengths)
         for name, m in metrics.items():

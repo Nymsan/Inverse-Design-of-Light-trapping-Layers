@@ -67,10 +67,10 @@ def get_lhs_samples(num_samples, n_harmonics=5, seed=42):
     sample = sampler.random(n=num_samples)
     
     # Map from [0, 1] to physical bounds
-    h = 1000 + 2000 * sample[:, 0]                         # 1000 nm to 3000 nm
-    inc_ang = 0 + 45 * sample[:, 1]                        # 0 to 45 degrees
+    h = 500 + 3500 * sample[:, 0]                          # 500 nm to 4000 nm (Covers extreme thin-film to deep bulk)
+    inc_ang = 0 + 60 * sample[:, 1]                        # 0 to 60 degrees (Realistic solar incidence range)
     
-    amps   = 0 + 15 * sample[:, 2:2+n_harmonics]           # 0 to 15 nm for each harmonic
+    amps   = 0 + 30 * sample[:, 2:2+n_harmonics]           # 0 to 30 nm per harmonic (Average physical depth n_harmonics * 30nm, max n_harmonics*60)
     phases = 0 + 2 * np.pi * sample[:, 2+n_harmonics:d]    # 0 to 2π for each phase
     
     return h, inc_ang, amps, phases
@@ -130,11 +130,13 @@ def main():
                         help="Disable subpixel smoothing")
     parser.add_argument('--seed', type=int, default=42,
                         help="Random seed for LHS sampling")
+    parser.add_argument('--dataset_name', type=str, default='LHS_Dataset',
+                        help="Prefix for the dataset folder name (e.g. LHS_Dataset_Deep)")
     
     args = parser.parse_args()
     
     reflector_str = f"_{args.reflector_type}" if args.reflector_type != 'pec' else ""
-    out_dir = os.path.join(project_root, 'Data', f'LHS_Dataset_{args.grating_material}{reflector_str}')
+    out_dir = os.path.join(project_root, 'Data', f'{args.dataset_name}_{args.grating_material}{reflector_str}')
     os.makedirs(out_dir, exist_ok=True)
     
     # Wavelengths: 300 to 1100 nm in 5 nm steps (161 steps)
