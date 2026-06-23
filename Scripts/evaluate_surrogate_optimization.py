@@ -81,7 +81,7 @@ def main():
         print("\n=> ERROR: No forward models found in Checkpoints directory!")
         return
     
-    print(f"Loaded {Path(fwd_name).name} for surrogate optimization (MAE: {test_loss:.4f})")
+    print(f"Loaded {Path(fwd_name).name} for surrogate optimization (test loss: {test_loss:.4f})")
     
     
     print(f"\nRunning Surrogate Optimization ({args.mode} mode) ...")

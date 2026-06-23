@@ -5,4 +5,9 @@ A.~Author and B.~Writer.
 \newblock A study on light-trapping nanostructures.
 \newblock {\em Journal of Nanophotonics}, 10:1--10, 2026.
 
+\bibitem{torcwa}
+Changhyun Kim and Byoungho Lee.
+\newblock Torcwa: Gpu-accelerated fourier modal method and gradient-based optimization for metasurface design.
+\newblock {\em Computer Physics Communications}, 282:108552, 2023.
+
 \end{thebibliography}

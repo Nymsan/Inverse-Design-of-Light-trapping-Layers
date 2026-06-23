@@ -1,7 +1,9 @@
 \contentsline {section}{\numberline {1}Introduction}{2}{section.1}%
-\contentsline {section}{\numberline {2}Methods}{2}{section.2}%
-\contentsline {subsection}{\numberline {2.1}RCWA and Classical Solvers}{2}{subsection.2.1}%
+\contentsline {section}{\numberline {2}Methods and theory}{2}{section.2}%
+\contentsline {subsection}{\numberline {2.1}Rigorous coupled wave analysis}{2}{subsection.2.1}%
 \contentsline {subsection}{\numberline {2.2}Machine Learning Surrogates}{2}{subsection.2.2}%
 \contentsline {subsection}{\numberline {2.3}Optimization Strategies}{2}{subsection.2.3}%
 \contentsline {section}{\numberline {3}Results}{2}{section.3}%
-\contentsline {section}{\numberline {4}Conclusion}{2}{section.4}%
+\contentsline {section}{\numberline {4}Discussion}{2}{section.4}%
+\contentsline {section}{\numberline {5}Outlook}{2}{section.5}%
+\contentsline {section}{\numberline {6}Conclusion}{2}{section.6}%
