@@ -588,7 +588,7 @@ def plot_fields(sim, x_plot, z_plot, wavelength, polarization, params_x, params_
 
 def generate_test_batch(stats, n_samples_per_mat=100):
     
-    materials = list(stats["materials"].keys())
+    materials = stats["materials"] if isinstance(stats["materials"], list) else list(stats["materials"].keys())
     target_key = stats["target_key"]
     
     test_dir = Path(__file__).resolve().parent.parent / "Data" / "Test_Data"

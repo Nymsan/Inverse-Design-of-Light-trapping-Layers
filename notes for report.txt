@@ -38,6 +38,8 @@ gumbel softmax for differentiable material choice instead of argmax.
 
 choice of crystaline silicon for the film, short circuit current, solar spectrum, and poynting vector analysis for absorptance only inside the silicon - i.e. why parasitic absorptance in the backreflector doesnt matter. Beer lambert law for thicker film absorption? 
 
+Discuss other papers broadband performance, and comb aliasing perhaps
+
   ### 1. The 10 Harmonics & 1000 nm Period (Feature Size)
 
   If your grating period (Λ) is 1000 nm, 10 harmonics means your geometry is built using spatial frequencies up to 10 × (2π/1000).

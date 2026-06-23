@@ -85,9 +85,9 @@ class TorcwaObjective:
         if requires_grad:
             x_tensor = torch.tensor(x, dtype=torch.float32, device=self.device, requires_grad=True)
             h = x_tensor[0]
-            inc_ang = x_tensor[1]
-            amps = x_tensor[2:7]
-            phases = x_tensor[7:12]
+            inc_ang = 0.0
+            amps = x_tensor[1:8]
+            phases = x_tensor[8:15]
             px = torch.stack([amps, phases], dim=1)
         else:
             h, inc_ang, px = self._vector_to_tensors(x)
@@ -263,19 +263,20 @@ def main():
             else:
                 print("Budget exhausted, skipping L-BFGS-B.")
 
-        # Final evaluation on FULL wavelengths to get the complete curve for plotting
-        obj.eval_wavelengths = torch.tensor(WAVELENGTHS, dtype=torch.float64, device=device)
+        # Final evaluation on TRUE FULL wavelengths to get the complete curve for plotting and avoid comb-aliasing
+        TRUE_WAVELENGTHS = np.linspace(300, 1100, 161) + 1e-3
+        obj.eval_wavelengths = torch.tensor(TRUE_WAVELENGTHS, dtype=torch.float64, device=device)
         _, sim_curve = obj.evaluate(best_x)
-        rcwa_p = sim_curve[:len(WAVELENGTHS)].cpu().numpy()
-        rcwa_s = sim_curve[len(WAVELENGTHS):].cpu().numpy()
+        rcwa_p = sim_curve[:len(TRUE_WAVELENGTHS)].cpu().numpy()
+        rcwa_s = sim_curve[len(TRUE_WAVELENGTHS):].cpu().numpy()
         
         # Calculate in-band average absorptance
         if bands:
-            mask = np.zeros(len(WAVELENGTHS), dtype=bool)
+            mask = np.zeros(len(TRUE_WAVELENGTHS), dtype=bool)
             for bmin, bmax in bands:
-                mask |= (WAVELENGTHS >= bmin) & (WAVELENGTHS <= bmax)
+                mask |= (TRUE_WAVELENGTHS >= bmin) & (TRUE_WAVELENGTHS <= bmax)
         else:
-            mask = np.ones(len(WAVELENGTHS), dtype=bool)
+            mask = np.ones(len(TRUE_WAVELENGTHS), dtype=bool)
             
         rcwa_avg_abs = float((np.mean(rcwa_p[mask]) + np.mean(rcwa_s[mask])) / 2.0)
         
@@ -311,17 +312,17 @@ def main():
         geo_t = torch.tensor(r["geometry"])
         
         # Plotting uses a padded array to visualize the target visually
-        plot_target = np.zeros(len(WAVELENGTHS))
+        plot_target = np.zeros(len(TRUE_WAVELENGTHS))
         if bands:
             for bmin, bmax in bands:
-                plot_target[(WAVELENGTHS >= bmin) & (WAVELENGTHS <= bmax)] = 1.0
+                plot_target[(TRUE_WAVELENGTHS >= bmin) & (TRUE_WAVELENGTHS <= bmax)] = 1.0
         else:
-            plot_target = np.ones(len(WAVELENGTHS))
+            plot_target = np.ones(len(TRUE_WAVELENGTHS))
             
         # P-Pol
         ax = ax_row[0]
-        ax.plot(WAVELENGTHS, plot_target, "k-", lw=2, label="Target")
-        ax.plot(WAVELENGTHS, r["curve_p"], linestyle="-", color=c_physics, lw=2, label="Torcwa")
+        ax.plot(TRUE_WAVELENGTHS, plot_target, "k-", lw=2, label="Target")
+        ax.plot(TRUE_WAVELENGTHS, r["curve_p"], linestyle="-", color=c_physics, lw=2, label="Torcwa")
         if bands:
             for bmin, bmax in bands:
                 ax.axvspan(bmin, bmax, color="gray", alpha=0.2)
@@ -334,8 +335,8 @@ def main():
         
         # S-Pol
         ax = ax_row[1]
-        ax.plot(WAVELENGTHS, plot_target, "k-", lw=2, label="Target")
-        ax.plot(WAVELENGTHS, r["curve_s"], linestyle="-", color=c_physics, lw=2, label="Torcwa")
+        ax.plot(TRUE_WAVELENGTHS, plot_target, "k-", lw=2, label="Target")
+        ax.plot(TRUE_WAVELENGTHS, r["curve_s"], linestyle="-", color=c_physics, lw=2, label="Torcwa")
         if bands:
             for bmin, bmax in bands:
                 ax.axvspan(bmin, bmax, color="gray", alpha=0.2)

@@ -23,14 +23,15 @@ nvidia-smi
 # Pipeline Toggles
 # ==============================================================================
 TRAIN_FORWARD=true
-TRAIN_INVERSE=true
+TRAIN_INVERSE=false
 
-RUN_ACTIVE_LEARNING=true
-EVAL_FORWARD=true
-EVAL_DATASET_BASELINE=true
-EVAL_GENERALIZATION=true
-EVAL_SURROGATE=true
-EVAL_INVERSE=true
+EVAL_DATASET_BASELINE=false
+EVAL_FORWARD=false
+EVAL_INVERSE=false
+EVAL_GENERALIZATION=false
+EVAL_SURROGATE_OPT=false
+EVAL_INVERSE_OPT=true
+TRAIN_ACTIVE_LEARNING=false
 EVAL_IMPLICIT=true
 # ==============================================================================
 # Model Architecture Hyperparameters
@@ -198,7 +199,16 @@ if [ "$EVAL_DATASET_BASELINE" = true ]; then
     uv run python evaluate_dataset_baseline.py --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4
 fi
 
-if [ "$RUN_ACTIVE_LEARNING" = true ]; then
+if [ "$EVAL_INVERSE_OPT" = true ]; then
+    echo -e "\n=== Evaluating Inverse Model Optimization (Latent/Target Space) ==="
+    uv run python evaluate_inverse_optimization.py \
+        --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4 \
+        --steps 1000 \
+        --h_val 2000 \
+        --inc_val 1e-3
+fi
+
+if [ "$TRAIN_ACTIVE_LEARNING" = true ]; then
     echo -e "\n=== Cleaning Old Active Learning Data ==="
     rm -rf ../Data/Active_Learning_Dataset
     
@@ -211,7 +221,7 @@ if [ "$RUN_ACTIVE_LEARNING" = true ]; then
         --restarts 1000 \
         --steps 300 \
         --h_val 2000 \
-        --inc_val 0.0 \
+        --inc_val 1e-3 \
         --expand_amps 40.0
 fi
 
@@ -230,10 +240,10 @@ fi
 
 if [ "$EVAL_SURROGATE" = true ]; then
     echo -e "\n=== Evaluating Surrogate Optimization (Geometry) ==="
-    uv run python evaluate_surrogate_optimization.py --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4 --mode geometry --restarts 10000 --steps 300 --h_val 2000 --inc_val 0.0 --expand_amps 40.0
+    uv run python evaluate_surrogate_optimization.py --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4 --mode geometry --restarts 10000 --steps 300 --h_val 2000 --inc_val 1e-3 --expand_amps 40.0
     
     echo -e "\n=== Evaluating Surrogate Optimization (Differential Evolution) ==="
-    uv run python evaluate_surrogate_optimization.py --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4 --mode de --restarts 10000 --steps 300 --h_val 2000 --inc_val 0.0 --expand_amps 40.0
+    uv run python evaluate_surrogate_optimization.py --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4 --mode de --restarts 10000 --steps 300 --h_val 2000 --inc_val 1e-3 --expand_amps 40.0
 fi
 
 if [ "$EVAL_INVERSE" = true ]; then
