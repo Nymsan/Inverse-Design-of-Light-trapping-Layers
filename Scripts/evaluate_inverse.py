@@ -135,7 +135,7 @@ def plot_model_dashboard(
     
     # Setting up the figure
     fig, axes = plt.subplots(n_samples, 4, figsize=(24, 6 * n_samples), squeeze=False, layout="constrained")
-    mat_names = list(stats["materials"].keys())
+    mat_names = stats["materials"]
     
     n_harmonics = stats["n_harmonics"]
     n_fourier = n_harmonics * 2
@@ -344,7 +344,7 @@ def main():
     n_wavelengths = stats["n_wavelengths"]
     n_harmonics = stats["n_harmonics"]
     
-    mat_names = list(stats["materials"].keys())
+    mat_names = stats["materials"]
     print(f"Loaded Stats: n_continuous={n_continuous}, n_wavelengths={n_wavelengths}, materials={mat_names}")
 
     batch = generate_test_batch(stats)

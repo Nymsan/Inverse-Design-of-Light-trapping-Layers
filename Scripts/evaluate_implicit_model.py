@@ -42,7 +42,7 @@ def main():
     geo_max = stats["geo_max"].to(device)
     n_harmonics = stats["n_harmonics"]
     n_fourier = n_harmonics * 2
-    trained_mats = list(stats["materials"].keys())
+    trained_mats = stats["materials"]
     
     # Load SIREN model specifically
     siren_ckpt = ckpt_dir / "siren.pt"
