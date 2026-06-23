@@ -25,6 +25,13 @@ nvidia-smi
 TRAIN_FORWARD=true
 TRAIN_INVERSE=true
 
+RUN_ACTIVE_LEARNING=true
+EVAL_FORWARD=true
+EVAL_DATASET_BASELINE=true
+EVAL_GENERALIZATION=true
+EVAL_SURROGATE=true
+EVAL_INVERSE=true
+EVAL_IMPLICIT=true
 # ==============================================================================
 # Model Architecture Hyperparameters
 # Adjust these dimensions to control the parameter count / capacity of the models
@@ -119,7 +126,8 @@ uv run python count_params.py \
 if [ "$TRAIN_FORWARD" = true ]; then
     echo -e "\n=== Starting Forward Training ==="
     uv run python train_forward.py \
-        --data_dir ../Data/LHS_Dataset_Si ../Data/LHS_Dataset_TiO2 ../Data/LHS_Dataset_Si3N4 \
+        --data_dir ../Data \
+        --dataset_prefixes LHS_Dataset LHS_Dataset_Deep \
         --materials Si TiO2 Si3N4 \
         --target_key all_film \
         --epochs 2000 \
@@ -127,7 +135,7 @@ if [ "$TRAIN_FORWARD" = true ]; then
         --lr 2e-3 \
         --patience 200 \
         --val_split 0.05 \
-        --skip \
+        --skip cnn transformer\
         --seed 1337 \
         --embed_dim $EMBED_DIM \
         --mlp_hidden_dims $MLP_HIDDEN_DIMS \
@@ -156,7 +164,8 @@ fi
 if [ "$TRAIN_INVERSE" = true ]; then
     echo -e "\n=== Starting Inverse Training ==="
     uv run python train_inverse.py \
-        --data_dir ../Data/LHS_Dataset_Si ../Data/LHS_Dataset_TiO2 ../Data/LHS_Dataset_Si3N4 \
+        --data_dir ../Data \
+        --dataset_prefixes LHS_Dataset LHS_Dataset_Deep \
         --materials Si TiO2 Si3N4 \
         --target_key all_film \
         --epochs 2000 \
@@ -183,6 +192,56 @@ if [ "$TRAIN_INVERSE" = true ]; then
         --cvae_spec_enc_kernel $CVAE_SPEC_ENC_KERNEL \
         --cvae_spec_enc_fc $CVAE_SPEC_ENC_FC \
         --cvae_spec_enc_dropout $CVAE_SPEC_ENC_DROPOUT
+fi
+
+if [ "$EVAL_FORWARD" = true ]; then
+    echo -e "\n=== Evaluating Forward Models ==="
+    uv run python evaluate_forward.py --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4
+fi
+
+if [ "$EVAL_DATASET_BASELINE" = true ]; then
+    echo -e "\n=== Evaluating Dataset Baseline ==="
+    uv run python evaluate_dataset_baseline.py --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4
+fi
+
+if [ "$RUN_ACTIVE_LEARNING" = true ]; then
+    echo -e "\n=== Cleaning Old Active Learning Data ==="
+    rm -rf ../Data/Active_Learning_Dataset
+    
+    echo -e "\n=== Running Active Learning ==="
+    uv run python train_active_learning.py \
+        --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4 \
+        --mode de \
+        --iterations 5 \
+        --proposals_per_mat 8 \
+        --restarts 2000 \
+        --steps 200
+fi
+
+if [ "$EVAL_GENERALIZATION" = true ]; then
+    echo -e "\n=== Evaluating Generalization ==="
+    uv run python evaluate_generalization.py \
+        --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4 \
+        --num_samples 3 \
+        --n_harmonics 10
+fi
+
+if [ "$EVAL_SURROGATE" = true ]; then
+    echo -e "\n=== Evaluating Surrogate Optimization (Geometry) ==="
+    uv run python evaluate_surrogate_optimization.py --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4 --mode geometry --restarts 5000 --steps 300
+    
+    echo -e "\n=== Evaluating Surrogate Optimization (Differential Evolution) ==="
+    uv run python evaluate_surrogate_optimization.py --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4 --mode de --restarts 5000 --steps 300
+fi
+
+if [ "$EVAL_INVERSE" = true ]; then
+    echo -e "\n=== Evaluating Inverse Models ==="
+    uv run python evaluate_inverse.py --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4
+fi
+
+if [ "$EVAL_IMPLICIT" = true ]; then
+    echo -e "\n=== Evaluating Implicit Models ==="
+    uv run python evaluate_implicit_model.py --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4
 fi
 
 echo "Job completed at $(date)"

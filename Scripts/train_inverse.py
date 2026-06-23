@@ -37,7 +37,7 @@ from Utils.models import (
     InverseDecoder, TandemNetwork, GenerativeTandemNetwork,
     GeometryEncoder, GeometryDecoder, SpectrumEncoder, ContrastiveVAE,
     GratingDataset,
-    train_tandem, train_cvae, train_cvae_wishful,
+    train_tandem, train_cvae,
 )
 from Utils.checkpoint import (
     save_inverse_checkpoint, get_best_forward_model,
@@ -46,7 +46,8 @@ from Utils.checkpoint import (
 
 def get_args():
     p = argparse.ArgumentParser()
-    p.add_argument("--data_dir", nargs="+", required=True)
+    p.add_argument("--data_dir", type=str, default="../Data")
+    p.add_argument("--dataset_prefixes", nargs="+", default=["LHS_Dataset"])
     p.add_argument("--materials", nargs="+", default=["Si", "TiO2", "Si3N4"])
     p.add_argument("--batch_size", type=int, default=64)
     p.add_argument("--epochs", type=int, default=100, help="Number of epochs for Tandem/Generative")
@@ -126,21 +127,25 @@ def main():
     if torch.cuda.is_available():
         torch.backends.cudnn.benchmark = True
 
-    data_dirs = {mat: d for mat, d in zip(args.materials, args.data_dir)}
     run_name = "_".join(args.materials)
     ckpt_dir = PROJECT_ROOT / "Checkpoints" / run_name
     ckpt_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"Loading data from: {list(data_dirs.values())}")
+    print(f"Loading data with prefixes: {args.dataset_prefixes}")
     t0 = time.time()
     
     train_files = {mat: [] for mat in args.materials}
     val_files = {mat: [] for mat in args.materials}
     
-    for mat_name, data_dir in data_dirs.items():
-        batch_files = sorted(glob.glob(f"{data_dir}/batch_*.pt"))
+    for mat_name in args.materials:
+        batch_files = []
+        for prefix in args.dataset_prefixes:
+            d_dir = os.path.join(args.data_dir, f"{prefix}_{mat_name}")
+            batch_files.extend(glob.glob(f"{d_dir}/batch_*.pt"))
+            
         if not batch_files:
-            raise FileNotFoundError(f"No batch_*.pt files in {data_dir}")
+            raise FileNotFoundError(f"No batch_*.pt files found for {mat_name} using prefixes {args.dataset_prefixes}")
+        
         random.shuffle(batch_files)
         n_val = max(1, int(len(batch_files) * args.val_split))
         val_files[mat_name] = batch_files[:n_val]

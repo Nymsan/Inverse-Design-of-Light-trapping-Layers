@@ -15,7 +15,7 @@ from scipy.stats import qmc
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from Utils.models import MATERIAL_LIBRARY, N_MATERIALS
+from Utils.models import MATERIAL_LIBRARY, N_MATERIALS, build_profile
 from Utils.utils import get_absorptance_curve, RCWAConfig
 from Utils.checkpoint import load_forward_model, _FORWARD_FILENAMES
 
@@ -54,7 +54,12 @@ def parse_args():
 
 def main():
     args = parse_args()
-    ckpt_dir = Path(args.ckpt_dir)
+    provided_path = Path(args.ckpt_dir)
+    if provided_path.is_absolute() or provided_path.exists():
+        ckpt_dir = provided_path.resolve()
+    else:
+        ckpt_dir = PROJECT_ROOT / args.ckpt_dir
+        
     stats_path = ckpt_dir / "dataset_stats.pt"
     if not stats_path.exists():
         print(f"Stats not found at {stats_path}")
@@ -115,7 +120,14 @@ def main():
     
     # Run Forward Models
     mat_indices = torch.tensor([MATERIAL_LIBRARY[m] for m in sampled_materials], dtype=torch.long, device=device)
-    geo = torch.cat([px_tensor.view(args.num_samples, -1), h_tensor, inc_tensor], dim=1).to(device)
+    
+    # Run Forward Models by explicitly passing the generated profile
+    # This prevents the models from relying on their fixed internal 'n_harmonics' weights 
+    # and forces them to generalize over the raw spatial structure directly!
+    mat_indices = torch.tensor([MATERIAL_LIBRARY[m] for m in sampled_materials], dtype=torch.long, device=device)
+    
+    true_geo = torch.cat([px_tensor.view(args.num_samples, -1), h_tensor, inc_tensor], dim=1).to(device)
+    profile, h_model, inc_model = build_profile(true_geo, n_harmonics=args.n_harmonics, nx=128)
     
     samples_data = []
     for i in range(args.num_samples):
@@ -143,9 +155,9 @@ def main():
         
         try:
             with torch.no_grad():
-                preds = model(geometry=geo, material_id=mat_indices).cpu()
+                preds = model(geometry=None, material_id=mat_indices, profile=profile, h=h_model, inc_ang=inc_model).cpu()
         except Exception as e:
-            print(f"Skipping {name} due to shape mismatch on 20-harmonic input (expected): {e}")
+            print(f"Skipping {name} due to shape mismatch on {args.n_harmonics}-harmonic input (expected): {e}")
             continue
             
         target_flat = torch.cat([physics_targets[:, :, 0], physics_targets[:, :, 1]], dim=1)
@@ -155,11 +167,14 @@ def main():
         # Plot dashboard
         cmap = plt.cm.viridis
         c_surr, c_physics = cmap(0.5), cmap(0.8)
+        c_amp = cmap(0.3)
+        c_phase = cmap(0.9)
         
-        fig, axes = plt.subplots(args.num_samples, 2, figsize=(12, 3.5 * args.num_samples), squeeze=False)
+        fig, axes = plt.subplots(args.num_samples, 3, figsize=(18, 5 * args.num_samples), squeeze=False)
         for i in range(args.num_samples):
             ax_p = axes[i, 0]
             ax_s = axes[i, 1]
+            ax_h = axes[i, 2]
             n_wl = stats["n_wavelengths"] // 2
             
             h_val = float(h[i])
@@ -169,23 +184,37 @@ def main():
             title_p = f"Sample {i+1} ({mat_name}) - P-Pol\nh: {h_val:.1f}nm, inc: {inc_val:.1f}°"
             title_s = f"Sample {i+1} ({mat_name}) - S-Pol\nh: {h_val:.1f}nm, inc: {inc_val:.1f}°"
             
-            ax_p.plot(WAVELENGTHS, physics_targets[i, :, 0].numpy(), "k-", lw=2, label="Torcwa Physics")
-            ax_p.plot(WAVELENGTHS, preds[i, :n_wl].numpy(), linestyle="--", color=c_surr, lw=2, label="Surrogate")
-            ax_p.set_title(title_p)
+            ax_p.plot(WAVELENGTHS, physics_targets[i, :, 0].numpy(), linestyle="-", color=c_physics, lw=2.5, label="Torcwa Physics")
+            ax_p.plot(WAVELENGTHS, preds[i, :n_wl].numpy(), linestyle="-", color=c_surr, lw=2, label="Surrogate")
+            ax_p.set_title(title_p, fontsize=14)
             ax_p.set_ylim(-0.05, 1.05)
-            if i == 0: ax_p.legend(fontsize=8, loc='upper left')
+            ax_p.tick_params(axis='both', which='major', labelsize=10)
+            if i == 0: ax_p.legend(fontsize=10)
             
-            ax_s.plot(WAVELENGTHS, physics_targets[i, :, 1].numpy(), "k-", lw=2, label="Torcwa Physics")
-            ax_s.plot(WAVELENGTHS, preds[i, n_wl:].numpy(), linestyle="--", color=c_surr, lw=2, label="Surrogate")
-            ax_s.set_title(title_s)
+            ax_s.plot(WAVELENGTHS, physics_targets[i, :, 1].numpy(), linestyle="-", color=c_physics, lw=2.5, label="Torcwa Physics")
+            ax_s.plot(WAVELENGTHS, preds[i, n_wl:].numpy(), linestyle="-", color=c_surr, lw=2, label="Surrogate")
+            ax_s.set_title(title_s, fontsize=14)
             ax_s.set_ylim(-0.05, 1.05)
+            ax_s.tick_params(axis='both', which='major', labelsize=10)
             
-            # Add text box with harmonics in the s-pol plot
-            amps_str = ", ".join([f"{a:.2f}" for a in amps[i][:5]]) + "..."
-            phases_str = ", ".join([f"{p:.2f}" for p in phases[i][:5]]) + "..."
-            text_str = f"Amps (first 5):\n{amps_str}\nPhases (first 5):\n{phases_str}"
-            ax_s.text(1.05, 0.5, text_str, transform=ax_s.transAxes, fontsize=8,
-                      verticalalignment='center', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+            # Harmonics
+            amps_geo = amps[i]
+            phases_geo = phases[i]
+            n_harm = len(amps_geo)
+            x_pos = np.arange(1, n_harm + 1)
+            
+            ax_h.bar(x_pos, amps_geo, color=c_amp, edgecolor="black")
+            ax_h.set_ylabel("Amplitude (nm)", color=c_amp, fontsize=12)
+            ax_h.tick_params(axis='y', labelcolor=c_amp, labelsize=10)
+            ax_h.tick_params(axis='x', labelsize=10)
+            ax_h.set_xlabel("Harmonic index", fontsize=12)
+            ax_h.set_title("Harmonic Composition", fontsize=14)
+            
+            ax_p2 = ax_h.twinx()
+            ax_p2.plot(x_pos, phases_geo, 'o', color=c_phase, markersize=6, markeredgecolor="black")
+            ax_p2.set_ylabel("Phase (rad)", color=c_phase, fontsize=12)
+            ax_p2.tick_params(axis='y', labelcolor=c_phase, labelsize=10)
+            ax_p2.set_ylim(-0.5, 2 * np.pi + 0.5)
             
         plt.tight_layout()
         save_path = out_dir / f"dashboard_{name}.png"

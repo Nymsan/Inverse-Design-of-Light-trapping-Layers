@@ -305,7 +305,7 @@ def get_absorptance_curve(params_x, params_y, wavelengths, config: RCWAConfig, s
     A_film_list = []
     A_grating_list = []
     
-    iterator = tqdm(wavelengths, leave=True, file=sys.stdout, mininterval=2.0) if show_progress else wavelengths
+    iterator = tqdm(wavelengths, leave=False, file=sys.stdout, mininterval=2.0) if show_progress else wavelengths
     context = contextlib.nullcontext() if requires_grad else torch.no_grad()
     
     for i, wavelength in enumerate(iterator):

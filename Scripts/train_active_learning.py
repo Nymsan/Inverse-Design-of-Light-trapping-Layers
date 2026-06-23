@@ -76,7 +76,7 @@ def evaluate_oracle(geometries: torch.Tensor, mat_name: str, stats: dict, device
         base_config.azi_ang = 1e-3 * np.pi/180.0
         
         A_film, _ = get_absorptance_curve(
-            params_x=px, params_y=None, wavelengths=wavelengths, config=base_config, show_progress=False
+            params_x=px, params_y=None, wavelengths=wavelengths, config=base_config, show_progress=True
         )
         curve = torch.cat([A_film[:, 0], A_film[:, 1]], dim=0)
         true_curves.append(curve.cpu())
@@ -166,7 +166,9 @@ def finetune_surrogate(model: nn.Module, trained_materials: list, stats: dict, a
 
     dataloader = DataLoader(full_dataset, batch_size=batch_size, shuffle=True)
     
-    print(f"\nFinetuning Surrogate on {len(full_dataset)} samples ({len(al_geos)} AL + {len(full_dataset)-len(al_geos)} Orig) for up to {epochs} epochs...")
+    total_al_samples = sum(len(g) for g in all_geos_norm)
+    total_orig_samples = len(orig_dataset) if data_files_dict else 0
+    print(f"\nFinetuning Surrogate on {len(full_dataset)} samples ({total_al_samples} AL + {total_orig_samples} Orig) for up to {epochs} epochs...")
     
     model.train()
     for p in model.parameters():
@@ -206,9 +208,16 @@ def main():
     parser = argparse.ArgumentParser(description="Active Learning Loop for Surrogate Discovery")
     parser.add_argument('--iterations', type=int, default=3, help="Number of active learning loops")
     parser.add_argument('--proposals_per_mat', type=int, default=10, help="Structures proposed per material per iteration")
+    parser.add_argument('--mode', type=str, choices=["geometry", "de"], default="de", help="Optimization mode for generating proposals")
+    parser.add_argument('--restarts', type=int, default=1000, help="Population size for DE or n_restarts for Gradient Ascent")
+    parser.add_argument('--steps', type=int, default=100, help="Generations for DE or steps for Gradient Ascent")
     parser.add_argument('--device', type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument('--ckpt_dir', type=str, default="Checkpoints/Si_TiO2_Si3N4", help="Directory containing the forward surrogate")
     parser.add_argument('--al_iter', type=int, default=-1, help="Active learning iteration of surrogate to use (-1 for latest, 0 for base)")
+    parser.add_argument('--force_forward_model', type=str, default=None, help="Force active learning to use a specific forward model (e.g. skip_cnn.pt)")
+    parser.add_argument('--h_val', type=float, default=None, help="Constrain the active learning exploration to a specific height (nm)")
+    parser.add_argument('--inc_val', type=float, default=None, help="Constrain the active learning exploration to a specific incident angle (degrees)")
+    parser.add_argument('--expand_amps', type=float, default=None, help="Temporarily expand the maximum amplitude bounds (e.g., to 25.0 nm) for Active Learning")
     args = parser.parse_args()
 
     device = torch.device(args.device)
@@ -229,14 +238,15 @@ def main():
     if not stats_path.exists():
         print("Error: dataset_stats.pt not found.")
         return
-    stats = torch.load(stats_path, map_location="cpu")
+    stats = torch.load(stats_path, map_location="cpu", weights_only=False)
     # Load model
     forward_model, fwd_name, _ = get_best_forward_model(
         ckpt_dir, 
         n_continuous=stats["n_continuous"], 
         n_wavelengths=stats["n_wavelengths"], 
         n_harmonics=stats["n_harmonics"],
-        al_iter=args.al_iter
+        al_iter=args.al_iter,
+        force_model_name=args.force_forward_model
     )
     
     if forward_model is None:
@@ -247,6 +257,13 @@ def main():
     geo_min = stats["geo_min"].to(device)
     geo_max = stats["geo_max"].to(device)
     
+    if args.expand_amps is not None:
+        n_harmonics = stats["n_harmonics"]
+        # In models.py, geometry is packed as [amp0, phase0, amp1, phase1...]
+        # Amplitudes are at even indices: 0, 2, 4... up to 2*n_harmonics
+        geo_max[0:2*n_harmonics:2] = args.expand_amps
+        print(f"[*] Expanded Amplitude Bounds to {args.expand_amps} nm for Active Learning Proposal!")
+        
     # Load original config so we can save new models cleanly
     original_ckpt_path = ckpt_dir / Path(fwd_name).name if "Active_Learning" not in fwd_name else ckpt_dir / fwd_name
     try:
@@ -276,15 +293,18 @@ def main():
         
         # 1. Propose candidates via Surrogate Optimization (Batched across ALL materials)
         forward_model.eval()
-        opt = BatchedSurrogateOptimizer(forward_model, geo_min, geo_max, device, nx=128)
+        opt = BatchedSurrogateOptimizer(forward_model, geo_min, geo_max, device=device, nx=128, h_val=args.h_val, inc_val=args.inc_val)
         
         proposed_geos_per_mat = {m: [] for m in trained_materials}
         bands_per_proposal = []
         
-        for _ in tqdm(range(args.proposals_per_mat), desc=f"Proposing targets (Batched)"):
+        for _ in tqdm(range(args.proposals_per_mat), desc=f"Proposing targets (Batched {args.mode})"):
             bands = get_random_bands()
             bands_per_proposal.append(bands)
-            opt_res = opt.optimize_geometry(bands, allowed_materials=valid_mat_indices, n_restarts=1000, steps=100, lr=0.1, top_k=1, show_progress=False)
+            if args.mode == "de":
+                opt_res = opt.optimize_de(bands, allowed_materials=valid_mat_indices, pop_size=args.restarts, generations=args.steps, F=0.8, CR=0.9, top_k=1, show_progress=True)
+            else:
+                opt_res = opt.optimize_geometry(bands, allowed_materials=valid_mat_indices, n_restarts=args.restarts, steps=args.steps, lr=0.1, top_k=1, show_progress=True)
             
             for r in opt_res["top_results"]:
                 mat_idx = r["material_idx"]
@@ -313,15 +333,26 @@ def main():
             n_plots = len(proposed_geos)
             fig, axes = plt.subplots(n_plots, 2, figsize=(10, 3 * n_plots), squeeze=False, layout="constrained")
             wls = WAVELENGTHS
+            cmap = plt.cm.viridis
+            c_surr, c_physics = cmap(0.5), cmap(0.8)
             for p_idx in range(n_plots):
                 target_bands = bands_per_proposal[p_idx]
+                target_tensor, _ = opt._get_target_and_mask(target_bands)
+                target_np = target_tensor[0].cpu().numpy()
                 
                 # P-pol
                 ax_p = axes[p_idx, 0]
-                ax_p.plot(wls, true_curves[p_idx][:len(wls)].numpy(), label="Torcwa", color="black", lw=2)
-                ax_p.plot(wls, surr_preds[p_idx][:len(wls)].cpu().numpy(), label="Surrogate", color="red", linestyle="--", lw=2)
-                for bmin, bmax in target_bands:
-                    ax_p.axvspan(bmin, bmax, color='gray', alpha=0.2)
+                
+                if not target_bands:
+                    ax_p.axvspan(wls[0], wls[-1], color='gray', alpha=0.15)
+                else:
+                    for bmin, bmax in target_bands:
+                        ax_p.axvspan(bmin, bmax, color='gray', alpha=0.15)
+                        
+                ax_p.plot(wls, target_np[:len(wls)], "k--", lw=3, label="Target")
+                ax_p.plot(wls, true_curves[p_idx][:len(wls)].numpy(), label="Torcwa", color=c_physics, lw=2.5)
+                ax_p.plot(wls, surr_preds[p_idx][:len(wls)].cpu().numpy(), label="Surrogate", color=c_surr, linestyle="-", lw=2)
+                
                 ax_p.set_title(f"Proposal {p_idx+1} P-pol | MAE: {torch.nn.functional.l1_loss(surr_preds[p_idx], true_curves_gpu[p_idx]).item():.4f}")
                 ax_p.grid(True, alpha=0.3)
                 ax_p.set_ylabel("Absorptance")
@@ -329,10 +360,17 @@ def main():
                 
                 # S-pol
                 ax_s = axes[p_idx, 1]
-                ax_s.plot(wls, true_curves[p_idx][len(wls):].numpy(), label="Torcwa", color="black", lw=2)
-                ax_s.plot(wls, surr_preds[p_idx][len(wls):].cpu().numpy(), label="Surrogate", color="red", linestyle="--", lw=2)
-                for bmin, bmax in target_bands:
-                    ax_s.axvspan(bmin, bmax, color='gray', alpha=0.2)
+                
+                if not target_bands:
+                    ax_s.axvspan(wls[0], wls[-1], color='gray', alpha=0.15)
+                else:
+                    for bmin, bmax in target_bands:
+                        ax_s.axvspan(bmin, bmax, color='gray', alpha=0.15)
+                        
+                ax_s.plot(wls, target_np[len(wls):], "k--", lw=3, label="Target")
+                ax_s.plot(wls, true_curves[p_idx][len(wls):].numpy(), label="Torcwa", color=c_physics, lw=2.5)
+                ax_s.plot(wls, surr_preds[p_idx][len(wls):].cpu().numpy(), label="Surrogate", color=c_surr, linestyle="-", lw=2)
+                
                 ax_s.set_title(f"Proposal {p_idx+1} S-pol")
                 ax_s.grid(True, alpha=0.3)
                 ax_s.set_ylim(-0.05, 1.05)

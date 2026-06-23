@@ -150,6 +150,8 @@ def main():
     parser.add_argument('--method', type=str, choices=['de', 'lbfgs', 'de_lbfgs'], default='de_lbfgs', 
                         help="Optimizer: Differential Evolution, L-BFGS-B, or DE followed by L-BFGS-B")
     parser.add_argument('--max_evals', type=int, default=1000, help="Max Torcwa evaluations per material")
+    parser.add_argument('--popsize', type=int, default=5, help="Population size multiplier for scipy DE (Actual pop = popsize * N_params)")
+    parser.add_argument('--maxiter', type=int, default=1000, help="Max generations (steps) for DE")
     parser.add_argument('--device', type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument('--out_dir', type=str, default="Naive_Optimization")
     args = parser.parse_args()
@@ -216,8 +218,8 @@ def main():
             res_de = scipy.optimize.differential_evolution(
                 obj.objective_no_grad, 
                 bounds=bounds, 
-                maxiter=1000,
-                popsize=5, 
+                maxiter=args.maxiter,
+                popsize=args.popsize, 
                 callback=de_callback,
                 seed=42
             )

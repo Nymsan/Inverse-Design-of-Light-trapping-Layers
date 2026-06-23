@@ -25,7 +25,11 @@ def parse_args():
 
 def main():
     args = parse_args()
-    ckpt_dir = PROJECT_ROOT / args.ckpt_dir
+    provided_path = Path(args.ckpt_dir)
+    if provided_path.is_absolute() or provided_path.exists():
+        ckpt_dir = provided_path.resolve()
+    else:
+        ckpt_dir = PROJECT_ROOT / args.ckpt_dir
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     stats_path = ckpt_dir / "dataset_stats.pt"
