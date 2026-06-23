@@ -92,11 +92,11 @@ def get_dataset_baseline(ckpt_dir: Path, bands=None, h_val=None, h_tolerance=0.5
                 continue
 
             all_targets.append(batch_targets[valid_mask])
-            amps = params[valid_mask, :, 0]
-            phases = params[valid_mask, :, 1]
+            px = params[valid_mask]
+            px_flat = px.view(px.shape[0], -1)
             h_valid = h[valid_mask].unsqueeze(1)
             inc_valid = inc_ang_eff[valid_mask].unsqueeze(1)
-            geo = torch.cat([amps, phases, h_valid, inc_valid], dim=1)
+            geo = torch.cat([px_flat, h_valid, inc_valid], dim=1)
             all_geos.append(geo)
             
         if not all_targets:
@@ -178,8 +178,8 @@ def main():
                 score = avg_abs[idx].item()
                 
                 # Reconstruct profile
-                amps = geo[:n_harmonics].numpy()
-                phases = geo[n_harmonics:2*n_harmonics].numpy()
+                amps = geo[0:2*n_harmonics:2].numpy()
+                phases = geo[1:2*n_harmonics:2].numpy()
                 h_nm = geo[-2].item()
                 inc_ang = geo[-1].item()
                 

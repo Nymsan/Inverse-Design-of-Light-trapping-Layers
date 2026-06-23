@@ -131,7 +131,7 @@ if [ "$TRAIN_FORWARD" = true ]; then
         --materials Si TiO2 Si3N4 \
         --target_key all_film \
         --epochs 2000 \
-        --batch_size 512 \
+        --batch_size 1024 \
         --lr 2e-3 \
         --patience 200 \
         --val_split 0.05 \
@@ -170,7 +170,7 @@ if [ "$TRAIN_INVERSE" = true ]; then
         --target_key all_film \
         --epochs 2000 \
         --synthetic_epochs 500 \
-        --batch_size 512 \
+        --batch_size 1024 \
         --lr 2e-3 \
         --patience 200 \
         --val_split 0.05 \
@@ -194,11 +194,6 @@ if [ "$TRAIN_INVERSE" = true ]; then
         --cvae_spec_enc_dropout $CVAE_SPEC_ENC_DROPOUT
 fi
 
-if [ "$EVAL_FORWARD" = true ]; then
-    echo -e "\n=== Evaluating Forward Models ==="
-    uv run python evaluate_forward.py --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4
-fi
-
 if [ "$EVAL_DATASET_BASELINE" = true ]; then
     echo -e "\n=== Evaluating Dataset Baseline ==="
     uv run python evaluate_dataset_baseline.py --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4
@@ -211,11 +206,19 @@ if [ "$RUN_ACTIVE_LEARNING" = true ]; then
     echo -e "\n=== Running Active Learning ==="
     uv run python train_active_learning.py \
         --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4 \
-        --mode de \
+        --mode geometry \
         --iterations 5 \
         --proposals_per_mat 8 \
-        --restarts 2000 \
-        --steps 200
+        --restarts 1000 \
+        --steps 300 \
+        --h_val 2000 \
+        --inc_val 0.0 \
+        --expand_amps 40.0
+fi
+
+if [ "$EVAL_FORWARD" = true ]; then
+    echo -e "\n=== Evaluating Forward Models ==="
+    uv run python evaluate_forward.py --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4
 fi
 
 if [ "$EVAL_GENERALIZATION" = true ]; then
@@ -228,10 +231,10 @@ fi
 
 if [ "$EVAL_SURROGATE" = true ]; then
     echo -e "\n=== Evaluating Surrogate Optimization (Geometry) ==="
-    uv run python evaluate_surrogate_optimization.py --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4 --mode geometry --restarts 5000 --steps 300
+    uv run python evaluate_surrogate_optimization.py --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4 --mode geometry --restarts 10000 --steps 300 --h_val 2000 --inc_val 0.0 --expand_amps 40.0
     
     echo -e "\n=== Evaluating Surrogate Optimization (Differential Evolution) ==="
-    uv run python evaluate_surrogate_optimization.py --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4 --mode de --restarts 5000 --steps 300
+    uv run python evaluate_surrogate_optimization.py --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4 --mode de --restarts 10000 --steps 300 --h_val 2000 --inc_val 0.0 --expand_amps 40.0
 fi
 
 if [ "$EVAL_INVERSE" = true ]; then

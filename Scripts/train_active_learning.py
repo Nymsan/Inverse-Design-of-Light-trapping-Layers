@@ -3,6 +3,8 @@ import sys
 import argparse
 import time
 import json
+import glob
+import re
 import torch
 import torch.nn as nn
 import numpy as np
@@ -18,16 +20,7 @@ sys.path.append(str(PROJECT_ROOT))
 from Utils.checkpoint import get_best_forward_model, save_forward_checkpoint, FORWARD_MODEL_REGISTRY, load_forward_model
 from Utils.surrogate_optimization import BatchedSurrogateOptimizer, recover_geometry_from_profile
 from Utils.utils import RCWAConfig, get_absorptance_curve
-from Utils.models import GratingDataset
-
-MATERIAL_LIBRARY = {
-    "Si": "Si",
-    "Si_Ag": "Si_Ag",
-    "TiO2": "TiO2",
-    "TiO2_Ag": "TiO2_Ag",
-    "Si3N4": "Si3N4",
-    "Si3N4_Ag": "Si3N4_Ag"
-}
+from Utils.models import GratingDataset, MATERIAL_LIBRARY
 
 WAVELENGTHS = np.linspace(300, 1100, 161)
 
@@ -115,7 +108,7 @@ def finetune_surrogate(model: nn.Module, trained_materials: list, stats: dict, a
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
     criterion = nn.MSELoss()
     
-    all_geos_norm = []
+    all_geos_raw = []
     all_mat_idxs = []
     all_curves = []
     data_files_dict = {}
@@ -126,13 +119,9 @@ def finetune_surrogate(model: nn.Module, trained_materials: list, stats: dict, a
         mat_idx = list(MATERIAL_LIBRARY.keys()).index(mat_name)
         
         if al_geos is not None:
-            # Normalize AL geos
-            al_geos_norm = (al_geos - stats["geo_min"]) / (stats["geo_max"] - stats["geo_min"])
-            al_geos_norm = torch.clamp(al_geos_norm, 0.0, 1.0)
+            al_mat_idx = torch.full((al_geos.shape[0],), mat_idx, dtype=torch.long)
             
-            al_mat_idx = torch.full((al_geos_norm.shape[0],), mat_idx, dtype=torch.long)
-            
-            all_geos_norm.append(al_geos_norm)
+            all_geos_raw.append(al_geos)
             all_mat_idxs.append(al_mat_idx)
             all_curves.append(al_curves)
             
@@ -143,10 +132,10 @@ def finetune_surrogate(model: nn.Module, trained_materials: list, stats: dict, a
             selected_files = random.sample(all_batch_files, min(2, len(all_batch_files)))
             data_files_dict[mat_name] = [str(f) for f in selected_files]
             
-    if len(all_geos_norm) == 0:
+    if len(all_geos_raw) == 0:
         return model
         
-    al_dataset = TensorDataset(torch.cat(all_geos_norm), torch.cat(all_mat_idxs), torch.cat(all_curves))
+    al_dataset = TensorDataset(torch.cat(all_geos_raw), torch.cat(all_mat_idxs), torch.cat(all_curves))
         
     if data_files_dict:
         orig_ds = GratingDataset(
@@ -166,7 +155,7 @@ def finetune_surrogate(model: nn.Module, trained_materials: list, stats: dict, a
 
     dataloader = DataLoader(full_dataset, batch_size=batch_size, shuffle=True)
     
-    total_al_samples = sum(len(g) for g in all_geos_norm)
+    total_al_samples = sum(len(g) for g in all_geos_raw)
     total_orig_samples = len(orig_dataset) if data_files_dict else 0
     print(f"\nFinetuning Surrogate on {len(full_dataset)} samples ({total_al_samples} AL + {total_orig_samples} Orig) for up to {epochs} epochs...")
     
@@ -329,8 +318,12 @@ def main():
                 
             print(f"Oracle Verification Complete. Surrogate-Physics Discrepancy (MAE): {mae_discrepancy:.4f}")
             
-            # --- PLOT DASHBOARD ---
+            # --- PLOT & LOG DASHBOARD ---
             n_plots = len(proposed_geos)
+            
+            log_entries = []
+            log_file = al_ckpt_dir / "active_learning_progress.jsonl"
+            
             fig, axes = plt.subplots(n_plots, 2, figsize=(10, 3 * n_plots), squeeze=False, layout="constrained")
             wls = WAVELENGTHS
             cmap = plt.cm.viridis
@@ -382,12 +375,43 @@ def main():
                     ax_p.legend()
                     ax_s.legend()
                     
+                # Compute and log metrics
+                mask = np.zeros(len(WAVELENGTHS), dtype=bool)
+                if not target_bands:
+                    mask = np.ones(len(WAVELENGTHS), dtype=bool)
+                else:
+                    for bmin, bmax in target_bands:
+                        mask |= (WAVELENGTHS >= bmin) & (WAVELENGTHS <= bmax)
+                
+                # Combine P and S mask
+                full_mask = np.concatenate([mask, mask])
+                true_curve_np = true_curves[p_idx].numpy()
+                surr_curve_np = surr_preds[p_idx].cpu().numpy()
+                
+                oracle_abs = float(np.mean(true_curve_np[full_mask]))
+                surrogate_abs = float(np.mean(surr_curve_np[full_mask]))
+                
+                log_entries.append(json.dumps({
+                    "iteration": al_iterations,
+                    "material": mat_name,
+                    "proposal_idx": p_idx,
+                    "target_bands": target_bands,
+                    "surrogate_abs": surrogate_abs,
+                    "oracle_abs": oracle_abs,
+                    "mae": float(np.mean(np.abs(true_curve_np - surr_curve_np))),
+                    "geometry": proposed_geos[p_idx].numpy().tolist()
+                }))
+                    
             import re
             base_stem = re.sub(r"_al\d+", "", Path(fwd_name).stem)
             fig.suptitle(f"Active Learning Discrepancy (Iter {al_iterations}) | {mat_name}", fontsize=16)
             plot_dir.mkdir(parents=True, exist_ok=True)
             plt.savefig(plot_dir / f"al_discrepancy_{mat_name}_iter{al_iterations}.png")
             plt.close(fig)
+            
+            with open(log_file, "a") as f:
+                for entry in log_entries:
+                    f.write(entry + "\n")
             # ----------------------
             
             # 3. Save new data
