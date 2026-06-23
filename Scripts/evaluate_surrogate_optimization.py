@@ -61,14 +61,14 @@ def main():
         geo_max[0:2*n_harmonics:2] = args.expand_amps
         print(f"[*] Expanded Amplitude Bounds to {args.expand_amps} nm for Evaluation!")
     
-    trained_mat_names = list(stats["materials"].keys())
+    trained_mat_names = stats["materials"]
     first_batch_file = PROJECT_ROOT / "Data" / f"LHS_Dataset_{trained_mat_names[0]}" / "batch_0000.pt"
     if first_batch_file.exists():
         rcwa_config_dict = torch.load(first_batch_file, map_location="cpu", weights_only=False).get("metadata", {}).get("config", {})
     else:
         rcwa_config_dict = {}
     
-    trained_mat_names = list(stats["materials"].keys())
+    trained_mat_names = stats["materials"]
     valid_mat_indices = [MATERIAL_LIBRARY[name] for name in trained_mat_names]
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

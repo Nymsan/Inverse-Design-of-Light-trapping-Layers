@@ -27,12 +27,21 @@ echo "Budget: 1000 Torcwa evaluations"
 echo "Queue: gpul40s"
 echo "========================================="
 
-# We dropped the max_evals to 1000 since L-BFGS converges much faster than DE.
-# Running as a Job Array puts all 3 materials on 3 separate nodes simultaneously.
+echo "=== Phase 1: Penalized Optimization ==="
+# Runs with the 10th-order polynomial boundary penalty to match surrogate optimization
 uv run python evaluate_naive_optimization.py \
     --material $MAT_NAME \
     --method lbfgs \
     --max_evals 1000 \
-    --out_dir Naive_Optimization
+    --out_dir Naive_Optimization_Penalized \
+    --penalty
+
+echo "=== Phase 2: Unrestrained Optimization ==="
+# Runs completely unbounded (no penalty) allowing it to freely search the edges
+uv run python evaluate_naive_optimization.py \
+    --material $MAT_NAME \
+    --method lbfgs \
+    --max_evals 1000 \
+    --out_dir Naive_Optimization_Unrestrained
 
 echo "=== Naive Torcwa Optimization Complete for $MAT_NAME ==="

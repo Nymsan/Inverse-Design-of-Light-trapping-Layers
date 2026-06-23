@@ -277,7 +277,7 @@ def main():
     for it in range(args.iterations):
         al_iterations += 1
         print(f"\n>>> ACTIVE LEARNING ITERATION {it+1}/{args.iterations} (Global AL Iteration: {al_iterations}) <<<")
-        trained_materials = list(stats["materials"].keys())
+        trained_materials = stats["materials"]
         valid_mat_indices = [list(MATERIAL_LIBRARY.keys()).index(m) for m in trained_materials]
         
         # 1. Propose candidates via Surrogate Optimization (Batched across ALL materials)

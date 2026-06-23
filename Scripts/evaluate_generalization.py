@@ -66,7 +66,7 @@ def main():
         return
         
     stats = torch.load(stats_path, map_location="cpu", weights_only=False)
-    trained_mat_names = list(stats["materials"].keys())
+    trained_mat_names = stats["materials"]
     
     out_dir = ckpt_dir / "evaluation" / "generalization"
     out_dir.mkdir(parents=True, exist_ok=True)

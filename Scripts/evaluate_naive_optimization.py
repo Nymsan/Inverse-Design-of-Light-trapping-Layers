@@ -47,11 +47,13 @@ def get_target_curve(wavelengths: np.ndarray, bands: list[tuple[float, float]]) 
 # ---------------------------------------------------------------------------
 class TorcwaObjective:
     def __init__(self, target_curve: torch.Tensor, eval_wavelengths: torch.Tensor, 
-                 mat_name: str, device: torch.device):
+                 mat_name: str, device: torch.device, bounds: list[tuple[float, float]], use_penalty: bool = False):
         self.target_curve = target_curve.to(device)
         self.eval_wavelengths = eval_wavelengths.to(device)
         self.mat_name = mat_name
         self.device = device
+        self.bounds = bounds
+        self.use_penalty = use_penalty
         
         # Setup base config
         self.base_config = RCWAConfig(**rcwa_config_dict)
@@ -68,13 +70,13 @@ class TorcwaObjective:
         self.pbar = None
         
     def _vector_to_tensors(self, x: np.ndarray):
-        """Converts flat 12D array to (h, inc_ang, px) tensors."""
+        """Converts flat 15D array to (h, inc_ang, px) tensors."""
         h = x[0]
-        inc_ang = x[1]
-        amps = x[2:7]
-        phases = x[7:12]
+        inc_ang = 0.0 # Fixed to normal incidence
+        amps = x[1:8]
+        phases = x[8:15]
         
-        px_data = [[amps[j], phases[j]] for j in range(5)]
+        px_data = [[amps[j], phases[j]] for j in range(7)]
         px = torch.tensor(px_data, dtype=torch.float32, device=self.device)
         return h, inc_ang, px
 
@@ -107,7 +109,16 @@ class TorcwaObjective:
         sim_curve = torch.cat([A_film[:, 0], A_film[:, 1]], dim=0).to(self.device)
         
         loss = torch.nn.functional.mse_loss(sim_curve, self.target_curve)
-        return loss, sim_curve
+        
+        penalty = 0.0
+        if self.use_penalty:
+            for i, (b_min, b_max) in enumerate(self.bounds):
+                range_val = b_max - b_min
+                if range_val > 1e-5:
+                    p_norm = (x[i] - b_min) / range_val
+                    penalty += 0.05 * ((p_norm - 0.5) * 2.0) ** 10
+                    
+        return loss + penalty, sim_curve
 
     def objective_no_grad(self, x: np.ndarray) -> float:
         """For Differential Evolution (no gradients)."""
@@ -146,6 +157,7 @@ def main():
     parser.add_argument('--device', type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument('--out_dir', type=str, default="Naive_Optimization")
     parser.add_argument('--material', type=str, default=None, help="Specific material to optimize. If not set, runs all materials sequentially.")
+    parser.add_argument('--penalty', action='store_true', help="Apply the 10th order polynomial boundary penalty (0.05 scale) used in surrogate optimization.")
     args = parser.parse_args()
 
     device = torch.device(args.device)
@@ -177,14 +189,13 @@ def main():
     target_curve_np = np.ones(len(eval_wavelengths) * 2) # Target is 1.0 inside the bands
     target_curve = torch.tensor(target_curve_np, dtype=torch.float64, device=device)
 
-    # Bounds for the 12 parameters
-    # x = [h, inc_ang, a1..a5, p1..p5]
+    # Bounds for the 15 parameters
+    # x = [h, a1..a7, p1..p7]
     bounds = [
-        (500.0, 6000.0),   # h (nm)
-        (0.0, 45.0),       # inc_ang (deg)
+        (1000.0, 3000.0),  # h (nm)
     ]
-    bounds += [(0.0, 30.0)] * 5    # amps (nm)
-    bounds += [(0.0, 2*np.pi)] * 5 # phases (rad)
+    bounds += [(0.0, 30.0)] * 7    # amps (nm)
+    bounds += [(0.0, 2*np.pi)] * 7 # phases (rad)
 
     results_list = []
 
@@ -194,7 +205,7 @@ def main():
         print(f"\n" + "="*50)
         print(f"Optimizing {mat_name}...")
         
-        obj = TorcwaObjective(target_curve, torch.tensor(eval_wavelengths, dtype=torch.float64), mat_name, device)
+        obj = TorcwaObjective(target_curve, torch.tensor(eval_wavelengths, dtype=torch.float64), mat_name, device, bounds, args.penalty)
         
         best_x = None
         best_loss = float('inf')
@@ -336,7 +347,7 @@ def main():
         
         # Structure Profile
         ax = ax_row[2]
-        prof_tensor, _, _ = build_profile(geo_t.unsqueeze(0), 5, nx=128)
+        prof_tensor, _, _ = build_profile(geo_t.unsqueeze(0), 7, nx=128)
         profile_np = prof_tensor[0].numpy()
         xs = np.linspace(0, 1000, 128)
         ax.plot(xs, profile_np, "k-", lw=1.5)
@@ -347,9 +358,9 @@ def main():
         
         # Harmonics
         ax_h = ax_row[3]
-        amps_geo = geo_t[:5].numpy()
-        phases_geo = geo_t[5:10].numpy()
-        x_pos = np.arange(1, 6)
+        amps_geo = geo_t[:14:2].numpy() # Extract interleaved amps (even indices)
+        phases_geo = geo_t[1:14:2].numpy() # Extract interleaved phases (odd indices)
+        x_pos = np.arange(1, 8)
         c_amp = cmap(0.3)
         c_phase = cmap(0.9)
         

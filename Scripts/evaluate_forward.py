@@ -252,7 +252,8 @@ def main():
     n_wavelengths = stats["n_wavelengths"]
     n_harmonics = stats["n_harmonics"]
     
-    mat_dirs = {k: str(PROJECT_ROOT / "Data" / Path(v).name) for k, v in stats["materials"].items()}
+    prefix = stats.get("dataset_prefixes", ["LHS_Dataset"])[0]
+    mat_dirs = {mat: str(PROJECT_ROOT / "Data" / f"{prefix}_{mat}") for mat in stats["materials"]}
     target_key = stats["target_key"]
     print(f"n_continuous={n_continuous}  n_wavelengths={n_wavelengths}  materials={list(mat_dirs.keys())}")
 

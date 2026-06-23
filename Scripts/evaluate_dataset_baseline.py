@@ -58,8 +58,10 @@ def get_dataset_baseline(ckpt_dir: Path, bands=None, h_val=None, h_tolerance=0.5
 
     results = {}
     
-    for mat_name, relative_path in stats["materials"].items():
-        mat_dir = PROJECT_ROOT / "Data" / Path(relative_path).name
+    for mat_name in stats["materials"]:
+        # Reconstruct the original data directory path
+        prefix = stats.get("dataset_prefixes", ["LHS_Dataset"])[0]
+        mat_dir = PROJECT_ROOT / "Data" / f"{prefix}_{mat_name}"
         all_targets = []
         all_geos = []
         
