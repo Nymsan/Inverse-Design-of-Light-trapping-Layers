@@ -169,7 +169,6 @@ if [ "$TRAIN_INVERSE" = true ]; then
         --materials Si TiO2 Si3N4 \
         --target_key all_film \
         --epochs 2000 \
-        --synthetic_epochs 500 \
         --batch_size 1024 \
         --lr 2e-3 \
         --patience 200 \
