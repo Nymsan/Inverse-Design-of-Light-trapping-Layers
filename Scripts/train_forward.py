@@ -156,7 +156,6 @@ def main():
         "dataset_prefixes": args.dataset_prefixes,
         "materials": args.materials,
         "target_key": args.target_key,
-        "val_indices": val_indices,
     }, ckpt_dir / "dataset_stats.pt")
 
     timings = {}
