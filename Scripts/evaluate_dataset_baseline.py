@@ -201,8 +201,10 @@ def main():
             global_max = max(global_max, res["avg_abs"][valid_idx].max().item())
             
     bin_width = 0.002
-    num_bins = max(1, int(np.ceil((global_max - global_min) / bin_width)))
-    bin_edges = np.linspace(global_min, global_min + num_bins * bin_width, num_bins + 1)
+    grid_min = np.floor(global_min / bin_width) * bin_width
+    grid_max = np.ceil(global_max / bin_width) * bin_width
+    num_bins = max(1, int(np.round((grid_max - grid_min) / bin_width)))
+    bin_edges = np.linspace(grid_min, grid_max, num_bins + 1)
     
     fig_hist, ax_hist = plt.subplots(figsize=(8, 6))
     for mat_name, res in results.items():

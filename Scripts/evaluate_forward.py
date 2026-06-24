@@ -159,8 +159,10 @@ def plot_forward_parity(models: dict[str, nn.Module], val_loader, save_path: str
             combined_min = min(true[m_mask].min(), pred[m_mask].min())
             combined_max = max(true[m_mask].max(), pred[m_mask].max())
             bin_width = 0.002
-            num_bins = max(1, int(np.ceil((combined_max - combined_min) / bin_width)))
-            bin_edges = np.linspace(combined_min, combined_min + num_bins * bin_width, num_bins + 1)
+            grid_min = np.floor(combined_min / bin_width) * bin_width
+            grid_max = np.ceil(combined_max / bin_width) * bin_width
+            num_bins = max(1, int(np.round((grid_max - grid_min) / bin_width)))
+            bin_edges = np.linspace(grid_min, grid_max, num_bins + 1)
             
             # True as colored alpha bars (rendered beneath lines)
             ax_hist.hist(true[m_mask], bins=bin_edges, color=colors[m_id], alpha=0.5, label=f"{mat_names[m_id]} (True)", zorder=z)

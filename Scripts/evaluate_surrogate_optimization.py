@@ -30,8 +30,8 @@ def parse_args():
     p.add_argument("--h_val", nargs="+", type=float, help="Target height in nm, or range (min max) (fixes/bounds height during evaluation)")
     p.add_argument("--inc_val", type=float, default=None, help="Target incident angle in degrees (fixes angle during evaluation)")
     p.add_argument("--restarts", type=int, default=100, help="Number of gradient descent runs (top-k from dense sampling) per material")
-    p.add_argument("--dense_samples", type=int, default=10000000, help="Number of dense samples to evaluate before gradient descent")
-    p.add_argument("--steps", type=int, default=300, help="Optimization steps")
+    p.add_argument("--dense_samples", type=int, default=1000000, help="Number of dense samples to evaluate before gradient descent")
+    p.add_argument("--steps", type=int, default=500, help="Optimization steps")
     p.add_argument("--save_dir", type=str, default="Checkpoints/Optimization_Eval")
     p.add_argument("--al_iter", type=int, default=-1, help="Active learning iteration of surrogate to use (-1 for latest, 0 for base)")
     p.add_argument("--max_inc_deg", type=float, default=None, help="Maximum incident angle in degrees (default: None, takes max from dataset)")
@@ -101,6 +101,22 @@ def main():
             
         geo_min = torch.cat([geo_min[:-2], extra_min, geo_min[-2:]])
         geo_max = torch.cat([geo_max[:-2], extra_max, geo_max[-2:]])
+        
+    # --- Resize bounds if h_val or inc_val exceed dataset bounds ---
+    if args.h_val is not None:
+        if isinstance(args.h_val, list) and len(args.h_val) == 2:
+            h_target_min, h_target_max = args.h_val
+            if h_target_max > geo_max[-2]: geo_max[-2] = h_target_max
+            if h_target_min < geo_min[-2]: geo_min[-2] = h_target_min
+        else:
+            h_target = args.h_val[0] if isinstance(args.h_val, list) else args.h_val
+            if h_target > geo_max[-2]: geo_max[-2] = h_target
+            if h_target < geo_min[-2]: geo_min[-2] = h_target
+            
+    if args.inc_val is not None:
+        if args.inc_val > geo_max[-1]: geo_max[-1] = args.inc_val
+        if args.inc_val < geo_min[-1]: geo_min[-1] = args.inc_val
+    # ---------------------------------------------------------------
     
     trained_mat_names = stats["materials"]
     first_batch_file = PROJECT_ROOT / "Data" / f"LHS_Dataset_{trained_mat_names[0]}" / "batch_0000.pt"
@@ -192,7 +208,12 @@ def main():
     print(f"Height: {h_val:.2f} nm, Incident Angle: {inc_ang:.2f} deg")
     
     # Plotting
-    out_dir = ckpt_dir / "evaluation" / "surrogate_optimization" / get_folder_name(args)
+    folder_name = get_folder_name(args)
+    if folder_name == "all_data":
+        folder_name = f"all_data_{Path(fwd_name).stem}"
+    else:
+        folder_name = f"{folder_name}_{Path(fwd_name).stem}"
+    out_dir = ckpt_dir / "evaluation" / "surrogate_optimization" / folder_name
     out_dir.mkdir(parents=True, exist_ok=True)
     bands_str = "_".join([f"{int(b[0])}-{int(b[1])}" for b in bands]) if bands else "full_spectrum"
     
