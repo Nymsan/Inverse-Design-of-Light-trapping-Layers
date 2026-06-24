@@ -17,8 +17,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
     
-    # Load Surrogate Model
-    ckpt_dir = PROJECT_ROOT / "Checkpoints" / "Si_TiO2_Si3N4"
+    ckpt_dir = PROJECT_ROOT / "Checkpoints" / "Si_TiO2_Si3N4_old_24_06"
     if not ckpt_dir.exists():
         print(f"Checkpoint directory {ckpt_dir} not found.")
         return
@@ -28,19 +27,22 @@ def main():
     n_wavelengths = stats["n_wavelengths"]
     n_harmonics = stats["n_harmonics"]
     
-    model_path = ckpt_dir / "skip_cnn.pt"
-    if not model_path.exists():
-        print(f"Model {model_path} not found.")
-        return
-        
-    model, _, _ = load_forward_model(model_path, n_continuous=n_continuous, n_wavelengths=n_wavelengths, n_harmonics=n_harmonics)
-    model = model.to(device)
-    model.eval()
-    
+    model_names = ["skip_cnn.pt", "siren.pt", "forward_mlp.pt"]
+    models = {}
+    for mn in model_names:
+        model_path = ckpt_dir / mn
+        if model_path.exists():
+            m, _, _ = load_forward_model(model_path, n_continuous=n_continuous, n_wavelengths=n_wavelengths, n_harmonics=n_harmonics)
+            m = m.to(device)
+            m.eval()
+            models[mn] = m
+        else:
+            print(f"Warning: Model {model_path} not found.")
+
     # Load 10 random samples
     mat_name = "Si"
     mat_dir = PROJECT_ROOT / "Data" / f"LHS_Dataset_{mat_name}"
-    dataset_path = mat_dir / "full_dataset.pt"
+    dataset_path = mat_dir / "val_dataset.pt"
     
     if not dataset_path.exists():
         print(f"Dataset {dataset_path} not found.")
@@ -59,31 +61,45 @@ def main():
     
     geo_parts = [params_x.view(num_samples, -1), h.unsqueeze(-1), inc_ang.unsqueeze(-1)]
     geo = torch.cat(geo_parts, dim=-1)
-    
+
     # Surrogate Timing
-    # Warmup
-    with torch.no_grad():
-        profile, h_t, inc_t = build_profile(geo, n_harmonics, nx=128)
-        mat_id = torch.full((num_samples,), MATERIAL_LIBRARY[mat_name], dtype=torch.long, device=device)
-        _ = model(profile=profile, h=h_t, inc_ang=inc_t, material_id=mat_id)
-        
-        torch.cuda.synchronize() if torch.cuda.is_available() else None
-        
-        t0 = time.time()
-        for i in range(num_samples):
-            pred = model(profile=profile[i:i+1], h=h_t[i:i+1], inc_ang=inc_t[i:i+1], material_id=mat_id[i:i+1])
-        torch.cuda.synchronize() if torch.cuda.is_available() else None
-        surrogate_time = time.time() - t0
-        
-        # Batch surrogate timing
-        torch.cuda.synchronize() if torch.cuda.is_available() else None
-        t0 = time.time()
-        pred_batch = model(profile=profile, h=h_t, inc_ang=inc_t, material_id=mat_id)
-        torch.cuda.synchronize() if torch.cuda.is_available() else None
-        surrogate_batch_time = time.time() - t0
-        
-    print(f"\nSurrogate Model (Sequential 10 samples): {surrogate_time:.4f} s ({surrogate_time/num_samples:.5f} s/sample)")
-    print(f"Surrogate Model (Batched 10 samples): {surrogate_batch_time:.4f} s")
+    for mn, model in models.items():
+        print(f"\nBenchmarking {mn}...")
+        with torch.no_grad():
+            from Utils.models import SpatialCNN, SkipCNN
+            if isinstance(model, (SpatialCNN, SkipCNN)):
+                profile, h_t, inc_t = build_profile(geo, n_harmonics, nx=128)
+                mat_id = torch.full((num_samples,), MATERIAL_LIBRARY[mat_name], dtype=torch.long, device=device)
+                def get_kwargs(idx=None):
+                    if idx is None:
+                        return {"profile": profile, "h": h_t, "inc_ang": inc_t, "material_id": mat_id}
+                    return {"profile": profile[idx:idx+1], "h": h_t[idx:idx+1], "inc_ang": inc_t[idx:idx+1], "material_id": mat_id[idx:idx+1]}
+            else:
+                mat_id = torch.full((num_samples,), MATERIAL_LIBRARY[mat_name], dtype=torch.long, device=device)
+                def get_kwargs(idx=None):
+                    if idx is None:
+                        return {"geometry": geo, "material_id": mat_id}
+                    return {"geometry": geo[idx:idx+1], "material_id": mat_id[idx:idx+1]}
+
+            _ = model(**get_kwargs())
+            
+            torch.cuda.synchronize() if torch.cuda.is_available() else None
+            t0 = time.time()
+            for i in range(num_samples):
+                pred = model(**get_kwargs(i))
+            torch.cuda.synchronize() if torch.cuda.is_available() else None
+            surrogate_time = time.time() - t0
+            
+            # Batch surrogate timing
+            torch.cuda.synchronize() if torch.cuda.is_available() else None
+            t0 = time.time()
+            pred_batch = model(**get_kwargs())
+            torch.cuda.synchronize() if torch.cuda.is_available() else None
+            surrogate_batch_time = time.time() - t0
+            
+        print(f"{mn} (Sequential 10 samples): {surrogate_time:.4f} s ({surrogate_time/num_samples:.5f} s/sample)")
+        print(f"{mn} (Batched 10 samples): {surrogate_batch_time:.4f} s")
+    
     
     # Torcwa Timing
     torcwa_config = RCWAConfig(**rcwa_config_dict)

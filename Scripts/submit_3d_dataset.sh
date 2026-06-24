@@ -1,5 +1,5 @@
 #!/bin/sh
-#BSUB -J generate_3d_dataset[1-150]
+#BSUB -J generate_3d_dataset[1-75]
 #BSUB -q hpc
 #BSUB -n 4
 #BSUB -R "rusage[mem=4GB]"

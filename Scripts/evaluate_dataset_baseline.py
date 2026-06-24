@@ -65,14 +65,13 @@ def get_dataset_baseline(ckpt_dir: Path, bands=None, h_val=None, h_tolerance=0.5
         all_targets = []
         all_geos = []
         
-        full_file = mat_dir / "full_dataset.pt"
-        if full_file.exists():
-            files_to_load = [full_file]
-        else:
-            files_to_load = sorted(list(mat_dir.glob("batch_*.pt")))
+        files_to_load = []
+        t_file = mat_dir / "train_dataset.pt"
+        v_file = mat_dir / "val_dataset.pt"
+        if t_file.exists(): files_to_load.append(t_file)
+        if v_file.exists(): files_to_load.append(v_file)
             
         for bf in files_to_load:
-            if "batch_9" in bf.name and "full" not in bf.name: continue
             data = torch.load(bf, map_location="cpu", weights_only=False)
             
             params = data["params_x"]
