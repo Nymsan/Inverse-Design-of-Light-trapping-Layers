@@ -17,6 +17,105 @@
 \endgroup
 
 \datalist[entry]{none/global//global/global/global}
+  \entry{machin2024advancements}{article}{}{}
+    \name{author}{2}{}{%
+      {{hash=MA}{%
+         family={Mach{\'\i}n},
+         familyi={M\bibinitperiod},
+         given={A.},
+         giveni={A\bibinitperiod},
+      }}%
+      {{hash=MF}{%
+         family={M{\'a}rquez},
+         familyi={M\bibinitperiod},
+         given={F.},
+         giveni={F\bibinitperiod},
+      }}%
+    }
+    \strng{namehash}{MAMF1}
+    \strng{fullhash}{MAMF1}
+    \field{labelnamesource}{author}
+    \field{labeltitlesource}{title}
+    \field{labelyear}{2024}
+    \field{labeldatesource}{}
+    \verb{doi}
+    \verb 10.3390/ma17051165
+    \endverb
+    \field{note}{PMID: 38473635; PMCID: PMC10934213}
+    \field{number}{5}
+    \field{pages}{1165}
+    \field{title}{Advancements in Photovoltaic Cell Materials: Silicon, Organic, and Perovskite Solar Cells}
+    \field{volume}{17}
+    \field{journaltitle}{Materials (Basel)}
+    \field{month}{03}
+    \field{year}{2024}
+  \endentry
+
+  \entry{solar_cells_green}{book}{}{}
+    \name{author}{1}{}{%
+      {{hash=GMA}{%
+         family={Green},
+         familyi={G\bibinitperiod},
+         given={M\bibnamedelima A},
+         giveni={M\bibinitperiod\bibinitdelim A\bibinitperiod},
+      }}%
+    }
+    \list{publisher}{1}{%
+      {Prentice-Hall, Inc.}%
+    }
+    \strng{namehash}{GMA1}
+    \strng{fullhash}{GMA1}
+    \field{labelnamesource}{author}
+    \field{labeltitlesource}{title}
+    \field{labelyear}{1982}
+    \field{labeldatesource}{}
+    \field{title}{Solar cells: operating principles, technology, and system applications}
+    \verb{url}
+    \verb https://www.osti.gov/biblio/6051511
+    \endverb
+    \list{location}{1}{%
+      {Englewood Cliffs, NJ, United States}%
+    }
+    \field{month}{01}
+    \field{year}{1982}
+  \endentry
+
+  \entry{amalathas2019nanostructures}{article}{}{}
+    \name{author}{2}{}{%
+      {{hash=AP}{%
+         family={Amalathas},
+         familyi={A\bibinitperiod},
+         given={Peter},
+         giveni={P\bibinitperiod},
+      }}%
+      {{hash=AMM}{%
+         family={Alkaisi},
+         familyi={A\bibinitperiod},
+         given={Maan\bibnamedelima M.},
+         giveni={M\bibinitperiod\bibinitdelim M\bibinitperiod},
+      }}%
+    }
+    \list{publisher}{1}{%
+      {MDPI}%
+    }
+    \strng{namehash}{APAMM1}
+    \strng{fullhash}{APAMM1}
+    \field{labelnamesource}{author}
+    \field{labeltitlesource}{title}
+    \field{labelyear}{2019}
+    \field{labeldatesource}{}
+    \verb{doi}
+    \verb 10.3390/mi10090619
+    \endverb
+    \field{number}{9}
+    \field{pages}{619}
+    \field{title}{Nanostructures for Light Trapping in Thin Film Solar Cells}
+    \field{volume}{10}
+    \field{journaltitle}{Micromachines}
+    \field{month}{09}
+    \field{year}{2019}
+  \endentry
+
   \entry{torcwa}{article}{}{}
     \name{author}{2}{}{%
       {{hash=KC}{%

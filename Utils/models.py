@@ -248,7 +248,7 @@ class SIREN(nn.Module):
             
         self.head = nn.Linear(siren_hidden[-1], 2)
 
-    def forward(self, geometry, material_id, wls=None, profile=None, h=None, inc_ang=None):
+    def forward(self, geometry=None, material_id=None, wls=None, profile=None, h=None, inc_ang=None):
         B = geometry.shape[0] if geometry is not None else profile.shape[0]
         if profile is None:
             profile, h, inc_ang = build_profile(geometry, self.n_harmonics, self.nx)
@@ -275,7 +275,8 @@ class SIREN(nn.Module):
         latent = self.encoder_proj(x)
         
         if wls is None:
-            wls_eval = torch.linspace(300, 1100, self.seq_len, device=geometry.device) + 1e-3
+            device = geometry.device if geometry is not None else profile.device
+            wls_eval = torch.linspace(300, 1100, self.seq_len, device=device) + 1e-3
             W = self.seq_len
             wls_expanded = wls_eval.view(1, W, 1).expand(B, -1, -1)
             return_flat = True
@@ -781,7 +782,7 @@ class GeometryEncoder(nn.Module):
         self.material_embedding = nn.Embedding(n_materials, embed_dim)
         
         self.register_buffer("r_grid", torch.linspace(0, grating_period, nx + 1)[:-1])
-        self.register_buffer("harmonic_idx", torch.arange(1, n_harmonics + 1, dtype=torch.float32))
+        self.register_buffer("harmonic_idx", torch.arange(1, self.n_harmonics + 1, dtype=torch.float32))
 
         in_ch = 1 + 1 + embed_dim + 1
         self.input_norm = nn.BatchNorm1d(in_ch)
@@ -1167,8 +1168,9 @@ def train_forward_model(
     """Train Forward models (MLP, CNN, skipCNN, SIREN)."""
     model = model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=20, min_lr=1e-7)
-    criterion = nn.HuberLoss(delta=0.01)
+    scheduler_patience = max(1, patience // 10)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=scheduler_patience, min_lr=1e-7)
+    criterion = nn.HuberLoss(delta=0.01, reduction="none")
     best_val, patience_ctr = float("inf"), 0
     ema = _EMATracker(model, decay=ema_decay)
     history: dict[str, list[float]] = {"train_loss": [], "val_loss": [], "val_mae": [], "val_max_err": []}
@@ -1191,7 +1193,11 @@ def train_forward_model(
             pred_f32 = pred.float()
             target_f32 = target.float()
             
-            base_loss = criterion(pred_f32, target_f32)
+            # Scale loss by the average predicted absorptance (self-regularizing against hallucinated peaks)
+            # Add a small epsilon 0.1 so that terrible structures aren't completely ignored
+            weights = pred_f32.mean(dim=-1, keepdim=True) + 0.1
+            
+            base_loss = (criterion(pred_f32, target_f32) * weights).mean()
             wl = target_f32.shape[-1] // 2
             
             fft_pred_p = torch.fft.rfft(pred_f32[:, :wl], dim=-1, norm="ortho").abs()
@@ -1199,7 +1205,7 @@ def train_forward_model(
             fft_target_p = torch.fft.rfft(target_f32[:, :wl], dim=-1, norm="ortho").abs()
             fft_target_s = torch.fft.rfft(target_f32[:, wl:], dim=-1, norm="ortho").abs()
             
-            spectral_loss = criterion(fft_pred_p, fft_target_p) + criterion(fft_pred_s, fft_target_s)
+            spectral_loss = (criterion(fft_pred_p, fft_target_p) * weights).mean() + (criterion(fft_pred_s, fft_target_s) * weights).mean()
             
             loss = base_loss + lambda_fft * spectral_loss
             
@@ -1222,7 +1228,8 @@ def train_forward_model(
                                     batch["material_id"].to(device), batch["target"].to(device))
                 pred = model(geo, mat)
                 
-                base_loss = criterion(pred, target)
+                weights = pred.mean(dim=-1, keepdim=True) + 0.1
+                base_loss = (criterion(pred, target) * weights).mean()
                 wl = target.shape[-1] // 2
                 
                 fft_pred_p = torch.fft.rfft(pred[:, :wl], dim=-1, norm="ortho").abs()
@@ -1230,7 +1237,7 @@ def train_forward_model(
                 fft_target_p = torch.fft.rfft(target[:, :wl], dim=-1, norm="ortho").abs()
                 fft_target_s = torch.fft.rfft(target[:, wl:], dim=-1, norm="ortho").abs()
                 
-                spectral_loss = criterion(fft_pred_p, fft_target_p) + criterion(fft_pred_s, fft_target_s)
+                spectral_loss = (criterion(fft_pred_p, fft_target_p) * weights).mean() + (criterion(fft_pred_s, fft_target_s) * weights).mean()
                 
                 loss = base_loss + lambda_fft * spectral_loss
                 
@@ -1277,7 +1284,7 @@ def train_tandem(
     """Train tandem. Only InverseDecoder params are optimised; forward model stays frozen."""
     tandem = tandem.to(device)
     optimizer = torch.optim.AdamW(tandem.inverse_decoder.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=20, min_lr=1e-7)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=20, min_lr=1e-8)
     criterion = nn.HuberLoss(delta=0.01)
     best_val, patience_ctr = float("inf"), 0
     ema = _EMATracker(tandem.inverse_decoder, decay=ema_decay)
@@ -1375,7 +1382,7 @@ def train_cvae(
     """Train C-VAE. All sub-networks trained jointly. Loss = recon + CE + beta·KL + gamma·margin."""
     cvae = cvae.to(device)
     optimizer = torch.optim.AdamW(cvae.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=20, min_lr=1e-7)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=20, min_lr=1e-8)
     best_val, patience_ctr = float("inf"), 0
     ema = _EMATracker(cvae, decay=ema_decay)
     history: dict[str, list[float]] = {

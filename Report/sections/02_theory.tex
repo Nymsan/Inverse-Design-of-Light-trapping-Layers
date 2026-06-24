@@ -1,12 +1,20 @@
-\chapter{Methods and theory}
-\label{sec:methods}
+\chapter{Theory}
+The purpose of this chapter is to give a brief overview of the key theories that have informed my decision during the course
+of this project. Though the project has been mainly empirical through numerical studies and implementation, the theory provides 
+invaluable insights for the design process and interpretation of results. First, I will discuss some theory of thin-film solar cells, leading to the design choices of my datset generation.
+First, I will discuss Fabry-Perot interferometers, as these share many optical properties with thin film-solar cells.
+I will then briefly introduce the theory behind rigorous coupled wave analysis (RCWA), which has been the workhorse of the generated data in this project. 
+Since I have compared my results with the commercial finite-element method solver COMSOL, I will briefly introduce finite element method as well.
+
+\label{sec:theory}
 % Introduction to methods chosen here.
-\section{Thin Film Solar Cells}
+\section{Thin-Film Solar Cells}
 %Yablonovitch limit, light trapping layers, crystalline silicon polarization of light and incidence angles.
 %light trackers, perfect incidence angle.
+\section{Fabry-Perot Interferometers}
 \section{Rigorous Coupled Wave Analysis}
 \label{classical_solvers}
-This subsection will introduce the concept of Rigorous Coupled Wave Analysis (RCWA), a method in numerical photonics suited well
+This subsection will introduce the concept of RCWA, a method in numerical photonics suited well
 for stacked periodic structures in the x and y axis with a period $\Lambda_x,\Lambda_y$ respectively, and where each layer is homogeneous in the z-direction\cite{torcwa}.
 The structure's optical properties are completely described by the relative permitivity $\epsilon$ and relative permeability $\mu$ of each layer, meaning that each structure
 will have a geometry described by
@@ -113,14 +121,6 @@ By inserting
 
 
 
-% Detail the rigorous coupled-wave analysis (Torcwa) and any classical optimization approaches used for data generation or baseline comparisons.
+% Detail the rigorous coupled-wave analysis (Torcwa)
 
 \section{Finite Element Method}
-
-\section{Machine Learning Surrogates}
-\label{subsec:ml_surrogates}
-% Describe the forward models (e.g., MLP, SpatialCNN, SIREN) and the inverse/generative models (e.g., Tandem networks, Contrastive VAE).
-
-\section{Optimization Strategies}
-\label{subsec:optimization_strategies}
-% Outline the active learning loop, surrogate optimization techniques, and how candidates are proposed and verified.

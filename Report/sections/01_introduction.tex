@@ -1,4 +1,24 @@
 \chapter{Introduction}
 \label{sec:introduction}
+This project explores the use of machine learning informed inverse design to beat classical bottlenecks in adjoint-based topology optimization for light-trapping layers in thin-film solar cells.
+In particular, I focus on replacing computationally expensive classical solvers with light-weight and scalable surrogate solvers, and I benchmark their performance, upsides and downsides.
+This chapter describes background on the topic, and motivates the use of surrogate solvers for inverse design of broadband and multimaterial 
 
-Introduce the problem of light-trapping layers here \cite{example_reference}.
+
+%Introduce the problem of adjoint optimization of broadband light-trapping layers here.
+%introduce classical topology optical
+\section{Thin-film solar cells and light-trapping layers}
+Where conventional solar cells typically are rigid cells made of $~200\mathrm{\mu m}$ thick crystalline silicon or other highly absorbing materials in the visible light range, 
+thin-film crystalline silicon solar cells are typically much thinner, in the range of 2 micrometres according to \cite{machin2024advancements}. Crystalline silicon is a material of interest due to having
+ideal semiconductor properties for converting sunlight into electricity. Its material bandgap overlaps with a broad range of the solar spectrum, maximizing potential energy conversion efficiency, see \cite{solar_cells_green}. But the absorbtion of light scales with
+the lights optical length in the solar cell. As such, thinner photovoltaic cells need ways to make light stay in the cell longer, to match the performance of thicker cells.
+According to an article by \cite{amalathas2019nanostructures}, more than 90\% of the global photovoltaic solar cell market is dominated by crystalline silicon based solar cells.
+The article also discusses how reductions in production cost and conversion efficiency improvements can be improved by light trapping approaches.
+Nanophotonic light trapping layers are structures on the scale of the wavelength of the light, that simultaneously seek to minimize reflections from and transmission through the solar cell.
+If the light can enter the material, but stay trapped within the active layer by total internal reflections or guided modes, the optical path length of the solar cell increases, and for the purpose
+of absorbing light, becomes thicker than it really is.
+
+
+\section{Topology optimization and the adjoint method}
+
+\section{Fourier patterned light-trapping layers}

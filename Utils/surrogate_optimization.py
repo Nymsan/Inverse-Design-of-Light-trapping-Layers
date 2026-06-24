@@ -3,6 +3,8 @@ import torch.nn as nn
 import torch.optim as optim
 from typing import List, Tuple, Optional
 from tqdm import tqdm
+from Utils.models import MATERIAL_LIBRARY
+from Utils.models import build_profile
 
 class BatchedSurrogateOptimizer:
     def __init__(self, forward_model: nn.Module, geo_min: torch.Tensor, geo_max: torch.Tensor, n_harmonics: int, nx: int = 128, device: torch.device = torch.device("cpu"), max_inc_deg: float = None, h_val: float = None, inc_val: float = None):
@@ -61,10 +63,9 @@ class BatchedSurrogateOptimizer:
         # Duplicate for s-polarization
         target = torch.cat([target_p, target_p], dim=0).unsqueeze(0)
         mask = torch.cat([mask_p, mask_p], dim=0).unsqueeze(0)
-        
         return target, mask
 
-    def optimize_geometry(self, bands: List[Tuple[float, float]], n_restarts: int = 100, n_dense_samples: int = 10000000, steps: int = 300, lr: float = 0.005, allowed_materials: list[int] = None, top_k: int = 2, show_progress: bool = True) -> dict:
+    def optimize_geometry(self, bands: List[Tuple[float, float]], n_restarts: int = 100, n_dense_samples: int = 1000000, steps: int = 300, lr: float = 0.005, allowed_materials: list[int] = None, top_k: int = 2, show_progress: bool = True) -> dict:
         self.forward_model.eval()
         target, mask = self._get_target_and_mask(bands)
         
@@ -75,11 +76,12 @@ class BatchedSurrogateOptimizer:
         
         # Dense pre-sampling
         n_dense_per_mat = n_dense_samples // n_allowed
-        chunk_size = 500000
+        chunk_size = 5000
         
         best_geos_dense = []
         
         pbar_dense = tqdm(total=n_dense_per_mat * n_allowed, desc="Dense Pre-Sampling", disable=not show_progress)
+        best_dense_abs = {list(MATERIAL_LIBRARY.keys())[m]: 0.0 for m in allowed_materials}
         
         for mat_idx in allowed_materials:
             mat_tensor = torch.full((chunk_size,), mat_idx, dtype=torch.long, device=self.device)
@@ -96,7 +98,6 @@ class BatchedSurrogateOptimizer:
                     
                 with torch.no_grad():
                     geo_chunk = torch.rand(actual_chunk, len(self.geo_min), device=self.device) * (self.geo_max - self.geo_min) + self.geo_min
-                    from Utils.models import build_profile
                     profile, h_t, inc_t = build_profile(geo_chunk, self.n_harmonics, self.nx)
                     pred = self.forward_model(profile=profile, h=h_t, inc_ang=inc_t, material_id=mat_tensor)
                     
@@ -106,6 +107,13 @@ class BatchedSurrogateOptimizer:
                     chunk_top_vals, chunk_top_idx = abs_vals.topk(min(n_restarts, actual_chunk))
                     top_geos_mat.append(geo_chunk[chunk_top_idx])
                     top_vals_mat.append(chunk_top_vals)
+                    
+                    mat_name_str = list(MATERIAL_LIBRARY.keys())[mat_idx]
+                    current_best = chunk_top_vals[0].item()
+                    if current_best > best_dense_abs[mat_name_str]:
+                        best_dense_abs[mat_name_str] = current_best
+                        
+                pbar_dense.set_postfix({k: f"{v:.4f}" for k, v in best_dense_abs.items() if v > 0.0})
                 pbar_dense.update(actual_chunk)
                 
             # Aggregate top from all chunks for this material
@@ -133,7 +141,6 @@ class BatchedSurrogateOptimizer:
         pbar = tqdm(range(steps), desc="Optimizing Geometry", disable=not show_progress, leave=True)
         for step in pbar:
             optimizer.zero_grad()
-            from Utils.models import build_profile
             profile, h_t, inc_t = build_profile(geo, self.n_harmonics, self.nx)
             pred = self.forward_model(profile=profile, h=h_t, inc_ang=inc_t, material_id=mat)
             
@@ -145,7 +152,7 @@ class BatchedSurrogateOptimizer:
             range_geo = self.geo_max - self.geo_min
             active_mask = (range_geo > 1e-5).float()
             p_norm = (geo - self.geo_min) / (range_geo + 1e-9)
-            boundary_penalty = 0.05 * torch.sum(active_mask * torch.pow((p_norm - 0.5) * 2.0, 10), dim=-1)
+            boundary_penalty = 0.0 * torch.sum(active_mask * torch.pow((p_norm - 0.5) * 2.0, 10), dim=-1)
             
             loss = -abs_vals + boundary_penalty
             loss_sum = loss.mean()
@@ -160,7 +167,7 @@ class BatchedSurrogateOptimizer:
                 range_geo = self.geo_max - self.geo_min
                 active_mask = (range_geo > 1e-5).float()
                 p_norm = (geo - self.geo_min) / (range_geo + 1e-9)
-                boundary_penalty = 0.05 * torch.sum(active_mask * torch.pow((p_norm - 0.5) * 2.0, 10), dim=-1)
+                boundary_penalty = 0.0 * torch.sum(active_mask * torch.pow((p_norm - 0.5) * 2.0, 10), dim=-1)
                 penalized_abs = avg_abs - boundary_penalty
                 
                 penalized_reshaped = penalized_abs.view(n_allowed, n_restarts)
@@ -171,7 +178,6 @@ class BatchedSurrogateOptimizer:
                 best_pure_abs = abs_reshaped[torch.arange(n_allowed), max_indices]
                 history[step] = best_pure_abs
                 
-                from Utils.models import MATERIAL_LIBRARY
                 postfix_dict = {
                     list(MATERIAL_LIBRARY.keys())[mat_idx]: f"{best_pure_abs[i].item():.4f}" 
                     for i, mat_idx in enumerate(allowed_materials)
@@ -179,15 +185,14 @@ class BatchedSurrogateOptimizer:
                 pbar.set_postfix(postfix_dict)
                 
         with torch.no_grad():
-            from Utils.models import build_profile
             profile, h_t, inc_t = build_profile(geo, self.n_harmonics, self.nx)
             pred = self.forward_model(profile=profile, h=h_t, inc_ang=inc_t, material_id=mat)
-            final_abs = (pred.float() * mask).sum(dim=-1) / mask.sum(dim=-1)
+            pure_abs = (pred.float() * mask).sum(dim=-1) / mask.sum(dim=-1)
             range_geo = self.geo_max - self.geo_min
             active_mask = (range_geo > 1e-5).float()
             p_norm = (geo - self.geo_min) / (range_geo + 1e-9)
-            boundary_penalty = 0.05 * torch.sum(active_mask * torch.pow((p_norm - 0.5) * 2.0, 10), dim=-1)
-            final_abs = final_abs - boundary_penalty
+            boundary_penalty = 0.0 * torch.sum(active_mask * torch.pow((p_norm - 0.5) * 2.0, 10), dim=-1)
+            final_abs = pure_abs - boundary_penalty
             
         final_abs_reshaped = final_abs.view(n_allowed, n_restarts)
         top_vals, top_indices_local = final_abs_reshaped.topk(top_k, dim=1, largest=True)
@@ -202,7 +207,8 @@ class BatchedSurrogateOptimizer:
                     "material_idx": mat_idx,
                     "geometry": geo[global_idx].detach().cpu(),
                     "curve": pred[global_idx].detach().float().cpu(),
-                    "loss": final_abs[global_idx].item()
+                    "loss": pure_abs[global_idx].item(),
+                    "penalized_loss": final_abs[global_idx].item()
                 })
                 
         best_global_idx = final_abs.argmax().item()
@@ -279,7 +285,6 @@ class BatchedSurrogateOptimizer:
                 abs_reshaped = avg_abs.view(n_allowed, n_restarts)
                 max_vals = abs_reshaped.max(dim=1).values
                 history[step] = max_vals
-                from Utils.models import MATERIAL_LIBRARY
                 postfix_dict = {
                     list(MATERIAL_LIBRARY.keys())[mat_idx]: f"{max_vals[i].item():.4f}" 
                     for i, mat_idx in enumerate(allowed_materials)
@@ -342,7 +347,6 @@ class BatchedSurrogateOptimizer:
         mat = torch.tensor(allowed_materials, device=self.device).repeat_interleave(pop_size)
         
         with torch.no_grad():
-            from Utils.models import build_profile
             profile, h_t, inc_t = build_profile(pop, self.n_harmonics, self.nx)
             pred = self.forward_model(profile=profile, h=h_t, inc_ang=inc_t, material_id=mat)
             fitness = (pred.float() * mask).sum(dim=-1) / mask.sum(dim=-1)
@@ -387,7 +391,6 @@ class BatchedSurrogateOptimizer:
             trial = torch.where(cross_mask, mutant, pop_reshaped).view(B, -1)
             
             with torch.no_grad():
-                from Utils.models import build_profile
                 profile, h_t, inc_t = build_profile(trial, self.n_harmonics, self.nx)
                 trial_pred = self.forward_model(profile=profile, h=h_t, inc_ang=inc_t, material_id=mat)
                 trial_fitness = (trial_pred.float() * mask).sum(dim=-1) / mask.sum(dim=-1)
@@ -413,7 +416,6 @@ class BatchedSurrogateOptimizer:
                 best_pure_abs = pure_reshaped[torch.arange(n_allowed), max_indices]
                 history[gen] = best_pure_abs
                 
-                from Utils.models import MATERIAL_LIBRARY
                 postfix_dict = {
                     list(MATERIAL_LIBRARY.keys())[mat_idx]: f"{best_pure_abs[i].item():.4f}" 
                     for i, mat_idx in enumerate(allowed_materials)
