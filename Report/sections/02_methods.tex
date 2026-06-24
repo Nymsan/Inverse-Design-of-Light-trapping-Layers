@@ -1,6 +1,9 @@
 \section{Methods and theory}
 \label{sec:methods}
 % Introduction to methods chosen here.
+\subsection{Thin Film Solar Cells}
+%Yablonovitch limit, light trapping layers, crystalline silicon polarization of light and incidence angles.
+%light trackers, perfect incidence angle.
 \subsection{Rigorous Coupled Wave Analysis}
 \label{classical_solvers}
 This subsection will introduce the concept of Rigorous Coupled Wave Analysis (RCWA), a method in numerical photonics suited well
@@ -18,8 +21,8 @@ and
 \end{equation}
 where $m$ and $n$ are integers and the subscript $N$ denotes the $N$'th layer of the structure. For the entirety of this project, the designed
 fourier patterned light trapping layers will be designed using crystalline silicon ($Si$), Titanium Dioxide ($TiO_2$) and Silicon Nitride ($Si_3N_4$), which
-are all nonmagnetic, so the relative permeability $\mu = 1$. In general, $\epsilon$ and $\mu$ will be $3 \times 3$ tensors, but for isotropic and linear materials this is 
-a bit simpler. The equations solved for are of course the Maxwell equations, namely Faraday's law
+are all nonmagnetic, so the relative permeability $\mu = 1$. In general, $\epsilon$ and $\mu$ will be $3 \times 3$ tensors, but for isotropic and linear materials these are scalars.
+The equations solved for are of course the Maxwell equations, namely Faraday's law
 \begin{equation}
 \label{eq:faraday}
 \nabla \times \mathbf{E} = -\mu_0\mu(x,y)\frac{\partial\mathbf{H}}{\partial t}
@@ -37,7 +40,7 @@ and
 $$
 \nabla \cdot (\mu \mathbf{H}) = 0.
 $$
-At a single frequency, the time dependency of Maxwell's equations may be solved by plane waves, see \cite{griffiths} section 9.2.1 for example,
+At a single frequency and in homogeneous media, the eigenmodes of Maxwell's equations are solved by plane waves, see \cite{griffiths} section 9.2.1 for example,
 meaning
 \begin{equation}
 \label{eq:planewaveE}
@@ -51,6 +54,16 @@ and
 Where $\mathbf{E}_0$ and $\mathbf{H}_0$ are the (complex) amplitudes of the fields, with the physical fields being the real parts of
 $\mathbf{E}$ and $\mathbf{H}$, $\mathbf{k}$ being the wavevector, i.e. the spatial frequency, and $\omega$ being the frequency of the fields, also given by the dispersion relation
 $\omega = \frac{c|\mathbf{k}|}{n(\lambda)}$, where $\lambda$ is the wavelength of the light.
+It is noted that conservation of momentum leads to the spatial components of the wavevector only having two dgrees of freedom, i.e.
+\begin{equation}
+\label{eq:dispersionk}
+|\mathbf{k}| = \frac{2\pi n(\lambda)}{\lambda} = \sqrt{k_x^2+k_y^2+k_z^2} = k_0,
+\end{equation}
+and in general, for an incident angle $\theta$ and azimuthal angle $\phi$, the x and y components will be chosen by
+\begin{equation}
+\label{eq:inc_ang_k}
+(k_x,k_y) = k_0(\sin{\theta}\cos{\phi},\sin{\theta}\sin{\phi}).
+\end{equation}
 
 Inserting equations \ref{eq:planewaveE} and \ref{eq:planewaveH} in equations \ref{eq:faraday} and \ref{eq:ampere} converts the time derivative to
 an algebraic factor of $-i\omega t$, meaning that the equations appear in their time harmonic form, common to many frequency domain numerical methods in photonics,
@@ -60,17 +73,21 @@ an algebraic factor of $-i\omega t$, meaning that the equations appear in their 
 \end{equation}
 \begin{equation}
 \label{eq:THampere}
-\nabla \times \mathbf{H} = -i\omega\mu_0\mu(x,y)\mathbf{E}.
+\nabla \times \mathbf{H} = -i\omega\epsilon_0\epsilon(x,y)\mathbf{E}.
 \end{equation}
+
+
+
 Owing to the periodicity of the system, see equations \ref{eq:permittivity_periodicity} and  \ref{eq:permeability_periodicity}, both the electromagnetic fields and the permitivity and permeability may
-be written as fourier series in the x- and y-directions as below,
+be written as their truncated fourier series in the x- and y-directions as below. Truncating the electromagnetic fields to order $M,N$ in $x,y$ makes RCWA a semi-analytical method
+precise only to this fourier order. The final fields are reconstructed as an inverse Fast Fourier Transform, so including enough fourier orders is an important convergence criterion.
 \begin{equation}
 \label{eq:fourierPermitivity}
-\epsilon(x,y) = \sum_{m=-M}^{M}\sum_{n=-N}^{N}\epsilon_{m,n}\exp{i(mL_xx+nL_yy)},
+\epsilon(x,y) = \sum_{m=-2M}^{2M}\sum_{n=-2N}^{2N}\epsilon_{m,n}\exp{i(mL_xx+nL_yy)},
 \end{equation}
 \begin{equation}
 \label{eq:fourierPermeability}
-\mu(x,y) = \sum_{m=-M}^{M}\sum_{n=-N}^{N}\mu_{m,n}\exp{i(mL_xx+nL_yy)},
+\mu(x,y) = \sum_{m=-2M}^{2M}\sum_{n=-2N}^{2N}\mu_{m,n}\exp{i(mL_xx+nL_yy)},
 \end{equation}
 \begin{equation}
 \label{eq:fourierFaraday}
@@ -82,10 +99,23 @@ be written as fourier series in the x- and y-directions as below,
 \end{equation}
 where $L_x = \frac{2\pi}{\Lambda_x}$ and $L_y = \frac{2\pi}{\Lambda_y}$, 
 and the parameters $\epsilon_{m,n}, \mu_{m,n}, \mathbf{E}_{m,n}$ and $\mathbf{H}_{m,n}$ are the fourier amplitudes of the $m,n$'th diffraction order.
+It is worth mentioning, that since the momentum of light is always conserved, $k_z$ implicitly depends on the expansion orders $m,n$, and writing out the k-vector in full, including the fourier components, yields
+\begin{align}
+\label{eq:kmn}
+\mathbf{k}_{m,n} &= (k_x+mL_x,k_y+mL_y,k_z(m,n)) = \\ &= \left(k_x+mL_x,k_y+mL_y,\sqrt{k_0^2-(k_x+mL_x)^2-(k_y+mL_y)^2}\right),
+\end{align}
+where equation \ref{eq:dispersionk} has been used. The physical interpretation of the fourier series of the electromagnetic fields is then made obvious;
+the different terms are different diffraction orders, each with part of the initial z-component momentum kicked into either the x- or y-direction.
+It is noted how the permitivity and permeability is expanded to twice the order of the electromagnetic fields $E$ and $H$. This arises
+from the fact that the algebraic components of equations \ref{eq:faraday} and \ref{eq:ampere} include products of Fourier series, so to reach order $M,N$ in the electromagnetic fields,
+the permitivity and permeability must be truncated at twice the order. An example for just one fourier order will be given below, but for more details, I refer to \cite{fmm}.
+By inserting 
 
 
 
 % Detail the rigorous coupled-wave analysis (Torcwa) and any classical optimization approaches used for data generation or baseline comparisons.
+
+\subsection{Finite Element Method}
 
 \subsection{Machine Learning Surrogates}
 \label{subsec:ml_surrogates}

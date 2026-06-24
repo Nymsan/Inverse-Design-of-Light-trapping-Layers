@@ -23,7 +23,7 @@ nvidia-smi
 # Pipeline Toggles
 # ==============================================================================
 TRAIN_FORWARD=false
-TRAIN_INVERSE=true
+TRAIN_INVERSE=false
 
 EVAL_DATASET_BASELINE=true
 EVAL_FORWARD=true
@@ -206,7 +206,7 @@ if [ "$TRAIN_ACTIVE_LEARNING" = true ]; then
         --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4 \
         --mode geometry \
         --iterations 3 \
-        --proposals_per_mat 4 \
+        --proposals_per_mat 2 \
         --restarts 3000 \
         --steps 500 \
         --h_val 1500 2500 \
@@ -229,10 +229,11 @@ fi
 
 if [ "$EVAL_SURROGATE" = true ]; then
     echo -e "\n=== Evaluating Surrogate Optimization (Geometry) ==="
-    uv run python evaluate_surrogate_optimization.py --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4 --mode geometry --restarts 3000 --steps 500 --h_val 2000 --inc_val 1e-3 --expand_amps 50.0
+    uv run python evaluate_surrogate_optimization.py --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4 --mode geometry --restarts 3000 --steps 500 --h_val 1500 2500 --inc_val 1e-3 --expand_amps 50.0
     
     echo -e "\n=== Evaluating Surrogate Optimization (Differential Evolution) ==="
-    uv run python evaluate_surrogate_optimization.py --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4 --mode de --restarts 3000 --steps 500 --h_val 2000 --inc_val 1e-3 --expand_amps 50.0
+    uv run python evaluate_surrogate_optimization.py --ckpt_dir ../Checkpoints/Si_TiO2_Si3N4 --mode de --restarts 3000 --steps 500 --h_val 1500 2500 --inc_val 1e-3 --expand_amps 50.0
+    
 fi
 
 if [ "$EVAL_INVERSE" = true ]; then

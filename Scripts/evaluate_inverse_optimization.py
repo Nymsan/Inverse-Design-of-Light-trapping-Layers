@@ -116,8 +116,14 @@ class JointOptimizer:
             # Physics Constraints (Force Inverse model to output desired h and inc_ang)
             physics_penalty = 0.0
             if h_val is not None:
-                # normalize penalty based on typical height range
-                physics_penalty += torch.nn.functional.mse_loss(geo[:, -2], torch.tensor([h_val], device=self.device)) / (1000.0**2)
+                if isinstance(h_val, (list, tuple)) and len(h_val) == 2:
+                    h_min, h_max = h_val
+                    h_pred = geo[:, -2]
+                    penalty = torch.relu(h_min - h_pred) + torch.relu(h_pred - h_max)
+                    physics_penalty += torch.mean(penalty**2) / (1000.0**2)
+                else:
+                    h_target = h_val[0] if isinstance(h_val, (list, tuple)) else h_val
+                    physics_penalty += torch.nn.functional.mse_loss(geo[:, -2], torch.tensor([h_target], device=self.device).expand_as(geo[:, -2])) / (1000.0**2)
             if inc_val is not None:
                 physics_penalty += torch.nn.functional.mse_loss(geo[:, -1], torch.tensor([inc_val], device=self.device))
                 
@@ -143,7 +149,9 @@ def main():
     parser.add_argument("--ckpt_dir", type=str, required=True, help="Directory with trained models")
     parser.add_argument("--steps", type=int, default=1000)
     parser.add_argument("--bands", nargs="+", type=float, help="Pairs of wavelength bands to optimize, e.g., --bands 500 750 800 900")
-    parser.add_argument("--h_val", type=float, default=None, help="Constrain grating height (nm)")
+    parser.add_argument("--h_val", nargs="+", type=float, default=None, help="Constrain grating height (nm)")
+    parser.add_argument("--order_N", type=int, default=None, help="RCWA Order N override for Torcwa evaluation")
+    parser.add_argument("--height_per_layer", type=float, default=None, help="RCWA height per layer override for Torcwa evaluation")
     parser.add_argument("--inc_val", type=float, default=None, help="Constrain incidence angle (deg)")
     parser.add_argument("--robust", action="store_true", help="Use robust optimization (resample Z every step) instead of joint optimization")
     args = parser.parse_args()
@@ -191,9 +199,58 @@ def main():
             mode_str = "Robust" if args.robust else "Joint"
             print(f"[{model_type} ({mode_str}) - {mat_name}] Optimized Forward Predicted Abs: {best_abs:.4f}")
             
-            # Here we could run Torcwa to verify the geometry physically, just like naive optimization!
-            geo_np = best_geo[0].cpu().numpy()
             
+            # Run Torcwa to verify the geometry physically
+            n_harmonics = stats["n_harmonics"]
+            n_fourier = n_harmonics * 2
+            
+            px_val = best_geo[0, :n_fourier].view(-1, 2).cpu()
+            h_nm_val = best_geo[0, n_fourier].item()
+            inc_ang_deg_val = best_geo[0, n_fourier+1].item()
+            
+            rcwa_config_dict = {
+                "grating_period": 1000.0,
+                "n_harmonics": n_harmonics,
+            }
+            base_config = RCWAConfig(**rcwa_config_dict)
+            base_config.h = float(h_nm_val)
+            base_config.inc_ang = (float(inc_ang_deg_val) + 1e-3) * np.pi/180
+            
+            if mat_name.endswith("_Ag"):
+                base_config.grating_material = mat_name[:-3]
+                base_config.reflector_type = 'Ag'
+            else:
+                base_config.grating_material = mat_name
+                base_config.reflector_type = 'pec'
+                
+            if args.order_N is not None:
+                base_config.order_N = args.order_N
+            if args.height_per_layer is not None:
+                base_config.height_per_layer = args.height_per_layer
+            
+            WAVELENGTHS = np.linspace(300, 1100, stats["n_wavelengths"] // 2)
+            A_film, _ = get_absorptance_curve(
+                params_x=px_val,
+                params_y=None,
+                wavelengths=torch.from_numpy(WAVELENGTHS).double(),
+                config=base_config,
+                show_progress=True
+            )
+            rcwa_p = A_film[:, 0].cpu().numpy()
+            rcwa_s = A_film[:, 1].cpu().numpy()
+            
+            if bands:
+                band_mask = np.zeros(len(WAVELENGTHS), dtype=bool)
+                for bmin, bmax in bands:
+                    band_mask |= (WAVELENGTHS >= bmin) & (WAVELENGTHS <= bmax)
+                rcwa_avg_abs = float((rcwa_p[band_mask].mean() + rcwa_s[band_mask].mean()) / 2.0)
+            else:
+                rcwa_avg_abs = float((rcwa_p.mean() + rcwa_s.mean()) / 2.0)
+                
+            print(f"[{model_type} ({mode_str}) - {mat_name}] Torcwa True Abs: {rcwa_avg_abs:.4f}")
+            
+            # Save results
+            geo_np = best_geo[0].cpu().numpy()
             res_file = out_dir / f"{model_type}_{mat_name}_geo.npy"
             np.save(res_file, geo_np)
             

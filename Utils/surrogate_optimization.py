@@ -5,9 +5,10 @@ from typing import List, Tuple, Optional
 from tqdm import tqdm
 
 class BatchedSurrogateOptimizer:
-    def __init__(self, forward_model: nn.Module, geo_min: torch.Tensor, geo_max: torch.Tensor, nx: int = 128, device: str = "cuda", max_inc_deg: float = None, h_val: float = None, inc_val: float = None):
+    def __init__(self, forward_model: nn.Module, geo_min: torch.Tensor, geo_max: torch.Tensor, n_harmonics: int, nx: int = 128, device: torch.device = torch.device("cpu"), max_inc_deg: float = None, h_val: float = None, inc_val: float = None):
         self.forward_model = forward_model.to(device)
         self.forward_model.eval()
+        self.n_harmonics = n_harmonics
         
         self.geo_min = geo_min.clone().to(device)
         self.geo_max = geo_max.clone().to(device)
@@ -87,7 +88,9 @@ class BatchedSurrogateOptimizer:
         pbar = tqdm(range(steps), desc="Optimizing Geometry", disable=not show_progress, leave=True)
         for step in pbar:
             optimizer.zero_grad()
-            pred = self.forward_model(geometry=geo, material_id=mat)
+            from Utils.models import build_profile
+            profile, h_t, inc_t = build_profile(geo, self.n_harmonics, self.nx)
+            pred = self.forward_model(profile=profile, h=h_t, inc_ang=inc_t, material_id=mat)
             
             abs_vals = (pred.float() * mask).sum(dim=-1) / mask.sum(dim=-1)
             
@@ -131,7 +134,9 @@ class BatchedSurrogateOptimizer:
                 pbar.set_postfix(postfix_dict)
                 
         with torch.no_grad():
-            pred = self.forward_model(geometry=geo, material_id=mat)
+            from Utils.models import build_profile
+            profile, h_t, inc_t = build_profile(geo, self.n_harmonics, self.nx)
+            pred = self.forward_model(profile=profile, h=h_t, inc_ang=inc_t, material_id=mat)
             final_abs = (pred.float() * mask).sum(dim=-1) / mask.sum(dim=-1)
             range_geo = self.geo_max - self.geo_min
             active_mask = (range_geo > 1e-5).float()
@@ -292,7 +297,9 @@ class BatchedSurrogateOptimizer:
         mat = torch.tensor(allowed_materials, device=self.device).repeat_interleave(pop_size)
         
         with torch.no_grad():
-            pred = self.forward_model(geometry=pop, material_id=mat)
+            from Utils.models import build_profile
+            profile, h_t, inc_t = build_profile(pop, self.n_harmonics, self.nx)
+            pred = self.forward_model(profile=profile, h=h_t, inc_ang=inc_t, material_id=mat)
             fitness = (pred.float() * mask).sum(dim=-1) / mask.sum(dim=-1)
             
             range_geo = self.geo_max - self.geo_min
@@ -335,7 +342,9 @@ class BatchedSurrogateOptimizer:
             trial = torch.where(cross_mask, mutant, pop_reshaped).view(B, -1)
             
             with torch.no_grad():
-                trial_pred = self.forward_model(geometry=trial, material_id=mat)
+                from Utils.models import build_profile
+                profile, h_t, inc_t = build_profile(trial, self.n_harmonics, self.nx)
+                trial_pred = self.forward_model(profile=profile, h=h_t, inc_ang=inc_t, material_id=mat)
                 trial_fitness = (trial_pred.float() * mask).sum(dim=-1) / mask.sum(dim=-1)
                 
                 trial_p_norm = (trial - self.geo_min) / (range_geo + 1e-9)

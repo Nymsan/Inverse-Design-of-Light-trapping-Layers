@@ -47,6 +47,9 @@ WAVELENGTHS = np.linspace(300, 1100, 161)
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--ckpt_dir", required=True, help="Path to checkpoint directory")
+    p.add_argument("--save_dir", type=str, default="Checkpoints/Inverse_Eval")
+    p.add_argument("--order_N", type=int, default=None, help="RCWA Order N override for Torcwa evaluation")
+    p.add_argument("--height_per_layer", type=float, default=None, help="RCWA height per layer override for Torcwa evaluation")
     p.add_argument("--force_forward_model", type=str, default=None, help="Force load a specific forward model (e.g. 'skip_cnn.pt')")
     p.add_argument(
         "--bands", nargs="+", type=float, default=None,
@@ -134,7 +137,7 @@ def plot_model_dashboard(
     surrogate_preds = forward_model(pred_geo, mat_oh.argmax(dim=-1))
     
     # Setting up the figure
-    fig, axes = plt.subplots(n_samples, 4, figsize=(24, 6 * n_samples), squeeze=False, layout="constrained")
+    fig, axes = plt.subplots(n_samples, 5, figsize=(30, 6 * n_samples), squeeze=False, layout="constrained")
     mat_names = stats["materials"]
     
     n_harmonics = stats["n_harmonics"]
@@ -163,6 +166,12 @@ def plot_model_dashboard(
         else:
             base_config.grating_material = pred_mat_name
             base_config.reflector_type = 'pec'
+            
+        if args.order_N is not None:
+            base_config.order_N = args.order_N
+        if args.height_per_layer is not None:
+            base_config.height_per_layer = args.height_per_layer
+            
         
         A_film, _ = get_absorptance_curve(
             params_x=px,
@@ -205,44 +214,39 @@ def plot_model_dashboard(
 
         # 2. P-Pol Spectra
         ax_p = axes[i, 0]
-        ax_p.plot(WAVELENGTHS, curve[i, :n_wl_half].cpu().numpy(), "k-", lw=2.5, label="Target", zorder=10)
-        if best_dataset_curve is not None and is_ideal[i]:
-            ds_label = f"Best Dataset ({best_dataset_mat})"
-            ax_p.plot(WAVELENGTHS, best_dataset_curve[:n_wl_half].numpy(), color=c_dataset,
-                      linestyle="-", lw=1.8, label=ds_label, alpha=0.75, zorder=9)
-        ax_p.plot(WAVELENGTHS, surrogate_preds[i, :n_wl_half].cpu().numpy(), linestyle="--", color=c_surr, lw=2.0, label="Surrogate")
-        ax_p.plot(WAVELENGTHS, rcwa_p, linestyle="-", color=c_physics, lw=2.0, label="Torcwa")
-        ax_p.set_xlim(300, 1100); ax_p.set_ylim(-0.05, 1.05)
-        ax_p.set_xlabel("Wavelength (nm) — P-Pol")
-        ax_p.set_ylabel("Absorptance")
         if bands:
             for bmin, bmax in bands:
-                ax_p.axvspan(bmin, bmax, color="gray", alpha=0.2)
-        if i == 0 or is_ideal[i]:
-            ax_p.legend(fontsize=9)
-        if bands is not None:
-            bands_str = ", ".join([f"{b[0]}-{b[1]}nm" for b in bands])
-        else:
-            bands_str = "Custom"
-        title_prefix = f"Band Target ({bands_str})" if is_ideal[i] else f"Dataset Sample"
-        ds_str = f"\nBest in Dataset: {best_dataset_mat} (Abs={best_dataset_abs:.3f})" if (best_dataset_abs is not None and is_ideal[i]) else ""
-        ax_p.set_title(f"{title_prefix} (P-Pol) | Predicted: {pred_mat_name}\nTorcwa Abs={rcwa_avg_abs:.3f} | Surr Abs={surr_avg_abs:.3f}{ds_str}")
+                ax_p.axvspan(bmin, bmax, color="gray", alpha=0.15)
+        ax_p.plot(WAVELENGTHS, curve[i, :n_wl_half].cpu().numpy(), "k--", lw=3, label="Target")
+        if best_dataset_curve is not None and is_ideal[i]:
+            ds_label = "Best Dataset"
+            ax_p.plot(WAVELENGTHS, best_dataset_curve[:n_wl_half].numpy(), color=c_dataset,
+                      linestyle=":", lw=2, label=ds_label)
+        ax_p.plot(WAVELENGTHS, surrogate_preds[i, :n_wl_half].cpu().numpy(), linestyle="-", color=c_surr, lw=3, label="Surrogate")
+        ax_p.plot(WAVELENGTHS, rcwa_p, linestyle="-", color=c_physics, lw=2.5, label="Torcwa Physics")
+        
+        ax_p.set_xlim(300, 1100); ax_p.set_ylim(-0.05, 1.05)
+        title_prefix = f"Band Target" if is_ideal[i] else f"Dataset Sample"
+        ds_str = f" | Dataset Abs={best_dataset_abs:.3f}" if (best_dataset_abs is not None and is_ideal[i]) else ""
+        ax_p.set_title(f"{title_prefix} (P-Pol) | Predicted: {pred_mat_name}\nTorcwa Abs={rcwa_avg_abs:.3f} | Surr Abs={surr_avg_abs:.3f}{ds_str}", fontsize=16)
+        if i == 0:
+            ax_p.legend(fontsize=12)
+        ax_p.tick_params(axis='both', which='major', labelsize=12)
 
         # 3. S-Pol Spectra
         ax_s = axes[i, 1]
-        ax_s.plot(WAVELENGTHS, curve[i, n_wl_half:].cpu().numpy(), "k-", lw=2.5, label="Target", zorder=10)
-        if best_dataset_curve is not None and is_ideal[i]:
-            ax_s.plot(WAVELENGTHS, best_dataset_curve[n_wl_half:].numpy(), color=c_dataset,
-                      linestyle="-", lw=1.8, alpha=0.75, zorder=9)
-        ax_s.plot(WAVELENGTHS, surrogate_preds[i, n_wl_half:].cpu().numpy(), linestyle="--", color=c_surr, lw=2.0, label="Surrogate")
-        ax_s.plot(WAVELENGTHS, rcwa_s, linestyle="-", color=c_physics, lw=2.0, label="Torcwa")
-        ax_s.set_xlim(300, 1100); ax_s.set_ylim(-0.05, 1.05)
-        ax_s.set_xlabel("Wavelength (nm) — S-Pol")
-        ax_s.set_ylabel("Absorptance")
         if bands:
             for bmin, bmax in bands:
-                ax_s.axvspan(bmin, bmax, color="gray", alpha=0.2)
-        ax_s.set_title(f"{title_prefix} (S-Pol) | Predicted: {pred_mat_name}\nTorcwa Abs={rcwa_avg_abs:.3f} | Surr Abs={surr_avg_abs:.3f}{ds_str}")
+                ax_s.axvspan(bmin, bmax, color="gray", alpha=0.15)
+        ax_s.plot(WAVELENGTHS, curve[i, n_wl_half:].cpu().numpy(), "k--", lw=3, label="Target")
+        if best_dataset_curve is not None and is_ideal[i]:
+            ax_s.plot(WAVELENGTHS, best_dataset_curve[n_wl_half:].numpy(), color=c_dataset,
+                      linestyle=":", lw=2, label="Best Dataset")
+        ax_s.plot(WAVELENGTHS, surrogate_preds[i, n_wl_half:].cpu().numpy(), linestyle="-", color=c_surr, lw=3, label="Surrogate")
+        ax_s.plot(WAVELENGTHS, rcwa_s, linestyle="-", color=c_physics, lw=2.5, label="Torcwa Physics")
+        ax_s.set_xlim(300, 1100); ax_s.set_ylim(-0.05, 1.05)
+        ax_s.set_title(f"{title_prefix} (S-Pol) | Predicted: {pred_mat_name}\nTorcwa Abs={rcwa_avg_abs:.3f} | Surr Abs={surr_avg_abs:.3f}{ds_str}", fontsize=16)
+        ax_s.tick_params(axis='both', which='major', labelsize=12)
         
         # 4. Grating Profile
         ax_g = axes[i, 2]
@@ -254,37 +258,60 @@ def plot_model_dashboard(
         cosines = amps[:, None] * np.cos(arg)
         prof = grating_height / 2.0 + cosines.sum(axis=0)
         
-        ax_g.fill_between(r_grid, 0, prof, color=c_profile, alpha=0.6)
-        ax_g.plot(r_grid, prof, color=c_profile, lw=1.5)
+        xs = np.linspace(0, rcwa_config_dict.get("grating_period", 1000), len(r_grid))
+        ax_g.plot(xs, prof, "k-", lw=2)
+        ax_g.fill_between(xs, 0, prof, color=cmap(0.7), alpha=0.5)
         ax_g.set_ylim(0, max(120, grating_height * 1.2))
         ax_g.set_xlim(0, 1000)
-        ax_g.set_title(f"Predicted Profile ({pred_mat_name})")
-        ax_g.set_ylabel("Thickness (nm)")
-        
-        text_str = f"Material: {pred_mat_name}\nFilm Height ($h$): {h_nm:.1f} nm\nGrating Height: {grating_height:.1f} nm\nIncidence: {inc_ang_deg:.1f}°"
-        ax_g.text(0.05, 0.95, text_str, transform=ax_g.transAxes, fontsize=10,
-                verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+        ax_g.set_title(f"Structure Cross-Section\nFilm Height={h_nm:.0f}nm, Inc Ang={inc_ang_deg:.1f}°", fontsize=16)
+        ax_g.set_ylabel("Height (nm)", fontsize=14)
+        ax_g.tick_params(axis='both', which='major', labelsize=12)
                 
         # 5. Harmonics Bar Plot
         ax_h = axes[i, 3]
         x_pos = np.arange(1, n_harmonics + 1)
         ax_h.bar(x_pos, amps, color=c_amp, edgecolor="black")
-        ax_h.set_ylabel("Amplitude (nm)", color=c_amp)
-        ax_h.tick_params(axis='y', labelcolor=c_amp)
+        ax_h.set_ylabel("Amplitude (nm)", color=c_amp, fontsize=14)
+        ax_h.tick_params(axis='y', labelcolor=c_amp, labelsize=12)
+        ax_h.tick_params(axis='x', labelsize=12)
+        ax_h.set_title("Harmonic Composition (Optimized)", fontsize=16)
         
         ax_p2 = ax_h.twinx()
-        ax_p2.plot(x_pos, phases, 'o', color=c_phase, markersize=8)
-        ax_p2.set_ylabel("Phase (rad)", color=c_phase)
-        ax_p2.tick_params(axis='y', labelcolor=c_phase)
+        ax_p2.plot(x_pos, phases, 'o', color=c_phase, markersize=10, markeredgecolor="black")
+        ax_p2.set_ylabel("Phase (rad)", color=c_phase, fontsize=14)
+        ax_p2.tick_params(axis='y', labelcolor=c_phase, labelsize=12)
         ax_p2.set_ylim(-0.5, 2*np.pi + 0.5)
         
-        ax_h.set_title("Harmonics Amplitudes & Phases")
-        ax_h.set_xticks(x_pos)
-        ax_h.set_xticklabels([f"n={n}" for n in x_pos])
+        # 6. Best Dataset Harmonics
+        ax_h2 = axes[i, 4]
+        if best_dataset_geo is not None and is_ideal[i]:
+            n_harm_data = (len(best_dataset_geo) - 2) // 2
+            amps_data = best_dataset_geo[0:2*n_harm_data:2].numpy()
+            phases_data = best_dataset_geo[1:2*n_harm_data:2].numpy()
+            h_data = best_dataset_geo[-2].item()
+            inc_data = best_dataset_geo[-1].item()
+            
+            x_pos_data = np.arange(1, n_harm_data + 1)
+            ax_h2.bar(x_pos_data, amps_data, color=c_amp, edgecolor="black")
+            ax_h2.set_ylabel("Amplitude (nm)", color=c_amp, fontsize=14)
+            ax_h2.tick_params(axis='y', labelcolor=c_amp, labelsize=12)
+            ax_h2.tick_params(axis='x', labelsize=12)
+            ax_h2.set_title(f"Dataset Best\n(Film Height={h_data:.0f}nm, Inc Ang={inc_data:.0f}°)", fontsize=16)
+            
+            ax_p3 = ax_h2.twinx()
+            ax_p3.plot(x_pos_data, phases_data, 'o', color=c_phase, markersize=10, markeredgecolor="black")
+            ax_p3.set_ylabel("Phase (rad)", color=c_phase, fontsize=14)
+            ax_p3.tick_params(axis='y', labelcolor=c_phase, labelsize=12)
+            ax_p3.set_ylim(-0.5, 2 * np.pi + 0.5)
+        else:
+            ax_h2.axis("off")
         
         if i == n_samples - 1:
-            ax_p.set_xlabel("Wavelength (nm)")
-            ax_s.set_xlabel("Wavelength (nm)")
+            ax_p.set_xlabel("Wavelength (nm)", fontsize=14)
+            ax_s.set_xlabel("Wavelength (nm)", fontsize=14)
+            ax_g.set_xlabel("x (nm)", fontsize=14)
+            ax_h.set_xlabel("Harmonic index", fontsize=14)
+            ax_h2.set_xlabel("Harmonic index", fontsize=14)
             ax_g.set_xlabel("x (nm)")
             ax_h.set_xlabel("Harmonic Index")
             
@@ -442,11 +469,13 @@ def main():
     best_dataset_curve: torch.Tensor | None = None
     best_dataset_abs: float | None = None
     best_dataset_mat: str | None = None
+    best_dataset_geo = None
     if bands:
         print("\nScanning dataset for best raw performance in bands...")
         try:
-            baseline_res, _ = get_dataset_baseline(ckpt_dir, bands)
+            baseline_res, dataset_best_geos = get_dataset_baseline(ckpt_dir, bands)
             best_score = -1.0
+            best_dataset_geo = None
             for mat, res in baseline_res.items():
                 score = res["avg_abs"].max().item()
                 if score > best_score:
@@ -454,6 +483,7 @@ def main():
                     best_dataset_abs = score
                     best_dataset_mat = mat
                     best_dataset_curve = res["targets"][res["avg_abs"].argmax()].clone()
+                    best_dataset_geo = dataset_best_geos[mat]
             print(f"  Best dataset structure: {best_dataset_mat}, Avg Abs={best_dataset_abs:.4f}")
         except Exception as e:
             import traceback

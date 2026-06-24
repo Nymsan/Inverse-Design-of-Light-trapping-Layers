@@ -10,6 +10,11 @@ David~J. Griffiths.
 \newblock {\em Introduction to Electrodynamics, fourth edition}.
 \newblock Cambridge University Press, 2017.
 
+\bibitem{fmm}
+Junghyun Park Byoungho~Lee Hwi~Kim.
+\newblock {\em Fourier Modal Method and Its Applications in Computational Nanophotonics}.
+\newblock CRC press, 2012.
+
 \bibitem{torcwa}
 Changhyun Kim and Byoungho Lee.
 \newblock Torcwa: Gpu-accelerated fourier modal method and gradient-based optimization for metasurface design.
