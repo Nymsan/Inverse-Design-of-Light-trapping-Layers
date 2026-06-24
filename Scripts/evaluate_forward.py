@@ -276,29 +276,21 @@ def main():
     target_key = stats["target_key"]
     print(f"n_continuous={n_continuous}  n_wavelengths={n_wavelengths}  materials={list(mat_dirs.keys())}")
 
-    data_files = {mat: [] for mat in stats["materials"]}
+    val_files = {mat: [] for mat in stats["materials"]}
     for mat_name in stats["materials"]:
         d_dir = os.path.join(PROJECT_ROOT, "Data", f"{prefix}_{mat_name}")
-        full_file = os.path.join(d_dir, "full_dataset.pt")
-        if os.path.exists(full_file):
-            data_files[mat_name].append(full_file)
+        v_file = os.path.join(d_dir, "val_dataset.pt")
+        if os.path.exists(v_file):
+            val_files[mat_name].append(v_file)
         else:
-            import glob
-            data_files[mat_name].extend(glob.glob(os.path.join(d_dir, "batch_*.pt")))
+            raise FileNotFoundError(f"Missing {v_file}")
             
-    val_indices = stats.get("val_indices", None)
-    if val_indices is None:
-        print("Warning: val_indices not found in dataset_stats.pt. Falling back to test data batches.")
-        batch = generate_test_batch(stats)
-        val_loader = [batch]
-    else:
-        val_set = GratingDataset(
-            data_files, target_key=stats["target_key"],
-            geo_min=stats["geo_min"], geo_max=stats["geo_max"],
-            subset_indices=val_indices
-        )
-        print(f"Loaded real validation set with {len(val_set)} samples.")
-        val_loader = DataLoader(val_set, batch_size=256, shuffle=False)
+    val_set = GratingDataset(
+        val_files, target_key=stats["target_key"],
+        geo_min=stats["geo_min"], geo_max=stats["geo_max"]
+    )
+    print(f"Loaded real validation set with {len(val_set)} samples.")
+    val_loader = DataLoader(val_set, batch_size=256, shuffle=False)
 
     all_history = {}
     forward_models = {}

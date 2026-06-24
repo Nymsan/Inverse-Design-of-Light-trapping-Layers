@@ -1025,7 +1025,6 @@ class GratingDataset(torch.utils.data.Dataset):
     def __init__(
         self, data_files: Dict[str, list[str]], target_key: str = "A_film_normal",
         geo_min: Optional[torch.Tensor] = None, geo_max: Optional[torch.Tensor] = None,
-        subset_indices: Optional[Dict[str, torch.Tensor]] = None,
     ):
         super().__init__()
         all_geometry: list[torch.Tensor] = []
@@ -1083,13 +1082,6 @@ class GratingDataset(torch.utils.data.Dataset):
                 mat_material_t = torch.cat(mat_material, dim=0)
                 mat_target_t = torch.cat(mat_target, dim=0)
                 
-                if subset_indices is not None and mat_name in subset_indices:
-                    indices = subset_indices[mat_name]
-                    mat_geometry_t = mat_geometry_t[indices]
-                    mat_params_x_t = mat_params_x_t[indices]
-                    mat_material_t = mat_material_t[indices]
-                    mat_target_t = mat_target_t[indices]
-                    
                 all_geometry.append(mat_geometry_t)
                 all_params_x.append(mat_params_x_t)
                 all_material.append(mat_material_t)

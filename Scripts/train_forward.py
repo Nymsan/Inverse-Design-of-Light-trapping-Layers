@@ -42,7 +42,6 @@ def get_args():
     p.add_argument("--epochs", type=int, default=500)
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--patience", type=int, default=100)
-    p.add_argument("--val_split", type=float, default=0.01)
     p.add_argument("--train_subset_fraction", type=float, default=1.0)
     p.add_argument("--target_key", type=str, default="all_film")
     p.add_argument("--seed", type=int, default=42)
@@ -102,51 +101,37 @@ def main():
     print(f"Loading data with prefixes: {args.dataset_prefixes}")
     t0 = time.time()
     
-    data_files = {mat: [] for mat in args.materials}
+    train_files = {mat: [] for mat in args.materials}
+    val_files = {mat: [] for mat in args.materials}
     
     for mat_name in args.materials:
         for prefix in args.dataset_prefixes:
             d_dir = os.path.join(args.data_dir, f"{prefix}_{mat_name}")
-            full_file = os.path.join(d_dir, "full_dataset.pt")
-            if os.path.exists(full_file):
-                data_files[mat_name].append(full_file)
-            else
-                return "No full dataset.pt"
+            t_file = os.path.join(d_dir, "train_dataset.pt")
+            v_file = os.path.join(d_dir, "val_dataset.pt")
+            if os.path.exists(t_file) and os.path.exists(v_file):
+                train_files[mat_name].append(t_file)
+                val_files[mat_name].append(v_file)
+            else:
+                raise FileNotFoundError(f"Missing train/val datasets in {d_dir}")
                 
-    # Temporarily load just to get sizes for splitting
-    temp_dataset = GratingDataset(data_files, target_key=args.target_key)
+    train_set = GratingDataset(train_files, target_key=args.target_key)
+    val_set = GratingDataset(val_files, target_key=args.target_key, geo_min=train_set.geo_min, geo_max=train_set.geo_max)
     
-    train_indices = {}
-    val_indices = {}
-    
-    # We want a deterministic split per material
-    # We'll use a fixed random generator
-    rng = torch.Generator().manual_seed(args.seed)
-    
-    for mat_name in args.materials:
-        mat_id = MATERIAL_LIBRARY[mat_name]
-        mat_mask = temp_dataset.material_id == mat_id
-        mat_count = mat_mask.sum().item()
+    # Apply train_subset_fraction
+    if args.train_subset_fraction < 1.0:
+        print(f"Applying train_subset_fraction {args.train_subset_fraction}")
+        rng = torch.Generator().manual_seed(args.seed)
+        n_train_total = len(train_set)
+        indices = torch.randperm(n_train_total, generator=rng)
+        n_train = max(1, int(n_train_total * args.train_subset_fraction))
+        t_idx = indices[:n_train]
         
-        if mat_count == 0:
-            continue
-            
-        indices = torch.randperm(mat_count, generator=rng)
-        
-        n_val = max(1, int(mat_count * args.val_split))
-        v_idx = indices[:n_val]
-        t_idx_pool = indices[n_val:]
-        
-        n_train = max(1, int(len(t_idx_pool) * args.train_subset_fraction))
-        t_idx = t_idx_pool[:n_train]
-        
-        train_indices[mat_name] = t_idx
-        val_indices[mat_name] = v_idx
-        
-        print(f"  {mat_name}: Split generated -> Val = {len(v_idx)}, Train ({args.train_subset_fraction}x) = {len(t_idx)}")
-        
-    train_set = GratingDataset(data_files, target_key=args.target_key, subset_indices=train_indices)
-    val_set = GratingDataset(data_files, target_key=args.target_key, subset_indices=val_indices, geo_min=train_set.geo_min, geo_max=train_set.geo_max)
+        train_set.geometry = train_set.geometry[t_idx]
+        train_set.params_x = train_set.params_x[t_idx]
+        train_set.material_id = train_set.material_id[t_idx]
+        train_set.target = train_set.target[t_idx]
+        print(f"Reduced training set to {len(train_set)} samples")
     
     print(f"Datasets loaded: Train {len(train_set)} samples, Val {len(val_set)} samples in {time.time() - t0:.1f} s")
 
