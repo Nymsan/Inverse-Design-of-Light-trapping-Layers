@@ -35,23 +35,23 @@ LATENT_DIM_GEN="32"
 LATENT_DIM_CVAE="64"
 
 # --- MLP & General parameters ---
-MLP_HIDDEN_DIMS="512 512 512"
+MLP_HIDDEN_DIMS="512 1024 512"
 MLP_DROPOUT="0.0"
 
 # --- CNN configurations ---
-CNN_CONV_CHANNELS="48 96 96 128 96"
+CNN_CONV_CHANNELS="64 96 128 128 96"
 CNN_KERNEL_SIZE="9"
 CNN_FC_DIMS="384 256"
 CNN_DROPOUT="0.0"
 
 # --- SkipCNN configurations  ---
-SKIPCNN_CONV_CHANNELS="48 64 96 128 64"
+SKIPCNN_CONV_CHANNELS="64 128 96 128 64"
 SKIPCNN_KERNEL_SIZE="9"
 SKIPCNN_FC_DIMS="256 256"
 SKIPCNN_DROPOUT="0.0"
 
 # --- SIREN configurations ---
-SIREN_CONV_CHANNELS="64 64 96 128 64"
+SIREN_CONV_CHANNELS="64 128 96 128 64"
 SIREN_KERNEL_SIZE="9"
 SIREN_FC_DIMS="256 256"
 SIREN_LATENT_DIM="64"
@@ -60,7 +60,7 @@ SIREN_DROPOUT="0.0"
 
 TF_D_MODEL="128"
 TF_NHEAD="4"
-TF_DIM_FEEDFORWARD="400"
+TF_DIM_FEEDFORWARD="500"
 TF_NUM_LAYERS="4"
 TF_DROPOUT="0.0"
 
@@ -123,18 +123,26 @@ if [ "$TRAIN_FORWARD" = true ]; then
             --data_dir ../Data \
             --dataset_prefixes LHS_Dataset \
             --materials Si TiO2 Si3N4 \
-            --batch_size 512 \
-            --epochs 1200 \
+            --batch_size 768 \
+            --epochs 1500 \
             --lr 2e-3 \
             --patience 200 \
             --train_subset_fraction $frac \
             --seed 42 \
             --embed_dim $EMBED_DIM \
             --skip cnn transformer \
+            --mlp_hidden_dims $MLP_HIDDEN_DIMS \
+            --mlp_dropout $MLP_DROPOUT \
             --skipcnn_conv_channels $SKIPCNN_CONV_CHANNELS \
             --skipcnn_kernel_size $SKIPCNN_KERNEL_SIZE \
             --skipcnn_fc_dims $SKIPCNN_FC_DIMS \
-            --skipcnn_dropout $SKIPCNN_DROPOUT
+            --skipcnn_dropout $SKIPCNN_DROPOUT \
+            --siren_conv_channels $SIREN_CONV_CHANNELS \
+            --siren_kernel_size $SIREN_KERNEL_SIZE \
+            --siren_fc_dims $SIREN_FC_DIMS \
+            --siren_latent_dim $SIREN_LATENT_DIM \
+            --siren_omega_0 $SIREN_OMEGA_0 \
+            --siren_dropout $SIREN_DROPOUT
     done
 fi
 
@@ -145,8 +153,8 @@ if [ "$TRAIN_INVERSE" = true ]; then
         --dataset_prefixes LHS_Dataset \
         --materials Si TiO2 Si3N4 \
         --target_key all_film \
-        --epochs 1200 \
-        --batch_size 512 \
+        --epochs 1500 \
+        --batch_size 768 \
         --lr 5e-4 \
         --patience 200 \
         --seed 42 \

@@ -44,6 +44,21 @@ def parse_args():
     p.add_argument("--expand_amps", type=float, default=None, help="Temporarily expand the maximum amplitude bounds (e.g., to 25.0 nm)")
     return p.parse_args()
 
+def get_folder_name(args) -> str:
+    parts = []
+    if args.h_val is not None:
+        if isinstance(args.h_val, list) and len(args.h_val) == 2:
+            parts.append(f"h{int(args.h_val[0])}-{int(args.h_val[1])}")
+        else:
+            h_target = args.h_val[0] if isinstance(args.h_val, list) else args.h_val
+            parts.append(f"h{int(h_target)}")
+    if args.inc_val is not None:
+        parts.append(f"inc{args.inc_val}")
+    if args.bands:
+        bands_str = "_".join([f"{int(args.bands[i])}-{int(args.bands[i+1])}" for i in range(0, len(args.bands), 2)])
+        parts.append(f"bands{bands_str}")
+    return "_".join(parts) if parts else "all_data"
+
 def main():
     args = parse_args()
     ckpt_dir = Path(args.ckpt_dir)
@@ -177,7 +192,7 @@ def main():
     print(f"Height: {h_val:.2f} nm, Incident Angle: {inc_ang:.2f} deg")
     
     # Plotting
-    out_dir = ckpt_dir / "evaluation" / "surrogate_optimization"
+    out_dir = ckpt_dir / "evaluation" / "surrogate_optimization" / get_folder_name(args)
     out_dir.mkdir(parents=True, exist_ok=True)
     bands_str = "_".join([f"{int(b[0])}-{int(b[1])}" for b in bands]) if bands else "full_spectrum"
     
@@ -213,7 +228,7 @@ def main():
     plt.legend()
     plt.title('Optimization History (Pure Unpenalized Absorptance)')
     plt.tight_layout()
-    plt.savefig(out_dir / f"optimization_history_{args.mode}_{bands_str}.png")
+    plt.savefig(out_dir / f"optimization_history_{args.mode}.png")
     plt.close()
     
     n_results = len(res["top_results"])
@@ -400,19 +415,14 @@ def main():
     plt.tight_layout()
     fig.suptitle(f"Surrogate Optimization: {args.mode.capitalize()}{title_suffix}", fontsize=20, y=1.02)
         
-    if args.h_val is None:
-        h_val_str = "h_unbounded"
-    elif len(args.h_val) == 1:
-        h_val_str = f"h_{int(args.h_val[0])}"
-    else:
-        h_val_str = f"h_{int(args.h_val[0])}-{int(args.h_val[1])}"
-        
-    out_path = out_dir / f"surrogate_optimization_{args.mode}_{h_val_str}_{bands_str}.png"
+    fig.tight_layout()
+    
+    out_path = out_dir / f"surrogate_optimization_{args.mode}.png"
     plt.savefig(out_path)
-    plt.close()
+    plt.close(fig)
     print(f"Saved plot to {out_path}")
     
-    out_json = out_dir / f"surrogate_results_{args.mode}_{h_val_str}_{bands_str}.json"
+    out_json = out_dir / f"surrogate_results_{args.mode}.json"
     with open(out_json, "w") as f:
         json.dump(metrics_list, f, indent=4)
     print(f"Saved metrics to {out_json}")

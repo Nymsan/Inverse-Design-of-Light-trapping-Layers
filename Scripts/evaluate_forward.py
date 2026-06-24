@@ -43,14 +43,45 @@ WAVELENGTHS = np.linspace(300, 1100, 161)
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--ckpt_dir", required=True, help="Path to checkpoint directory")
+    p.add_argument("--h_val", nargs="+", type=float, help="Target height in nm, or range (min max)")
+    p.add_argument("--h_tolerance", type=float, default=0.5, help="Tolerance for height matching")
+    p.add_argument("--inc_val", type=float, default=None, help="Target incident angle in degrees (e.g., 0.0 for normal)")
+    p.add_argument("--inc_tolerance", type=float, default=0.5, help="Tolerance for incident angle matching")
+    p.add_argument("--bands", nargs="+", type=float, help="Pairs of wavelength bands to evaluate, e.g., --bands 500 750 800 900")
     return p.parse_args()
 
+def get_folder_name(args) -> str:
+    parts = []
+    if args.h_val is not None:
+        if isinstance(args.h_val, list) and len(args.h_val) == 2:
+            parts.append(f"h{int(args.h_val[0])}-{int(args.h_val[1])}")
+        else:
+            h_target = args.h_val[0] if isinstance(args.h_val, list) else args.h_val
+            parts.append(f"h{int(h_target)}_tol{args.h_tolerance}")
+    if args.inc_val is not None:
+        parts.append(f"inc{args.inc_val}_tol{args.inc_tolerance}")
+    if args.bands:
+        bands_str = "_".join([f"{int(args.bands[i])}-{int(args.bands[i+1])}" for i in range(0, len(args.bands), 2)])
+        parts.append(f"bands{bands_str}")
+        
+    return "_".join(parts) if parts else "all_data"
 
-def plot_loss_curves(all_history: dict, save_path: str):
+def format_model_name(name: str) -> str:
+    mapping = {
+        "forward_mlp": "Forward MLP",
+        "spatial_cnn": "Spatial CNN",
+        "skip_cnn": "Skip CNN",
+        "siren": "SIREN",
+        "transformer": "Transformer"
+    }
+    return mapping.get(name, name.replace("_", " ").title())
+
+
+def plot_loss_curves(all_history: dict, save_path: str, train_info: str):
     if not all_history:
         return
     n_models = len(all_history)
-    fig, axes = plt.subplots(1, n_models, figsize=(5 * n_models, 4), squeeze=False, layout="constrained")
+    fig, axes = plt.subplots(1, n_models, figsize=(5 * n_models, 4), squeeze=False, sharey=True, layout="constrained")
     axes = axes[0]
 
     for ax, (name, hist) in zip(axes, all_history.items()):
@@ -65,11 +96,11 @@ def plot_loss_curves(all_history: dict, save_path: str):
             ax.semilogy(val_epochs, hist["val_loss"], label="Val", alpha=0.8, marker=marker)
         ax.set_xlabel("Epoch")
         ax.set_ylabel("Combined Loss")
-        ax.set_title(name.replace("_", " ").title())
+        ax.set_title(format_model_name(name))
         ax.legend()
         ax.grid(True, alpha=0.3)
-
-    plt.suptitle("Forward Training Loss Curves", fontsize=15)
+        
+    plt.suptitle(f"Forward Training Loss Curves ({train_info})", fontsize=15)
     plt.tight_layout()
     plt.savefig(save_path)
     plt.close()
@@ -77,7 +108,7 @@ def plot_loss_curves(all_history: dict, save_path: str):
 
 
 @torch.no_grad()
-def plot_forward_parity(models: dict[str, nn.Module], val_loader, save_path: str, n_wavelengths: int):
+def plot_forward_parity(models: dict[str, nn.Module], val_loader, save_path: str, n_wavelengths: int, band_mask: torch.Tensor = None, filter_title: str = ""):
     n_models = len(models)
     if n_models == 0:
         return
@@ -85,16 +116,23 @@ def plot_forward_parity(models: dict[str, nn.Module], val_loader, save_path: str
     axes = axes[0]
 
     for ax, (name, model) in zip(axes, models.items()):
-        all_pred, all_true = [], []
+        all_pred, all_true, all_mat = [], [], []
         for batch in val_loader:
             geo, px, mat, target = (batch["geometry"], batch["params_x"],
                                     batch["material_id"], batch["target"])
             pred = model(geo, mat)
+            if band_mask is not None:
+                pred = pred[:, band_mask]
+                target = target[:, band_mask]
+                
             all_pred.append(pred)
             all_true.append(target)
+            all_mat.append(mat)
 
         pred = torch.cat(all_pred).mean(dim=1).numpy()
         true = torch.cat(all_true).mean(dim=1).numpy()
+        mat_all = torch.cat(all_mat).numpy()
+        if mat_all.ndim > 1: mat_all = mat_all.argmax(axis=1)
 
         ax.scatter(true, pred, alpha=0.6, s=15, c="blue", edgecolors="none")
         ax.plot([0, 1], [0, 1], "k--", lw=1.5, alpha=0.8)
@@ -103,23 +141,45 @@ def plot_forward_parity(models: dict[str, nn.Module], val_loader, save_path: str
         ax.set_xlim(0, 1)
         ax.set_ylim(0, 1)
         ax.set_aspect("equal")
-        ax.set_title(f"{name.replace('_', ' ').title()}", fontsize=12)
+        ax.set_title(format_model_name(name), fontsize=12)
         
-        # Create separate side-by-side histogram plot
+        # Create single histogram plot
         save_dir = Path(save_path).parent
-        fig_hist, axes_hist = plt.subplots(1, 2, figsize=(10, 4), sharey=True, layout="constrained")
+        fig_hist, ax_hist = plt.subplots(figsize=(8, 5), layout="constrained")
         
-        axes_hist[0].hist(true, bins=40, color='black', alpha=0.7)
-        axes_hist[0].set_xlabel("Average Absorptance")
-        axes_hist[0].set_ylabel("Count")
-        axes_hist[0].set_title("True Validation Distribution")
+        mat_names = list(MATERIAL_LIBRARY.keys())
+        colors = plt.cm.tab10.colors
         
-        axes_hist[1].hist(pred, bins=40, color='blue', alpha=0.7)
-        axes_hist[1].set_xlabel("Average Absorptance")
-        axes_hist[1].set_title("Predicted Validation Distribution")
+        for m_id in range(len(mat_names)):
+            m_mask = (mat_all == m_id)
+            if not m_mask.any(): continue
+            
+            z = m_id + 1
+            # Compute fixed bin edges based on min/max of both true and pred
+            combined_min = min(true[m_mask].min(), pred[m_mask].min())
+            combined_max = max(true[m_mask].max(), pred[m_mask].max())
+            bin_width = 0.002
+            num_bins = max(1, int(np.ceil((combined_max - combined_min) / bin_width)))
+            bin_edges = np.linspace(combined_min, combined_min + num_bins * bin_width, num_bins + 1)
+            
+            # True as colored alpha bars (rendered beneath lines)
+            ax_hist.hist(true[m_mask], bins=bin_edges, color=colors[m_id], alpha=0.5, label=f"{mat_names[m_id]} (True)", zorder=z)
+            # Predicted as colored overlay envelope (rendered on top of all bars)
+            ax_hist.plot([], [], color=colors[m_id], linewidth=2.0, label=f"{mat_names[m_id]} (Pred)")
+            ax_hist.hist(pred[m_mask], bins=bin_edges, color=colors[m_id], histtype="step", linewidth=2.0, zorder=z)
+            
+        ax_hist.set_xlabel("Average Absorptance")
+        ax_hist.set_ylabel("Count")
+        ax_hist.set_yscale("log")
+        ax_hist.set_title("Validation Distribution (True vs Predicted)")
+        ax_hist.legend()
         
-        fig_hist.suptitle(f"{name.replace('_', ' ').title()} - Performance Histograms", fontsize=14)
+        suptitle = f"{format_model_name(name)} - Performance Histograms"
+        if filter_title: suptitle += f"\n({filter_title})"
+        fig_hist.suptitle(suptitle, fontsize=12)
+        
         hist_save_path = save_dir / f"histogram_{name}.png"
+        
         fig_hist.savefig(hist_save_path)
         plt.close(fig_hist)
         print(f"  Saved: {hist_save_path}")
@@ -130,29 +190,34 @@ def plot_forward_parity(models: dict[str, nn.Module], val_loader, save_path: str
 
 
 @torch.no_grad()
-def plot_spectrum_samples(models: dict[str, nn.Module], val_loader, save_path: str, n_wavelengths: int, n_harmonics: int):
+def plot_spectrum_samples(models: dict[str, nn.Module], val_loader, save_path: str, n_wavelengths: int, n_harmonics: int, global_max_err: float, filter_title: str = ""):
     if not models:
         return
-    batch = next(iter(val_loader))
-    geo, px, mat, target = batch["geometry"], batch["params_x"], batch["material_id"], batch["target"]
-    
-    selected_indices = []
-    mat_counts = {}
+        
+    val_set = val_loader.dataset
     import random
-    indices = list(range(len(mat.numpy())))
-    random.seed(42)  # For reproducibility across models
+    indices = list(range(len(val_set)))
     random.shuffle(indices)
     
+    geo_list, mat_list, target_list = [], [], []
+    mat_counts = {}
+    
     for idx in indices:
-        m_id = mat[idx].item()
-        if mat_counts.get(m_id, 0) < 2:
-            selected_indices.append(idx)
-            mat_counts[m_id] = mat_counts.get(m_id, 0) + 1
-        if len(selected_indices) >= 6:
+        item = val_set[idx]
+        m_id = item["material_id"].argmax().item() if item["material_id"].ndim > 0 else item["material_id"].item()
+        if mat_counts.get(m_id, 0) < 1:
+            geo_list.append(item["geometry"].unsqueeze(0))
+            mat_list.append(item["material_id"].unsqueeze(0))
+            target_list.append(item["target"].unsqueeze(0))
+            mat_counts[m_id] = 1
+        if len(geo_list) >= len(MATERIAL_LIBRARY):
             break
             
-    # Sort indices so the materials appear in order (e.g. 0, 0, 1, 1, 2, 2)
-    selected_indices.sort(key=lambda idx: mat[idx].item())
+    combined = sorted(zip(geo_list, mat_list, target_list), key=lambda x: x[1].argmax().item() if x[1].ndim > 0 else x[1].item())
+    geo = torch.cat([x[0] for x in combined])
+    mat = torch.cat([x[1] for x in combined])
+    target = torch.cat([x[2] for x in combined])
+    selected_indices = list(range(len(geo)))
             
     n_samples = len(selected_indices)
     n_wl_half = n_wavelengths // 2
@@ -176,25 +241,30 @@ def plot_spectrum_samples(models: dict[str, nn.Module], val_loader, save_path: s
                 
                 # Plot Truth and Pred
                 ax.plot(WAVELENGTHS, target[idx, start:end].numpy(), "k-", lw=2.5, label="Truth", alpha=0.5)
-                ax.plot(WAVELENGTHS, pred[0, start:end].numpy(), "--", color=color, lw=2.0, label=name.replace("_", " ").title())
+                ax.plot(WAVELENGTHS, pred[0, start:end].numpy(), color=color, ls="--", lw=2, label=format_model_name(name))
                 
                 ax.set_xlim(300, 1100)
-                ax.set_ylim(-0.05, 1.05)
+                ax.set_ylim([-0.05, 1.05])
+                
+                inc_val = geo[idx, -1].item()
                 ax.set_ylabel(f"Absorptance ({mat_name})")
-                if i == 0:
-                    ax.set_title(f"Predictions ({pol_label})")
-                if i == 0 and pol_idx == 0:
-                    ax.legend(fontsize=9)
+                
+                # We want the title on every subplot to clearly state the incidence angle
+                ax.set_title(f"{pol_label} (inc={inc_val:.1f}°)")
+                
+                if pol_idx == 0:
+                    ax.legend(loc="upper right", fontsize=8)
                 if i == n_samples - 1:
                     ax.set_xlabel("Wavelength (nm)")
                     
                 # Plot Errors
                 ax_err = axes[i, pol_idx + 2]
                 error = target[idx, start:end] - pred[0, start:end]
-                ax_err.plot(WAVELENGTHS, error.numpy(), "-", color=color, lw=1.5, label=name.replace("_", " ").title())
+                ax_err.plot(WAVELENGTHS, error.numpy(), "-", color=color, lw=1.5, label=format_model_name(name))
                 
                 ax_err.axhline(0, color='k', linestyle='--', lw=1.0)
                 ax_err.set_xlim(300, 1100)
+                ax_err.set_ylim(-global_max_err, global_max_err)
                 ax_err.set_ylabel(f"Error ({mat_name})")
                 if i == 0:
                     ax_err.set_title(f"Error ({pol_label})")
@@ -207,8 +277,8 @@ def plot_spectrum_samples(models: dict[str, nn.Module], val_loader, save_path: s
             inc_val = geo[idx, -1].item()
             
             n_fourier = n_harmonics * 2
-            amps = geo[idx, :n_harmonics].numpy()
-            phases = geo[idx, n_harmonics:n_fourier].numpy()
+            amps = geo[idx, 0:n_fourier:2].numpy()
+            phases = geo[idx, 1:n_fourier:2].numpy()
             x_pos = np.arange(1, n_harmonics + 1)
             
             cmap = plt.get_cmap("viridis")
@@ -230,6 +300,7 @@ def plot_spectrum_samples(models: dict[str, nn.Module], val_loader, save_path: s
             if i == n_samples - 1:
                 ax_geo.set_xlabel("Harmonic index")
 
+        fig.suptitle(f"Spectrum Samples ({filter_title})", fontsize=16)
         model_save_path = save_path.replace(".png", f"_{name}.png")
         plt.savefig(model_save_path)
         plt.close()
@@ -237,13 +308,16 @@ def plot_spectrum_samples(models: dict[str, nn.Module], val_loader, save_path: s
 
 
 @torch.no_grad()
-def compute_metrics(models: dict[str, nn.Module], val_loader, n_wavelengths: int) -> dict:
+def compute_metrics(models: dict[str, nn.Module], val_loader, n_wavelengths: int, band_mask: torch.Tensor = None) -> dict:
     metrics = {}
     for name, model in models.items():
         all_pred, all_true = [], []
         for batch in val_loader:
             geo, px, mat, target = batch["geometry"], batch["params_x"], batch["material_id"], batch["target"]
             pred = model(geo, mat)
+            if band_mask is not None:
+                pred = pred[:, band_mask]
+                target = target[:, band_mask]
             all_pred.append(pred)
             all_true.append(target)
 
@@ -263,7 +337,7 @@ def compute_metrics(models: dict[str, nn.Module], val_loader, n_wavelengths: int
 def main():
     args = parse_args()
     ckpt_dir = Path(args.ckpt_dir)
-    eval_dir = ckpt_dir / "evaluation" / "forward"
+    eval_dir = ckpt_dir / "evaluation" / "forward" / get_folder_name(args)
     eval_dir.mkdir(parents=True, exist_ok=True)
 
     stats = torch.load(ckpt_dir / "dataset_stats.pt", map_location="cpu", weights_only=False)
@@ -289,6 +363,40 @@ def main():
         val_files, target_key=stats["target_key"],
         geo_min=stats["geo_min"], geo_max=stats["geo_max"]
     )
+    
+    # Filter validation set
+    valid_mask = torch.ones(len(val_set), dtype=torch.bool)
+    if args.h_val is not None:
+        h = val_set.geometry[:, -2]
+        if isinstance(args.h_val, list) and len(args.h_val) == 2:
+            valid_mask &= (h >= args.h_val[0]) & (h <= args.h_val[1])
+        else:
+            h_target = args.h_val[0] if isinstance(args.h_val, list) else args.h_val
+            valid_mask &= (torch.abs(h - h_target) <= args.h_tolerance)
+            
+    if args.inc_val is not None:
+        inc = val_set.geometry[:, -1]
+        valid_mask &= (torch.abs(inc - args.inc_val) <= args.inc_tolerance)
+        
+    num_valid = valid_mask.sum().item()
+    if num_valid == 0:
+        print("No samples match the given filters!")
+        return
+        
+    if num_valid < len(val_set):
+        val_set.geometry = val_set.geometry[valid_mask]
+        val_set.params_x = val_set.params_x[valid_mask]
+        val_set.material_id = val_set.material_id[valid_mask]
+        val_set.target = val_set.target[valid_mask]
+        print(f"Filtered validation set from {len(valid_mask)} down to {num_valid} samples.")
+        
+    band_mask = None
+    if args.bands:
+        wl_mask = np.zeros(len(WAVELENGTHS), dtype=bool)
+        for i in range(0, len(args.bands), 2):
+            wl_mask |= (WAVELENGTHS >= args.bands[i]) & (WAVELENGTHS <= args.bands[i+1])
+        band_mask = torch.from_numpy(np.concatenate([wl_mask, wl_mask]))
+        
     print(f"Loaded real validation set with {len(val_set)} samples.")
     val_loader = DataLoader(val_set, batch_size=256, shuffle=False)
 
@@ -330,29 +438,61 @@ def main():
 
 
 
-    print("\nGenerating evaluation plots...")
-    if all_history:
-        plot_loss_curves(all_history, str(eval_dir / "forward_loss_curves.png"))
+    print("\n" + "=" * 60)
+    print("Generating Report")
+    print("=" * 60)
+
+    import re
+    train_info = "Full Trainset"
+    m = re.search(r"frac_([0-9.]+)", ckpt_dir.name)
+    if m:
+        frac = float(m.group(1))
+        train_info = f"Fraction: {frac}"
+        
+    plot_loss_curves(all_history, str(eval_dir / "forward_loss_curves.png"), train_info)
+
+    title_parts = []
+    if train_info:
+        title_parts.append(train_info)
+    if args.h_val is not None:
+        if isinstance(args.h_val, list) and len(args.h_val) == 2:
+            title_parts.append(f"h={args.h_val[0]}-{args.h_val[1]}nm")
+        else:
+            h_target = args.h_val[0] if isinstance(args.h_val, list) else args.h_val
+            title_parts.append(f"h={h_target}±{args.h_tolerance}nm")
+    if args.inc_val is not None:
+        title_parts.append(f"inc={args.inc_val}°±{args.inc_tolerance}°")
+    if args.bands:
+        title_parts.append("Matched Bands")
+    filter_title = " | ".join(title_parts) if title_parts else "All Geometries, All Angles"
 
     if forward_models:
         plot_forward_parity(forward_models, val_loader,
-                           str(eval_dir / "forward_parity.png"), n_wavelengths)
-        plot_spectrum_samples(
-            forward_models, val_loader, str(eval_dir / "forward_predictions.png"), n_wavelengths, n_harmonics
-        )
+                           str(eval_dir / "forward_parity.png"), n_wavelengths, band_mask, filter_title)
+        
         print("\nComputing metrics...")
-        metrics = compute_metrics(forward_models, val_loader, n_wavelengths)
+        metrics = compute_metrics(forward_models, val_loader, n_wavelengths, band_mask)
+        
+        global_max_err = 0.0
         for name, m in metrics.items():
-            print(f"\n  {name}:")
+            print(f"\n  {format_model_name(name)}:")
             print(f"    MSE: {m['mse']:.6e}")
             print(f"    MAE: {m['mae']:.6f}")
             print(f"    Max Error: {m['max_abs_error']:.6f}")
             print(f"    R²: {m['r2']:.6f}")
+            global_max_err = max(global_max_err, m['max_abs_error'])
+            
+        global_max_err = global_max_err * 1.05 # 5% padding
+        if global_max_err < 0.05: global_max_err = 0.05 # minimum limit
 
         metrics_path = eval_dir / "forward_metrics.json"
         with open(metrics_path, "w") as f:
             json.dump(metrics, f, indent=2)
         print(f"\n  Saved: {metrics_path}")
+
+        plot_spectrum_samples(
+            forward_models, val_loader, str(eval_dir / "forward_spectrum_samples.png"), n_wavelengths, n_harmonics, global_max_err, filter_title
+        )
 
 if __name__ == "__main__":
     main()

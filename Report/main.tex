@@ -11,8 +11,14 @@
 \newgeometry{top=2.81cm, bottom=2.75cm, outer=2.5cm, inner=3.5cm}
 \pagestyle{empty}
 \cleardoublepage 
+\input{Frontmatter/Copyright.tex}
+\clearpage 
 \pagestyle{main}
+\input{Frontmatter/Approval.tex}
+\clearpage 
 \input{Frontmatter/Abstract.tex}
+\clearpage 
+\input{Frontmatter/Acknowledgements.tex}
 \cleardoublepage 
 \tableofcontents
 \cleardoublepage 
@@ -29,5 +35,10 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 \printbibliography[heading=bibintoc,title={Bibliography}]
+\cleardoublepage 
+\appendix
+\input{Backmatter/Appendix.tex}
+\cleartoleftpage
+\input{Backmatter/Backpage.tex}
 
 \end{document}
