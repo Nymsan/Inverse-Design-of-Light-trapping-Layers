@@ -117,16 +117,16 @@ uv run python count_params.py \
 
 if [ "$TRAIN_FORWARD" = true ]; then
     echo -e "\n=== Starting Forward Training ==="
-    for frac in 0.1 0.5 1.0; do
+    for frac in 0.1 0.25 0.5 1.0; do
         echo "Training forward model with fraction: $frac"
         uv run python train_forward.py \
             --data_dir ../Data \
             --dataset_prefixes LHS_Dataset \
             --materials Si TiO2 Si3N4 \
-            --batch_size 64 \
-            --epochs 500 \
-            --lr 1e-3 \
-            --patience 100 \
+            --batch_size 512 \
+            --epochs 1200 \
+            --lr 2e-3 \
+            --patience 200 \
             --train_subset_fraction $frac \
             --seed 42 \
             --embed_dim $EMBED_DIM \
@@ -145,8 +145,8 @@ if [ "$TRAIN_INVERSE" = true ]; then
         --dataset_prefixes LHS_Dataset \
         --materials Si TiO2 Si3N4 \
         --target_key all_film \
-        --epochs 2000 \
-        --batch_size 768 \
+        --epochs 1200 \
+        --batch_size 512 \
         --lr 5e-4 \
         --patience 200 \
         --seed 42 \
