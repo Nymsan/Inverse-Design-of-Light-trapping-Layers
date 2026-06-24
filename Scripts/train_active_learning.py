@@ -36,7 +36,7 @@ def get_random_bands():
         w_s = np.random.uniform(100, 400)
         return [(c_s - w_s / 2, c_s + w_s / 2)]
 
-def evaluate_oracle(geometries: torch.Tensor, mat_name: str, stats: dict, device: torch.device):
+def evaluate_oracle(geometries: torch.Tensor, mat_name: str, stats: dict, device: torch.device, order_N: int = None, height_per_layer: float = None):
     """Evaluate a batch of geometries through the Torcwa Oracle."""
     n_samples = geometries.shape[0]
     n_harmonics = stats["n_harmonics"]
@@ -58,6 +58,11 @@ def evaluate_oracle(geometries: torch.Tensor, mat_name: str, stats: dict, device
     else:
         base_config.grating_material = mat_name
         base_config.reflector_type = 'pec'
+        
+    if order_N is not None:
+        base_config.order_N = order_N
+    if height_per_layer is not None:
+        base_config.height_per_layer = height_per_layer
         
     wavelengths = torch.linspace(300, 1100, stats["n_wavelengths"] // 2, dtype=torch.float64, device=device) + 1e-3
     
@@ -211,6 +216,8 @@ def main():
     parser.add_argument('--h_val', nargs="+", type=float, default=None, help="Constrain the active learning exploration to a specific height (nm) or range (min max)")
     parser.add_argument('--inc_val', type=float, default=None, help="Constrain the active learning exploration to a specific incident angle (degrees)")
     parser.add_argument('--expand_amps', type=float, default=None, help="Temporarily expand the maximum amplitude bounds (e.g., to 25.0 nm) for Active Learning")
+    parser.add_argument('--order_N', type=int, default=None, help="RCWA Order N override for Torcwa evaluation")
+    parser.add_argument('--height_per_layer', type=float, default=None, help="RCWA height per layer override for Torcwa evaluation")
     args = parser.parse_args()
 
     device = torch.device(args.device)

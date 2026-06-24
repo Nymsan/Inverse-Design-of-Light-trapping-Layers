@@ -25,7 +25,7 @@ from Utils.checkpoint import load_forward_model, get_best_forward_model
 def parse_args():
     p = argparse.ArgumentParser(description="Evaluate Batched Surrogate Optimizer")
     p.add_argument("--ckpt_dir", default="Checkpoints/Si_TiO2_Si3N4", help="Path to checkpoint dir")
-    p.add_argument("--mode", choices=["geometry", "profile", "de"], default="geometry", help="Optimization mode")
+    p.add_argument("--mode", choices=["geometry", "de"], default="geometry", help="Optimization mode")
     p.add_argument("--bands", nargs="+", type=float, help="Pairs of wavelength bands to optimize, e.g., --bands 500 750 800 900")
     p.add_argument("--h_val", nargs="+", type=float, help="Target height in nm, or range (min max) (fixes/bounds height during evaluation)")
     p.add_argument("--inc_val", type=float, default=None, help="Target incident angle in degrees (fixes angle during evaluation)")
@@ -34,7 +34,10 @@ def parse_args():
     p.add_argument("--save_dir", type=str, default="Checkpoints/Optimization_Eval")
     p.add_argument("--al_iter", type=int, default=-1, help="Active learning iteration of surrogate to use (-1 for latest, 0 for base)")
     p.add_argument("--max_inc_deg", type=float, default=None, help="Maximum incident angle in degrees (default: None, takes max from dataset)")
-    p.add_argument("--recovered_harmonics", type=int, default=10, help="Number of harmonics to recover via FFT in profile mode (default: 10)")
+    p.add_argument("--n_harmonics", type=int, default=None, help="Extended number of harmonics to optimize. If not set, defaults to dataset n_harmonics.")
+    p.add_argument("--order_N", type=int, default=None, help="RCWA Order N override for Torcwa evaluation")
+    p.add_argument("--height_per_layer", type=float, default=None, help="RCWA height per layer override for Torcwa evaluation")
+
     p.add_argument("--top_k", type=int, default=1, help="Number of top structures to show and simulate per material")
     p.add_argument("--force_forward_model", type=str, default=None, help="Force load a specific forward model (e.g. 'siren.pt')")
     p.add_argument("--expand_amps", type=float, default=None, help="Temporarily expand the maximum amplitude bounds (e.g., to 25.0 nm)")
@@ -59,7 +62,29 @@ def main():
         # In models.py, geometry is packed as [amp0, phase0, amp1, phase1...]
         # Amplitudes are at even indices: 0, 2, 4... up to 2*n_harmonics
         geo_max[0:2*n_harmonics:2] = args.expand_amps
-        print(f"[*] Expanded Amplitude Bounds to {args.expand_amps} nm for Evaluation!")
+        print(f"[*] Expanded Amplitude Bounds to {args.expand_amps} nm for Surrogate Optimization!")
+        
+    n_harmonics_opt = stats["n_harmonics"]
+    if args.n_harmonics is not None and args.n_harmonics > stats["n_harmonics"]:
+        n_harmonics_opt = args.n_harmonics
+        n_extra = n_harmonics_opt - stats["n_harmonics"]
+        print(f"[*] Extending optimized geometry parameters from {stats['n_harmonics']} to {n_harmonics_opt} harmonics")
+        
+        extra_min = torch.zeros(n_extra * 2, device=device)
+        extra_max = torch.zeros(n_extra * 2, device=device)
+        
+        # Extended phases bounded 0 to 2pi
+        extra_max[1::2] = 2 * torch.pi
+        
+        # Extended amps bounded to expand_amps (or 0 if not provided, meaning they won't do much)
+        if args.expand_amps is not None:
+            extra_max[0::2] = args.expand_amps
+        else:
+            # Match the highest amplitude of the original bounds if no expand_amps is given
+            extra_max[0::2] = geo_max[2*stats["n_harmonics"] - 2]
+            
+        geo_min = torch.cat([geo_min[:-2], extra_min, geo_min[-2:]])
+        geo_max = torch.cat([geo_max[:-2], extra_max, geo_max[-2:]])
     
     trained_mat_names = stats["materials"]
     first_batch_file = PROJECT_ROOT / "Data" / f"LHS_Dataset_{trained_mat_names[0]}" / "batch_0000.pt"
@@ -112,13 +137,13 @@ def main():
         print(f"Bounded Incident Angle search up to {actual_max_inc:.2f} degrees")
     
     opt = BatchedSurrogateOptimizer(
-        model, geo_min, geo_max, 
+        model, geo_min, geo_max, n_harmonics=n_harmonics_opt,
         nx=128, device=device, max_inc_deg=args.max_inc_deg, h_val=args.h_val, inc_val=args.inc_val
     )
     if args.mode == "geometry":
         res = opt.optimize_geometry(bands, n_restarts=args.restarts, steps=args.steps, lr=0.05, allowed_materials=valid_mat_indices, top_k=args.top_k)
         geo = res["best_geometry"]
-        profile, h_tensor, inc_tensor = build_profile(geo.unsqueeze(0), stats["n_harmonics"], nx=128)
+        profile, h_tensor, inc_tensor = build_profile(geo.unsqueeze(0), n_harmonics_opt, nx=128)
         profile = profile[0]
         h_val = geo[-2].item()
         inc_ang = geo[-1].item()
@@ -126,17 +151,10 @@ def main():
     elif args.mode == "de":
         res = opt.optimize_de(bands, pop_size=args.restarts, generations=args.steps, F=0.8, CR=0.9, allowed_materials=valid_mat_indices, top_k=args.top_k)
         geo = res["best_geometry"]
-        profile, h_tensor, inc_tensor = build_profile(geo.unsqueeze(0), stats["n_harmonics"], nx=128)
+        profile, h_tensor, inc_tensor = build_profile(geo.unsqueeze(0), n_harmonics_opt, nx=128)
         profile = profile[0]
         h_val = geo[-2].item()
         inc_ang = geo[-1].item()
-        
-    elif args.mode == "profile":
-        res = opt.optimize_profile(bands, n_restarts=args.restarts, steps=args.steps, lr=5.0, allowed_materials=valid_mat_indices, top_k=args.top_k)
-        profile = res["best_profile"]
-        geo = recover_geometry_from_profile(profile, res["best_h"], res["best_inc_ang"], nx=128)
-        h_val = res["best_h"].item()
-        inc_ang = res["best_inc_ang"].item()
         
     mat_idx = res["best_material"]
     mat_name = list(MATERIAL_LIBRARY.keys())[mat_idx]
@@ -196,17 +214,12 @@ def main():
     print(f"\nRunning Torcwa simulations for {n_results} top structures...")
     for idx, r in enumerate(tqdm(res["top_results"], desc="Verifying with Torcwa")):
         mat_name = list(MATERIAL_LIBRARY.keys())[r["material_idx"]]
-        if args.mode in ["geometry", "de"]:
+        if True: # Kept for indentation compatibility
             geo = r["geometry"]
-            prof_tensor, h_tensor, inc_tensor = build_profile(geo.unsqueeze(0), stats["n_harmonics"], nx=128)
+            prof_tensor, h_tensor, inc_tensor = build_profile(geo.unsqueeze(0), n_harmonics_opt, nx=128)
             profile_np = prof_tensor[0].numpy()
             h_val = geo[-2].item()
             inc_ang = geo[-1].item()
-        else:
-            profile_np = r["profile"].numpy()
-            h_val = r["h"].item()
-            inc_ang = r["inc_ang"].item()
-            geo = recover_geometry_from_profile(r["profile"], r["h"], r["inc_ang"], nx=128, n_harmonics=args.recovered_harmonics)
         
         n_fourier = len(geo) - 2
         px = geo[:n_fourier].view(-1, 2).cpu()
@@ -221,6 +234,11 @@ def main():
         else:
             base_config.grating_material = mat_name
             base_config.reflector_type = 'pec'
+            
+        if args.order_N is not None:
+            base_config.order_N = args.order_N
+        if args.height_per_layer is not None:
+            base_config.height_per_layer = args.height_per_layer
             
         WAVELENGTHS = np.linspace(300, 1100, stats["n_wavelengths"] // 2)
         A_film, _ = get_absorptance_curve(
@@ -251,6 +269,7 @@ def main():
         rank = (idx % args.top_k) + 1
         metrics = {
             "rank": rank,
+            "surrogate_model": fwd_name,
             "surrogate_loss": r["loss"],
             "rcwa_mae": rcwa_mae,
             "rcwa_avg_abs": rcwa_avg_abs,
@@ -371,12 +390,19 @@ def main():
     plt.tight_layout()
     fig.suptitle(f"Surrogate Optimization: {args.mode.capitalize()}{title_suffix}", fontsize=20, y=1.02)
         
-    out_path = out_dir / f"surrogate_optimization_{args.mode}_{bands_str}.png"
+    if args.h_val is None:
+        h_val_str = "h_unbounded"
+    elif len(args.h_val) == 1:
+        h_val_str = f"h_{int(args.h_val[0])}"
+    else:
+        h_val_str = f"h_{int(args.h_val[0])}-{int(args.h_val[1])}"
+        
+    out_path = out_dir / f"surrogate_optimization_{args.mode}_{h_val_str}_{bands_str}.png"
     plt.savefig(out_path)
     plt.close()
     print(f"Saved plot to {out_path}")
     
-    out_json = out_dir / f"surrogate_results_{args.mode}_{bands_str}.json"
+    out_json = out_dir / f"surrogate_results_{args.mode}_{h_val_str}_{bands_str}.json"
     with open(out_json, "w") as f:
         json.dump(metrics_list, f, indent=4)
     print(f"Saved metrics to {out_json}")

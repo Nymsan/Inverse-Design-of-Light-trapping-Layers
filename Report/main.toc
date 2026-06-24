@@ -1,9 +1,11 @@
 \contentsline {section}{\numberline {1}Introduction}{2}{section.1}%
 \contentsline {section}{\numberline {2}Methods and theory}{2}{section.2}%
-\contentsline {subsection}{\numberline {2.1}Rigorous Coupled Wave Analysis}{2}{subsection.2.1}%
-\contentsline {subsection}{\numberline {2.2}Machine Learning Surrogates}{3}{subsection.2.2}%
-\contentsline {subsection}{\numberline {2.3}Optimization Strategies}{3}{subsection.2.3}%
-\contentsline {section}{\numberline {3}Results}{3}{section.3}%
-\contentsline {section}{\numberline {4}Discussion}{3}{section.4}%
-\contentsline {section}{\numberline {5}Outlook}{3}{section.5}%
-\contentsline {section}{\numberline {6}Conclusion}{3}{section.6}%
+\contentsline {subsection}{\numberline {2.1}Thin Film Solar Cells}{2}{subsection.2.1}%
+\contentsline {subsection}{\numberline {2.2}Rigorous Coupled Wave Analysis}{2}{subsection.2.2}%
+\contentsline {subsection}{\numberline {2.3}Finite Element Method}{4}{subsection.2.3}%
+\contentsline {subsection}{\numberline {2.4}Machine Learning Surrogates}{4}{subsection.2.4}%
+\contentsline {subsection}{\numberline {2.5}Optimization Strategies}{4}{subsection.2.5}%
+\contentsline {section}{\numberline {3}Results}{4}{section.3}%
+\contentsline {section}{\numberline {4}Discussion}{4}{section.4}%
+\contentsline {section}{\numberline {5}Outlook}{4}{section.5}%
+\contentsline {section}{\numberline {6}Conclusion}{4}{section.6}%

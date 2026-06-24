@@ -113,7 +113,7 @@ def main():
         px = geo[0, :n_fourier].view(-1, 2).to(torch.float32).cpu()
         
         A_film, _ = get_absorptance_curve(
-            params_x=px, params_y=None, wavelengths=torcwa_wls_tensor.cpu(), config=base_config, show_progress=False
+            params_x=px, params_y=None, wavelengths=torcwa_wls_tensor.cpu(), config=base_config, show_progress=True
         )
         rcwa_p = A_film[:, 0].cpu().numpy()
         rcwa_s = A_film[:, 1].cpu().numpy()

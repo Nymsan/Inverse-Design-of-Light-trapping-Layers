@@ -772,10 +772,10 @@ class GeometryEncoder(nn.Module):
         self, n_continuous: int = 12, n_materials: int = N_MATERIALS, embed_dim: int = 8,
         latent_dim: int = 64, conv_channels: Sequence[int] = (32, 64, 64), kernel_size: int = 7,
         fc_dims: Sequence[int] = (256,), dropout: float = 0.05,
-        n_harmonics: int = 5, nx: int = 128, grating_period: float = 1000.0,
+        n_harmonics: int = None, nx: int = 128, grating_period: float = 1000.0,
     ):
         super().__init__()
-        self.n_harmonics = n_harmonics
+        self.n_harmonics = n_harmonics if n_harmonics is not None else (n_continuous - 2) // 2
         self.nx = nx
         self.grating_period = grating_period
         self.material_embedding = nn.Embedding(n_materials, embed_dim)
