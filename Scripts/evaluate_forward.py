@@ -27,7 +27,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from Utils.models import (
-    MATERIAL_LIBRARY, N_MATERIALS,
+    MATERIAL_LIBRARY, N_MATERIALS, GratingDataset
 )
 from Utils.utils import generate_test_batch
 from Utils.checkpoint import load_forward_model, _FORWARD_FILENAMES
@@ -104,6 +104,14 @@ def plot_forward_parity(models: dict[str, nn.Module], val_loader, save_path: str
         ax.set_ylim(0, 1)
         ax.set_aspect("equal")
         ax.set_title(f"{name.replace('_', ' ').title()}", fontsize=12)
+        
+        # Add a small inset histogram
+        ax_hist = ax.inset_axes([0.6, 0.1, 0.35, 0.35])
+        ax_hist.hist(true, bins=30, alpha=0.5, color='black', density=True, label="True")
+        ax_hist.hist(pred, bins=30, alpha=0.5, color='blue', density=True, label="Pred")
+        ax_hist.set_yticks([])
+        ax_hist.set_xticks([])
+        ax_hist.legend(fontsize=8, loc='upper left')
 
     plt.savefig(save_path)
     plt.close()
@@ -257,8 +265,29 @@ def main():
     target_key = stats["target_key"]
     print(f"n_continuous={n_continuous}  n_wavelengths={n_wavelengths}  materials={list(mat_dirs.keys())}")
 
-    batch = generate_test_batch(stats)
-    val_loader = [batch]
+    data_files = {mat: [] for mat in stats["materials"]}
+    for mat_name in stats["materials"]:
+        d_dir = os.path.join(PROJECT_ROOT, "Data", f"{prefix}_{mat_name}")
+        full_file = os.path.join(d_dir, "full_dataset.pt")
+        if os.path.exists(full_file):
+            data_files[mat_name].append(full_file)
+        else:
+            import glob
+            data_files[mat_name].extend(glob.glob(os.path.join(d_dir, "batch_*.pt")))
+            
+    val_indices = stats.get("val_indices", None)
+    if val_indices is None:
+        print("Warning: val_indices not found in dataset_stats.pt. Falling back to test data batches.")
+        batch = generate_test_batch(stats)
+        val_loader = [batch]
+    else:
+        val_set = GratingDataset(
+            data_files, target_key=stats["target_key"],
+            geo_min=stats["geo_min"], geo_max=stats["geo_max"],
+            subset_indices=val_indices
+        )
+        print(f"Loaded real validation set with {len(val_set)} samples.")
+        val_loader = DataLoader(val_set, batch_size=256, shuffle=False)
 
     all_history = {}
     forward_models = {}

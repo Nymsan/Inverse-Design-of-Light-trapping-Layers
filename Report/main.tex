@@ -1,30 +1,33 @@
-\documentclass[11pt,a4paper,titlepage]{article}
-\input{setup/preamble}
-
-\title{Inverse Design of Light-Trapping Layers}
-\author{Andreas Nymand}
-\date{\today}
+\documentclass[a4paper,twoside,11pt]{report} %openright
+\input{Setup/Statics.tex}
+\input{Setup/Preamble.tex}
+\input{Setup/Settings.tex}
 
 \begin{document}
 
-\maketitle
-
-\begin{abstract}
-This report details the surrogate optimization and active learning approaches used to inversely design light-trapping layers.
-\end{abstract}
-
+\pagenumbering{roman}
+\input{Frontmatter/Frontpage.tex}
+\pagecolor{white}
+\newgeometry{top=2.81cm, bottom=2.75cm, outer=2.5cm, inner=3.5cm}
+\pagestyle{empty}
+\cleardoublepage 
+\pagestyle{main}
+\input{Frontmatter/Abstract.tex}
+\cleardoublepage 
 \tableofcontents
-\newpage
+\cleardoublepage 
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\pagenumbering{arabic}
 \input{sections/01_introduction}
 \input{sections/02_methods}
 \input{sections/03_results}
 \input{sections/04_discussion}
 \input{sections/05_outlook}
 \input{sections/06_conclusion}
+\cleardoublepage 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-\newpage
-\bibliographystyle{plain}
-\bibliography{references}
+\printbibliography[heading=bibintoc,title={Bibliography}]
 
 \end{document}

@@ -1,11 +1,14 @@
-\contentsline {section}{\numberline {1}Introduction}{2}{section.1}%
-\contentsline {section}{\numberline {2}Methods and theory}{2}{section.2}%
-\contentsline {subsection}{\numberline {2.1}Thin Film Solar Cells}{2}{subsection.2.1}%
-\contentsline {subsection}{\numberline {2.2}Rigorous Coupled Wave Analysis}{2}{subsection.2.2}%
-\contentsline {subsection}{\numberline {2.3}Finite Element Method}{4}{subsection.2.3}%
-\contentsline {subsection}{\numberline {2.4}Machine Learning Surrogates}{4}{subsection.2.4}%
-\contentsline {subsection}{\numberline {2.5}Optimization Strategies}{4}{subsection.2.5}%
-\contentsline {section}{\numberline {3}Results}{4}{section.3}%
-\contentsline {section}{\numberline {4}Discussion}{4}{section.4}%
-\contentsline {section}{\numberline {5}Outlook}{4}{section.5}%
-\contentsline {section}{\numberline {6}Conclusion}{4}{section.6}%
+\babel@toc {english}{}\relax 
+\contentsline {chapter}{Abstract}{iii}{chapter*.1}%
+\contentsline {chapter}{\numberline {1}Introduction}{1}{chapter.0.1}%
+\contentsline {chapter}{\numberline {2}Methods and theory}{2}{chapter.0.2}%
+\contentsline {section}{\numberline {2.1}Thin Film Solar Cells}{2}{section.0.2.1}%
+\contentsline {section}{\numberline {2.2}Rigorous Coupled Wave Analysis}{2}{section.0.2.2}%
+\contentsline {section}{\numberline {2.3}Finite Element Method}{3}{section.0.2.3}%
+\contentsline {section}{\numberline {2.4}Machine Learning Surrogates}{3}{section.0.2.4}%
+\contentsline {section}{\numberline {2.5}Optimization Strategies}{3}{section.0.2.5}%
+\contentsline {chapter}{\numberline {3}Results}{4}{chapter.0.3}%
+\contentsline {chapter}{\numberline {4}Discussion}{5}{chapter.0.4}%
+\contentsline {chapter}{\numberline {5}Outlook}{6}{chapter.0.5}%
+\contentsline {chapter}{\numberline {6}Conclusion}{7}{chapter.0.6}%
+\contentsline {chapter}{Bibliography}{9}{chapter*.4}%

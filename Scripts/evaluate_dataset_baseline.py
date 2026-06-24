@@ -65,9 +65,14 @@ def get_dataset_baseline(ckpt_dir: Path, bands=None, h_val=None, h_tolerance=0.5
         all_targets = []
         all_geos = []
         
-        batch_files = sorted(list(mat_dir.glob("batch_*.pt")))
-        for bf in batch_files:
-            if "batch_9" in bf.name: continue
+        full_file = mat_dir / "full_dataset.pt"
+        if full_file.exists():
+            files_to_load = [full_file]
+        else:
+            files_to_load = sorted(list(mat_dir.glob("batch_*.pt")))
+            
+        for bf in files_to_load:
+            if "batch_9" in bf.name and "full" not in bf.name: continue
             data = torch.load(bf, map_location="cpu", weights_only=False)
             
             params = data["params_x"]
@@ -160,6 +165,24 @@ def main():
     n_harmonics = stats["n_harmonics"]
     n_wavelengths = stats["n_wavelengths"]
     WAVELENGTHS = np.linspace(300, 1100, n_wavelengths // 2)
+    
+    # Plot global histogram of absorptance
+    fig_hist, ax_hist = plt.subplots(figsize=(8, 6))
+    for mat_name, res in results.items():
+        avg_abs = res["avg_abs"]
+        valid_idx = torch.where(avg_abs >= 0)[0]
+        if len(valid_idx) == 0:
+            continue
+        valid_abs = avg_abs[valid_idx].numpy()
+        ax_hist.hist(valid_abs, bins=50, alpha=0.5, label=mat_name, density=True)
+    ax_hist.set_xlabel("Average Absorptance")
+    ax_hist.set_ylabel("Density")
+    ax_hist.set_title("Dataset Average Absorptance Distribution")
+    ax_hist.legend()
+    hist_path = out_dir / "dataset_absorptance_histogram.png"
+    fig_hist.savefig(hist_path)
+    plt.close(fig_hist)
+    print(f"Saved dataset histogram to {hist_path}")
     
     for mat_name, res in results.items():
         print(f"\nPlotting baseline for material: {mat_name}")

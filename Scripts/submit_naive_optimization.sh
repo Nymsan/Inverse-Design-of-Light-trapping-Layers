@@ -27,21 +27,22 @@ echo "Budget: 300 Torcwa evaluations"
 echo "Queue: gpul40s"
 echo "========================================="
 
-echo "=== Phase 1: Penalized Optimization ==="
-# Runs with the 10th-order polynomial boundary penalty to match surrogate optimization
-uv run python evaluate_naive_optimization.py \
+echo "=== Phase 1: Bounded Optimization (1000-3000nm) ==="
+uv run python Scripts/evaluate_naive_optimization.py \
     --material $MAT_NAME \
     --method lbfgs \
     --max_evals 300 \
-    --out_dir Naive_Optimization_Penalized \
-    --penalty
+    --out_dir Naive_Optimization_Bounded \
+    --penalty \
+    --h_val 1000 3000
 
-echo "=== Phase 2: Unrestrained Optimization ==="
-# Runs completely unbounded (no penalty) allowing it to freely search the edges
-uv run python evaluate_naive_optimization.py \
+echo "=== Phase 2: Pinned Optimization (2000nm) ==="
+uv run python Scripts/evaluate_naive_optimization.py \
     --material $MAT_NAME \
     --method lbfgs \
     --max_evals 300 \
-    --out_dir Naive_Optimization_Unrestrained
+    --out_dir Naive_Optimization_Pinned \
+    --penalty \
+    --h_val 2000
 
 echo "=== Naive Torcwa Optimization Complete for $MAT_NAME ==="

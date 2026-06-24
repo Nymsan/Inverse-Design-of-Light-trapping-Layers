@@ -1,1 +1,14 @@
 the inversedecoder and geometry encoder and decoder and spectrum encoder all used snake before the latest training.
+
+
+Histograms of dataset with averge absorptance - if the tail is really thin, the surrogate might have trouble learning this
+
+maybe retrain surrogate weighing high absorptances.
+
+Try a high number of just random initializations (16 dimensions)
+
+Histogram of dataset parameters through the surrogate model.
+
+Naive topology optimization baseline must be comparable to surrogate.
+
+subsample dataset and see if model performance is fine 

@@ -1016,7 +1016,7 @@ class ContrastiveVAE(nn.Module):
 
 
 class GratingDataset(torch.utils.data.Dataset):
-    """Multi-material grating dataset from batched .pt files.
+    """Multi-material grating dataset from batched .pt files or single consolidated files.
 
     Input inputs are dynamically scaled to [0, 1] using dataset statistics.
     For validation datasets, pass `geo_min` and `geo_max` from the train split.
@@ -1025,6 +1025,7 @@ class GratingDataset(torch.utils.data.Dataset):
     def __init__(
         self, data_files: Dict[str, list[str]], target_key: str = "A_film_normal",
         geo_min: Optional[torch.Tensor] = None, geo_max: Optional[torch.Tensor] = None,
+        subset_indices: Optional[Dict[str, torch.Tensor]] = None,
     ):
         super().__init__()
         all_geometry: list[torch.Tensor] = []
@@ -1036,6 +1037,12 @@ class GratingDataset(torch.utils.data.Dataset):
             mat_id = MATERIAL_LIBRARY[mat_name]
             if not batch_files:
                 raise FileNotFoundError(f"No batch_*.pt files provided for {mat_name}")
+                
+            mat_geometry = []
+            mat_params_x = []
+            mat_material = []
+            mat_target = []
+            
             for bf in batch_files:
                 data = torch.load(bf, map_location="cpu", weights_only=False)
                 B = data["h"].shape[0]
@@ -1051,7 +1058,7 @@ class GratingDataset(torch.utils.data.Dataset):
                     
                     if valid_mask.any():
                         px = data["params_x"].float()[valid_mask]
-                        all_params_x.append(px)
+                        mat_params_x.append(px)
 
                         geo_parts = [px.view(px.shape[0], -1)]
                         geo_parts.append(data["h"].float()[valid_mask].unsqueeze(-1))
@@ -1059,16 +1066,34 @@ class GratingDataset(torch.utils.data.Dataset):
                             geo_parts.append(torch.full((valid_mask.sum().item(), 1), override_inc_ang, dtype=torch.float32))
                         else:
                             geo_parts.append(data["inc_ang"].float()[valid_mask].unsqueeze(-1))
-                        all_geometry.append(torch.cat(geo_parts, dim=-1))
+                        mat_geometry.append(torch.cat(geo_parts, dim=-1))
 
-                        all_material.append(torch.full((valid_mask.sum().item(),), mat_id, dtype=torch.long))
-                        all_target.append(target[valid_mask])
+                        mat_material.append(torch.full((valid_mask.sum().item(),), mat_id, dtype=torch.long))
+                        mat_target.append(target[valid_mask])
 
                 if target_key == "all_film":
                     process_target("A_film_normal", override_inc_ang=0.0)
                     process_target("A_film_oblique", override_inc_ang=None)
                 else:
                     process_target(target_key, override_inc_ang=None)
+                    
+            if mat_geometry:
+                mat_geometry_t = torch.cat(mat_geometry, dim=0)
+                mat_params_x_t = torch.cat(mat_params_x, dim=0)
+                mat_material_t = torch.cat(mat_material, dim=0)
+                mat_target_t = torch.cat(mat_target, dim=0)
+                
+                if subset_indices is not None and mat_name in subset_indices:
+                    indices = subset_indices[mat_name]
+                    mat_geometry_t = mat_geometry_t[indices]
+                    mat_params_x_t = mat_params_x_t[indices]
+                    mat_material_t = mat_material_t[indices]
+                    mat_target_t = mat_target_t[indices]
+                    
+                all_geometry.append(mat_geometry_t)
+                all_params_x.append(mat_params_x_t)
+                all_material.append(mat_material_t)
+                all_target.append(mat_target_t)
         
         self.geometry = torch.cat(all_geometry, dim=0)
         self.params_x = torch.cat(all_params_x, dim=0)

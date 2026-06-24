@@ -29,7 +29,8 @@ def parse_args():
     p.add_argument("--bands", nargs="+", type=float, help="Pairs of wavelength bands to optimize, e.g., --bands 500 750 800 900")
     p.add_argument("--h_val", nargs="+", type=float, help="Target height in nm, or range (min max) (fixes/bounds height during evaluation)")
     p.add_argument("--inc_val", type=float, default=None, help="Target incident angle in degrees (fixes angle during evaluation)")
-    p.add_argument("--restarts", type=int, default=5000, help="Number of random restarts per material")
+    p.add_argument("--restarts", type=int, default=100, help="Number of gradient descent runs (top-k from dense sampling) per material")
+    p.add_argument("--dense_samples", type=int, default=10000000, help="Number of dense samples to evaluate before gradient descent")
     p.add_argument("--steps", type=int, default=300, help="Optimization steps")
     p.add_argument("--save_dir", type=str, default="Checkpoints/Optimization_Eval")
     p.add_argument("--al_iter", type=int, default=-1, help="Active learning iteration of surrogate to use (-1 for latest, 0 for base)")
@@ -141,7 +142,16 @@ def main():
         nx=128, device=device, max_inc_deg=args.max_inc_deg, h_val=args.h_val, inc_val=args.inc_val
     )
     if args.mode == "geometry":
-        res = opt.optimize_geometry(bands, n_restarts=args.restarts, steps=args.steps, lr=0.05, allowed_materials=valid_mat_indices, top_k=args.top_k)
+        res = opt.optimize_geometry(
+            bands=bands,
+            n_restarts=args.restarts,
+            n_dense_samples=args.dense_samples,
+            steps=args.steps,
+            lr=0.005,
+            allowed_materials=valid_mat_indices,
+            top_k=args.top_k,
+            show_progress=True
+        )
         geo = res["best_geometry"]
         profile, h_tensor, inc_tensor = build_profile(geo.unsqueeze(0), n_harmonics_opt, nx=128)
         profile = profile[0]
