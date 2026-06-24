@@ -22,17 +22,17 @@ nvidia-smi
 # ==============================================================================
 # Pipeline Toggles
 # ==============================================================================
-TRAIN_FORWARD=false
-TRAIN_INVERSE=false
+TRAIN_FORWARD=true
+TRAIN_INVERSE=true
 
-EVAL_DATASET_BASELINE=true
-EVAL_FORWARD=true
-EVAL_INVERSE=true
-EVAL_GENERALIZATION=true
-EVAL_SURROGATE=true
-EVAL_INVERSE_OPT=true
-TRAIN_ACTIVE_LEARNING=true
-EVAL_IMPLICIT=true
+EVAL_DATASET_BASELINE=false
+EVAL_FORWARD=false
+EVAL_INVERSE=false
+EVAL_GENERALIZATION=false
+EVAL_SURROGATE=false
+EVAL_INVERSE_OPT=false
+TRAIN_ACTIVE_LEARNING=false
+EVAL_IMPLICIT=false
 # ==============================================================================
 # Model Architecture Hyperparameters
 # Adjust these dimensions to control the parameter count / capacity of the models
@@ -126,40 +126,26 @@ uv run python count_params.py \
 
 if [ "$TRAIN_FORWARD" = true ]; then
     echo -e "\n=== Starting Forward Training ==="
-    uv run python train_forward.py \
-        --data_dir ../Data \
-        --dataset_prefixes LHS_Dataset \
-        --materials Si TiO2 Si3N4 \
-        --target_key all_film \
-        --epochs 2000 \
-        --batch_size 768 \
-        --lr 2e-3 \
-        --patience 200 \
-        --val_split 0.05 \
-        --skip cnn transformer\
-        --seed 1337 \
-        --embed_dim $EMBED_DIM \
-        --mlp_hidden_dims $MLP_HIDDEN_DIMS \
-        --mlp_dropout $MLP_DROPOUT \
-        --cnn_conv_channels $CNN_CONV_CHANNELS \
-        --cnn_kernel_size $CNN_KERNEL_SIZE \
-        --cnn_fc_dims $CNN_FC_DIMS \
-        --cnn_dropout $CNN_DROPOUT \
-        --skipcnn_conv_channels $SKIPCNN_CONV_CHANNELS \
-        --skipcnn_kernel_size $SKIPCNN_KERNEL_SIZE \
-        --skipcnn_fc_dims $SKIPCNN_FC_DIMS \
-        --skipcnn_dropout $SKIPCNN_DROPOUT \
-        --siren_conv_channels $SIREN_CONV_CHANNELS \
-        --siren_kernel_size $SIREN_KERNEL_SIZE \
-        --siren_fc_dims $SIREN_FC_DIMS \
-        --siren_latent_dim $SIREN_LATENT_DIM \
-        --siren_omega_0 $SIREN_OMEGA_0 \
-        --siren_dropout $SIREN_DROPOUT \
-        --tf_d_model $TF_D_MODEL \
-        --tf_nhead $TF_NHEAD \
-        --tf_dim_feedforward $TF_DIM_FEEDFORWARD \
-        --tf_num_layers $TF_NUM_LAYERS \
-        --tf_dropout $TF_DROPOUT
+    for frac in 0.1 0.5 0.9 1.0; do
+        echo "Training forward model with fraction: $frac"
+        uv run python train_forward.py \
+            --data_dir ../Data \
+            --dataset_prefixes LHS_Dataset \
+            --materials Si TiO2 Si3N4 \
+            --batch_size 64 \
+            --epochs 500 \
+            --lr 1e-3 \
+            --patience 100 \
+            --val_split 0.01 \
+            --train_subset_fraction $frac \
+            --seed 42 \
+            --embed_dim $EMBED_DIM \
+            --skip cnn transformer \
+            --skipcnn_conv_channels $SKIPCNN_CONV_CHANNELS \
+            --skipcnn_kernel_size $SKIPCNN_KERNEL_SIZE \
+            --skipcnn_fc_dims $SKIPCNN_FC_DIMS \
+            --skipcnn_dropout $SKIPCNN_DROPOUT
+    done
 fi
 
 if [ "$TRAIN_INVERSE" = true ]; then

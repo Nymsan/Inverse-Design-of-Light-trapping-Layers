@@ -64,7 +64,7 @@ class BatchedSurrogateOptimizer:
         
         return target, mask
 
-    def optimize_geometry(self, bands: List[Tuple[float, float]], n_restarts: int = 10000, steps: int = 300, lr: float = 0.1, allowed_materials: list[int] = None, top_k: int = 2, show_progress: bool = True) -> dict:
+    def optimize_geometry(self, bands: List[Tuple[float, float]], n_restarts: int = 100, n_dense_samples: int = 10000000, steps: int = 300, lr: float = 0.005, allowed_materials: list[int] = None, top_k: int = 2, show_progress: bool = True) -> dict:
         self.forward_model.eval()
         target, mask = self._get_target_and_mask(bands)
         
@@ -72,13 +72,58 @@ class BatchedSurrogateOptimizer:
             allowed_materials = list(range(self.n_materials))
             
         n_allowed = len(allowed_materials)
+        
+        # Dense pre-sampling
+        n_dense_per_mat = n_dense_samples // n_allowed
+        chunk_size = 500000
+        
+        best_geos_dense = []
+        
+        pbar_dense = tqdm(total=n_dense_per_mat * n_allowed, desc="Dense Pre-Sampling", disable=not show_progress)
+        
+        for mat_idx in allowed_materials:
+            mat_tensor = torch.full((chunk_size,), mat_idx, dtype=torch.long, device=self.device)
+            mask_chunk = mask.expand(chunk_size, -1)
+            
+            top_geos_mat = []
+            top_vals_mat = []
+            
+            for offset in range(0, n_dense_per_mat, chunk_size):
+                actual_chunk = min(chunk_size, n_dense_per_mat - offset)
+                if actual_chunk < chunk_size:
+                    mat_tensor = torch.full((actual_chunk,), mat_idx, dtype=torch.long, device=self.device)
+                    mask_chunk = mask.expand(actual_chunk, -1)
+                    
+                with torch.no_grad():
+                    geo_chunk = torch.rand(actual_chunk, len(self.geo_min), device=self.device) * (self.geo_max - self.geo_min) + self.geo_min
+                    from Utils.models import build_profile
+                    profile, h_t, inc_t = build_profile(geo_chunk, self.n_harmonics, self.nx)
+                    pred = self.forward_model(profile=profile, h=h_t, inc_ang=inc_t, material_id=mat_tensor)
+                    
+                    abs_vals = (pred.float() * mask_chunk).sum(dim=-1) / mask_chunk.sum(dim=-1)
+                    
+                    # Store top candidates from chunk
+                    chunk_top_vals, chunk_top_idx = abs_vals.topk(min(n_restarts, actual_chunk))
+                    top_geos_mat.append(geo_chunk[chunk_top_idx])
+                    top_vals_mat.append(chunk_top_vals)
+                pbar_dense.update(actual_chunk)
+                
+            # Aggregate top from all chunks for this material
+            all_top_geos = torch.cat(top_geos_mat, dim=0)
+            all_top_vals = torch.cat(top_vals_mat, dim=0)
+            
+            final_top_vals, final_top_idx = all_top_vals.topk(n_restarts)
+            best_geos_dense.append(all_top_geos[final_top_idx])
+            
+        pbar_dense.close()
+        
+        # Initialize optimization from best dense samples
         B = n_restarts * n_allowed
         target = target.expand(B, -1)
         mask = mask.expand(B, -1)
         
-        geo = torch.rand(B, len(self.geo_min), device=self.device) * (self.geo_max - self.geo_min) + self.geo_min
+        geo = torch.cat(best_geos_dense, dim=0)
         geo = nn.Parameter(geo)
-        
         mat = torch.tensor(allowed_materials, device=self.device).repeat_interleave(n_restarts)
         
         optimizer = optim.Adam([geo], lr=lr)

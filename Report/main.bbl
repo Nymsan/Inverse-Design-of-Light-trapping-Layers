@@ -1,23 +1,127 @@
-\begin{thebibliography}{1}
+% $ biblatex auxiliary file $
+% $ biblatex bbl format version 3.3 $
+% Do not modify the above lines!
+%
+% This is an auxiliary file used by the 'biblatex' package.
+% This file may safely be deleted. It will be recreated as
+% required.
+%
+\begingroup
+\makeatletter
+\@ifundefined{ver@biblatex.sty}
+  {\@latex@error
+     {Missing 'biblatex' package}
+     {The bibliography requires the 'biblatex' package.}
+      \aftergroup\endinput}
+  {}
+\endgroup
 
-\bibitem{example_reference}
-A.~Author and B.~Writer.
-\newblock A study on light-trapping nanostructures.
-\newblock {\em Journal of Nanophotonics}, 10:1--10, 2026.
+\datalist[entry]{none/global//global/global/global}
+  \entry{example_reference}{article}{}{}
+    \name{author}{2}{}{%
+      {{hash=AA}{%
+         family={Author},
+         familyi={A\bibinitperiod},
+         given={A.},
+         giveni={A\bibinitperiod},
+      }}%
+      {{hash=WB}{%
+         family={Writer},
+         familyi={W\bibinitperiod},
+         given={B.},
+         giveni={B\bibinitperiod},
+      }}%
+    }
+    \strng{namehash}{AAWB1}
+    \strng{fullhash}{AAWB1}
+    \field{labelnamesource}{author}
+    \field{labeltitlesource}{title}
+    \field{labelyear}{2026}
+    \field{labeldatesource}{}
+    \field{pages}{1\bibrangedash 10}
+    \field{title}{A study on light-trapping nanostructures}
+    \field{volume}{10}
+    \field{journaltitle}{Journal of Nanophotonics}
+    \field{year}{2026}
+  \endentry
 
-\bibitem{griffiths}
-David~J. Griffiths.
-\newblock {\em Introduction to Electrodynamics, fourth edition}.
-\newblock Cambridge University Press, 2017.
+  \entry{torcwa}{article}{}{}
+    \name{author}{2}{}{%
+      {{hash=KC}{%
+         family={Kim},
+         familyi={K\bibinitperiod},
+         given={Changhyun},
+         giveni={C\bibinitperiod},
+      }}%
+      {{hash=LB}{%
+         family={Lee},
+         familyi={L\bibinitperiod},
+         given={Byoungho},
+         giveni={B\bibinitperiod},
+      }}%
+    }
+    \strng{namehash}{KCLB1}
+    \strng{fullhash}{KCLB1}
+    \field{labelnamesource}{author}
+    \field{labeltitlesource}{title}
+    \field{labelyear}{2023}
+    \field{labeldatesource}{}
+    \verb{doi}
+    \verb https://doi.org/10.1016/j.cpc.2022.108552
+    \endverb
+    \field{issn}{0010-4655}
+    \field{pages}{108552}
+    \field{title}{TORCWA: GPU-accelerated Fourier modal method and gradient-based optimization for metasurface design}
+    \verb{url}
+    \verb https://www.sciencedirect.com/science/article/pii/S0010465522002715
+    \endverb
+    \field{volume}{282}
+    \field{journaltitle}{Computer Physics Communications}
+    \field{year}{2023}
+  \endentry
 
-\bibitem{fmm}
-Junghyun Park Byoungho~Lee Hwi~Kim.
-\newblock {\em Fourier Modal Method and Its Applications in Computational Nanophotonics}.
-\newblock CRC press, 2012.
+  \entry{griffiths}{book}{}{}
+    \name{author}{1}{}{%
+      {{hash=GDJ}{%
+         family={Griffiths},
+         familyi={G\bibinitperiod},
+         given={David\bibnamedelima J.},
+         giveni={D\bibinitperiod\bibinitdelim J\bibinitperiod},
+      }}%
+    }
+    \list{publisher}{1}{%
+      {Cambridge University Press}%
+    }
+    \strng{namehash}{GDJ1}
+    \strng{fullhash}{GDJ1}
+    \field{labelnamesource}{author}
+    \field{labeltitlesource}{title}
+    \field{labelyear}{2017}
+    \field{labeldatesource}{}
+    \field{title}{Introduction to Electrodynamics, fourth edition}
+    \field{year}{2017}
+  \endentry
 
-\bibitem{torcwa}
-Changhyun Kim and Byoungho Lee.
-\newblock Torcwa: Gpu-accelerated fourier modal method and gradient-based optimization for metasurface design.
-\newblock {\em Computer Physics Communications}, 282:108552, 2023.
-
-\end{thebibliography}
+  \entry{fmm}{book}{}{}
+    \name{author}{1}{}{%
+      {{hash=HKJPBL}{%
+         family={Hwi\bibnamedelima Kim},
+         familyi={H\bibinitperiod\bibinitdelim K\bibinitperiod},
+         given={Junghyun Park Byoungho\bibnamedelima Lee},
+         giveni={J\bibinitperiod\bibinitdelim P\bibinitperiod\bibinitdelim B\bibinitperiod\bibinitdelim L\bibinitperiod},
+      }}%
+    }
+    \list{publisher}{1}{%
+      {CRC press}%
+    }
+    \strng{namehash}{HKJPBL1}
+    \strng{fullhash}{HKJPBL1}
+    \field{labelnamesource}{author}
+    \field{labeltitlesource}{title}
+    \field{labelyear}{2012}
+    \field{labeldatesource}{}
+    \field{title}{Fourier Modal Method and Its Applications in Computational Nanophotonics}
+    \field{year}{2012}
+  \endentry
+\enddatalist
+\endinput

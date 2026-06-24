@@ -109,7 +109,10 @@ class TorcwaObjective:
         # Concat P and S polarization
         sim_curve = torch.cat([A_film[:, 0], A_film[:, 1]], dim=0).to(self.device)
         
-        loss = torch.nn.functional.mse_loss(sim_curve, self.target_curve)
+        if sim_curve.shape == self.target_curve.shape:
+            loss = torch.nn.functional.mse_loss(sim_curve, self.target_curve)
+        else:
+            loss = torch.tensor(0.0, device=self.device)
         
         penalty = 0.0
         if self.use_penalty:
@@ -159,6 +162,7 @@ def main():
     parser.add_argument('--out_dir', type=str, default="Naive_Optimization")
     parser.add_argument('--material', type=str, default=None, help="Specific material to optimize. If not set, runs all materials sequentially.")
     parser.add_argument('--penalty', action='store_true', help="Apply the 10th order polynomial boundary penalty (0.05 scale) used in surrogate optimization.")
+    parser.add_argument('--h_val', nargs='+', type=float, default=None, help="Target height in nm, or range (min max) (fixes/bounds height during evaluation)")
     args = parser.parse_args()
 
     device = torch.device(args.device)
@@ -192,10 +196,20 @@ def main():
 
     # Bounds for the 15 parameters
     # x = [h, a1..a7, p1..p7]
+    
+    if args.h_val is not None:
+        if isinstance(args.h_val, list) and len(args.h_val) == 2:
+            h_bounds = (args.h_val[0], args.h_val[1])
+        else:
+            h_target = args.h_val[0] if isinstance(args.h_val, list) else args.h_val
+            h_bounds = (h_target, h_target)
+    else:
+        h_bounds = (1000.0, 3000.0)
+        
     bounds = [
-        (500.0, 4000.0),  # h (nm)
+        h_bounds,  # h (nm)
     ]
-    bounds += [(0.0, 30.0)] * 7    # amps (nm)
+    bounds += [(0.0, 15.0)] * 7    # amps (nm)
     bounds += [(0.0, 2*np.pi)] * 7 # phases (rad)
 
     results_list = []
