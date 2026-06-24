@@ -1,5 +1,7 @@
 \babel@toc {english}{}\relax 
+\contentsline {section}{Preface}{ii}{Doc-Start}%
 \contentsline {chapter}{Abstract}{iii}{chapter*.1}%
+\contentsline {section}{Acknowledgements}{iv}{section*.2}%
 \contentsline {chapter}{\numberline {1}Introduction}{1}{chapter.0.1}%
 \contentsline {chapter}{\numberline {2}Methods and theory}{2}{chapter.0.2}%
 \contentsline {section}{\numberline {2.1}Thin Film Solar Cells}{2}{section.0.2.1}%
@@ -11,4 +13,5 @@
 \contentsline {chapter}{\numberline {4}Discussion}{5}{chapter.0.4}%
 \contentsline {chapter}{\numberline {5}Outlook}{6}{chapter.0.5}%
 \contentsline {chapter}{\numberline {6}Conclusion}{7}{chapter.0.6}%
-\contentsline {chapter}{Bibliography}{9}{chapter*.4}%
+\contentsline {chapter}{Bibliography}{9}{chapter*.5}%
+\contentsline {chapter}{\numberline {A}Appendix}{11}{appendix.A}%

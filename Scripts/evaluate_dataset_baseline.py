@@ -40,6 +40,22 @@ def parse_args():
     p.add_argument("--inc_tolerance", type=float, default=0.5, help="Tolerance for incident angle matching")
     return p.parse_args()
 
+def get_folder_name(args) -> str:
+    parts = []
+    if args.h_val is not None:
+        if isinstance(args.h_val, list) and len(args.h_val) == 2:
+            parts.append(f"h{int(args.h_val[0])}-{int(args.h_val[1])}")
+        else:
+            h_target = args.h_val[0] if isinstance(args.h_val, list) else args.h_val
+            parts.append(f"h{int(h_target)}_tol{args.h_tolerance}")
+    if args.inc_val is not None:
+        parts.append(f"inc{args.inc_val}_tol{args.inc_tolerance}")
+    if args.bands:
+        bands_str = "_".join([f"{int(args.bands[i])}-{int(args.bands[i+1])}" for i in range(0, len(args.bands), 2)])
+        parts.append(f"bands{bands_str}")
+        
+    return "_".join(parts) if parts else "all_data"
+
 def get_dataset_baseline(ckpt_dir: Path, bands=None, h_val=None, h_tolerance=0.5, inc_val=None, inc_tolerance=0.5) -> dict:
     stats_path = ckpt_dir / "dataset_stats.pt"
     if not stats_path.exists():
@@ -78,36 +94,44 @@ def get_dataset_baseline(ckpt_dir: Path, bands=None, h_val=None, h_tolerance=0.5
             h = data["h"]
             inc_ang = data["inc_ang"]
             
-            # Use normal incidence if explicitly requested, otherwise use oblique and filter
-            if inc_val is not None and inc_val <= 1e-3:
-                A_film = data["A_film_normal"]
-                inc_ang_eff = torch.zeros_like(inc_ang)
-            else:
-                A_film = data["A_film_oblique"]
-                inc_ang_eff = inc_ang
+            A_list = []
+            inc_list = []
+            
+            # If no inc_val is provided, we want BOTH normal and oblique data.
+            # If inc_val == 0.0, we want ONLY normal.
+            # If inc_val > 0.0, we want ONLY oblique.
+            if inc_val is None or inc_val <= 1e-3:
+                if "A_film_normal" in data:
+                    A_list.append(data["A_film_normal"])
+                    inc_list.append(torch.zeros_like(inc_ang))
+            if inc_val is None or (inc_val is not None and inc_val > 1e-3):
+                if "A_film_oblique" in data:
+                    A_list.append(data["A_film_oblique"])
+                    inc_list.append(inc_ang)
+                    
+            for A_film, inc_ang_eff in zip(A_list, inc_list):
+                batch_targets = torch.cat([A_film[:, :, 0], A_film[:, :, 1]], dim=1)
                 
-            batch_targets = torch.cat([A_film[:, :, 0], A_film[:, :, 1]], dim=1)
-            
-            valid_mask = (batch_targets.max(dim=1).values <= 1.05)
-            if h_val is not None:
-                if isinstance(h_val, list) and len(h_val) == 2:
-                    valid_mask &= (h >= h_val[0]) & (h <= h_val[1])
-                else:
-                    h_target = h_val[0] if isinstance(h_val, list) else h_val
-                    valid_mask &= (torch.abs(h - h_target) <= h_tolerance)
-            if inc_val is not None and inc_val > 1e-3:
-                valid_mask &= (torch.abs(inc_ang - inc_val) <= inc_tolerance)
-            
-            if not valid_mask.any():
-                continue
+                valid_mask = (batch_targets.max(dim=1).values <= 1.05)
+                if h_val is not None:
+                    if isinstance(h_val, list) and len(h_val) == 2:
+                        valid_mask &= (h >= h_val[0]) & (h <= h_val[1])
+                    else:
+                        h_target = h_val[0] if isinstance(h_val, list) else h_val
+                        valid_mask &= (torch.abs(h - h_target) <= h_tolerance)
+                if inc_val is not None and inc_val > 1e-3:
+                    valid_mask &= (torch.abs(inc_ang_eff - inc_val) <= inc_tolerance)
+                
+                if not valid_mask.any():
+                    continue
 
-            all_targets.append(batch_targets[valid_mask])
-            px = params[valid_mask]
-            px_flat = px.view(px.shape[0], -1)
-            h_valid = h[valid_mask].unsqueeze(1)
-            inc_valid = inc_ang_eff[valid_mask].unsqueeze(1)
-            geo = torch.cat([px_flat, h_valid, inc_valid], dim=1)
-            all_geos.append(geo)
+                all_targets.append(batch_targets[valid_mask])
+                px = params[valid_mask]
+                px_flat = px.view(px.shape[0], -1)
+                h_valid = h[valid_mask].unsqueeze(1)
+                inc_valid = inc_ang_eff[valid_mask].unsqueeze(1)
+                geo = torch.cat([px_flat, h_valid, inc_valid], dim=1)
+                all_geos.append(geo)
             
         if not all_targets:
             continue
@@ -124,8 +148,12 @@ def get_dataset_baseline(ckpt_dir: Path, bands=None, h_val=None, h_tolerance=0.5
                 h_str = f"h={h_target}±{h_tolerance}nm"
         else:
             h_str = "all heights"
+        if inc_val is not None:
+            inc_str = f"inc={inc_val}±{inc_tolerance}°"
+        else:
+            inc_str = "all angles"
         band_str = "matched bands" if bands else "full spectrum"
-        print(f"[{mat_name}] Dataset Baseline: Found {num_matched} valid structures for {h_str} in {band_str}.")
+        print(f"[{mat_name}] Filtered dataset down to {num_matched} valid samples for {h_str}, {inc_str}, in {band_str}.")
         
         p_pol = targets[:, :len(WAVELENGTHS)]
         s_pol = targets[:, len(WAVELENGTHS):]
@@ -147,7 +175,7 @@ def main():
     args = parse_args()
     ckpt_dir = Path(args.ckpt_dir)
     
-    out_dir = ckpt_dir / "evaluation" / "dataset_baseline"
+    out_dir = ckpt_dir / "evaluation" / "dataset_baseline" / get_folder_name(args)
     out_dir.mkdir(parents=True, exist_ok=True)
     
     # Parse bands
@@ -165,7 +193,17 @@ def main():
     n_wavelengths = stats["n_wavelengths"]
     WAVELENGTHS = np.linspace(300, 1100, n_wavelengths // 2)
     
-    # Plot global histogram of absorptance
+    global_min, global_max = 1.0, 0.0
+    for res in results.values():
+        valid_idx = torch.where(res["avg_abs"] >= 0)[0]
+        if len(valid_idx) > 0:
+            global_min = min(global_min, res["avg_abs"][valid_idx].min().item())
+            global_max = max(global_max, res["avg_abs"][valid_idx].max().item())
+            
+    bin_width = 0.002
+    num_bins = max(1, int(np.ceil((global_max - global_min) / bin_width)))
+    bin_edges = np.linspace(global_min, global_min + num_bins * bin_width, num_bins + 1)
+    
     fig_hist, ax_hist = plt.subplots(figsize=(8, 6))
     for mat_name, res in results.items():
         avg_abs = res["avg_abs"]
@@ -173,10 +211,25 @@ def main():
         if len(valid_idx) == 0:
             continue
         valid_abs = avg_abs[valid_idx].numpy()
-        ax_hist.hist(valid_abs, bins=50, alpha=0.5, label=mat_name, density=True)
+        ax_hist.hist(valid_abs, bins=bin_edges, alpha=0.5, label=mat_name)
     ax_hist.set_xlabel("Average Absorptance")
-    ax_hist.set_ylabel("Density")
-    ax_hist.set_title("Dataset Average Absorptance Distribution")
+    ax_hist.set_ylabel("Count")
+    ax_hist.set_yscale("log")
+    
+    title_parts = []
+    if args.h_val is not None:
+        if isinstance(args.h_val, list) and len(args.h_val) == 2:
+            title_parts.append(f"h=[{args.h_val[0]},{args.h_val[1]}]nm")
+        else:
+            h_target = args.h_val[0] if isinstance(args.h_val, list) else args.h_val
+            title_parts.append(f"h={h_target}±{args.h_tolerance}nm")
+    if args.inc_val is not None:
+        title_parts.append(f"inc={args.inc_val}±{args.inc_tolerance}°")
+    if args.bands:
+        title_parts.append("Matched Bands")
+        
+    title_str = " | ".join(title_parts) if title_parts else "All Geometries, All Angles"
+    ax_hist.set_title(f"Dataset Average Absorptance Distribution\n({title_str})", fontsize=11)
     ax_hist.legend()
     hist_path = out_dir / "dataset_absorptance_histogram.png"
     fig_hist.savefig(hist_path)
@@ -276,10 +329,8 @@ def main():
                     ax_h.set_xlabel("Harmonic Index")
 
             plt.suptitle(f"{mode_str} {k} Structure(s) in Dataset: {mat_name}", fontsize=18)
-            bands_str = "_".join([f"{int(b[0])}-{int(b[1])}" for b in bands]) if bands else "full_spectrum"
-            suffix = "_worst" if plot_mode == "worst" else ""
-            save_path = out_dir / f"baseline{suffix}_{mat_name}_{bands_str}.png"
-            plt.savefig(save_path)
+            save_path = out_dir / f"dataset_baseline_{'worst_' if plot_mode == 'worst' else ''}{mat_name}.png"
+            fig.savefig(save_path)
             plt.close()
             print(f"Saved {plot_mode} plot to {save_path}")
 

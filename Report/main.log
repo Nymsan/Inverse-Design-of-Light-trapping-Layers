@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026/Arch Linux) (preloaded format=pdflatex 2026.6.19)  24 JUN 2026 13:54
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026/Arch Linux) (preloaded format=pdflatex 2026.6.19)  24 JUN 2026 19:00
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -1144,12 +1144,12 @@ Underfull \hbox (badness 10000) in paragraph at lines 13--19
 
  []
 
-<Pictures/Logos/white_cmyk.pdf, id=59, 597.50829pt x 845.0471pt>
+<Pictures/Logos/white_cmyk.pdf, id=71, 597.50829pt x 845.0471pt>
 File: Pictures/Logos/white_cmyk.pdf Graphic file (type pdf)
 <use Pictures/Logos/white_cmyk.pdf>
 Package pdftex.def Info: Pictures/Logos/white_cmyk.pdf  used on input line 41.
 (pdftex.def)             Requested size: 41.9678pt x 59.35275pt.
-<Pictures/DTU_stock_photo.jpg, id=60, 669.09975pt x 602.25pt>
+<Pictures/DTU_stock_photo.jpg, id=72, 669.09975pt x 602.25pt>
 File: Pictures/DTU_stock_photo.jpg Graphic file (type jpg)
 <use Pictures/DTU_stock_photo.jpg>
 Package pdftex.def Info: Pictures/DTU_stock_photo.jpg  used on input line 50.
@@ -1193,9 +1193,30 @@ Package pdftex.def Info: Pictures/DTU_stock_photo.jpg  used on input line 50.
  [2
 
 
+] (./Frontmatter/Copyright.tex)
+pdfTeX warning (ext4): destination with the same identifier (name{page.i}) has been already used, duplicate ignored
+<to be read again> 
+                   \relax 
+l.15 \clearpage
+                [1] (./Frontmatter/Approval.tex
+LaTeX Font Info:    Font shape `OT1/cmss/m/it' in size <10> not available
+(Font)              Font shape `OT1/cmss/m/sl' tried instead on input line 12.
+)
+pdfTeX warning (ext4): destination with the same identifier (name{page.ii}) has been already used, duplicate ignored
+<to be read again> 
+                   \relax 
+l.18 \clearpage
+                [2
+
 ] (./Frontmatter/Abstract.tex) [3
 
-] [4
+
+] (./Frontmatter/Acknowledgements.tex
+
+Package hyperref Warning: The anchor of a bookmark and its parent's must not
+(hyperref)                be the same. Added a new anchor on input line 2.
+
+) [4
 
 ] (./main.toc)
 \tf@toc=\write6
@@ -1203,10 +1224,14 @@ Package pdftex.def Info: Pictures/DTU_stock_photo.jpg  used on input line 50.
 
  [5
 
+
 ] [6
 
 ] (./sections/01_introduction.tex
 Chapter 1.
+
+LaTeX Warning: Citation 'example_reference' on page 1 undefined on input line 4.
+
 ) (./sections/02_methods.tex [1
 
 ]
@@ -1233,18 +1258,60 @@ Chapter 6.
 
 ]
 LaTeX Font Info:    Font shape `OT1/cmss/m/it' in size <10.95> not available
-(Font)              Font shape `OT1/cmss/m/sl' tried instead on input line 31.
+(Font)              Font shape `OT1/cmss/m/sl' tried instead on input line 37.
 
 
 LaTeX Font Warning: Font shape `OT1/cmss/m/sc' in size <10.95> not available
-(Font)              Font shape `OT1/cmr/m/sc' tried instead on input line 31.
+(Font)              Font shape `OT1/cmr/m/sc' tried instead on input line 37.
 
 
-Overfull \hbox (3.53912pt too wide) in paragraph at lines 31--31
+Overfull \hbox (3.53912pt too wide) in paragraph at lines 37--37
 \OT1/cmss/m/n/10.95 2022 . 108552$[]. \OT1/cmr/m/sc/10.95 url\OT1/cmss/m/n/10.95 : []$https : / / www . sciencedirect . com / science / article / pii / S0010465522002715$[]. 
  []
 
 [9
+
+] [10
+
+] (./Backmatter/Appendix.tex
+Appendix A.
+) [11
+
+] (./Backmatter/Backpage.tex
+*geometry* verbose mode - [ newgeometry ] result:
+* driver: pdftex
+* paper: a4paper
+* layout: <same size as paper>
+* layoutoffset:(h,v)=(0.0pt,0.0pt)
+* modes: twoside 
+* h-part:(L,W,R)=(79.66771pt, 478.00632pt, 39.83385pt)
+* v-part:(T,H,B)=(119.50157pt, 685.71143pt, 39.83385pt)
+* \paperwidth=597.50787pt
+* \paperheight=845.04684pt
+* \textwidth=478.00632pt
+* \textheight=685.71143pt
+* \oddsidemargin=7.39772pt
+* \evensidemargin=-32.43614pt
+* \topmargin=10.23158pt
+* \headheight=12.0pt
+* \headsep=25.0pt
+* \topskip=11.0pt
+* \footskip=30.0pt
+* \marginparwidth=103.0pt
+* \marginparsep=10.0pt
+* \columnsep=10.0pt
+* \skip\footins=10.0pt plus 4.0pt minus 2.0pt
+* \hoffset=0.0pt
+* \voffset=0.0pt
+* \mag=1000
+* \@twocolumnfalse
+* \@twosidetrue
+* \@mparswitchtrue
+* \@reversemarginfalse
+* (1in=72.27pt=25.4mm, 1cm=28.453pt)
+
+) [12
+
 
 ] (./main.aux)
  ***********
@@ -1256,7 +1323,7 @@ L3 programming layer <2026-01-19>
 LaTeX Warning: There were undefined references.
 
 Package rerunfilecheck Info: File `main.out' has not changed.
-(rerunfilecheck)             Checksum: 67A0E79D0A4B1ACC22BE59F038527DAD;1901.
+(rerunfilecheck)             Checksum: 9580D46C17334C5A400EA827A5632755;2210.
 
 Package biblatex Warning: Please (re)run BibTeX on the file(s):
 (biblatex)                main
@@ -1267,18 +1334,18 @@ Package logreq Info: Writing requests to 'main.run.xml'.
 
  ) 
 Here is how much of TeX's memory you used:
- 49735 strings out of 469515
- 1136360 string characters out of 5470807
- 1928859 words of memory out of 5000000
- 77668 multiletter control sequences out of 15000+600000
- 643657 words of font info for 89 fonts, out of 8000000 for 9000
+ 49790 strings out of 469515
+ 1137551 string characters out of 5470807
+ 1928876 words of memory out of 5000000
+ 77703 multiletter control sequences out of 15000+600000
+ 644318 words of font info for 91 fonts, out of 8000000 for 9000
  14 hyphenation exceptions out of 8191
- 107i,12n,110p,1974b,1805s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 107i,12n,110p,1974b,1803s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx8.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmcsc10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi6.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi8.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmr8.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmss10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmss17.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmss9.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmssbx10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmssi10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy8.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/symbols/msbm10.pfb>
-Output written on main.pdf (15 pages, 3376366 bytes).
+Output written on main.pdf (20 pages, 3381350 bytes).
 PDF statistics:
- 310 PDF objects out of 1000 (max. 8388607)
- 241 compressed objects within 3 object streams
- 51 named destinations out of 1000 (max. 500000)
- 127 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 349 PDF objects out of 1000 (max. 8388607)
+ 273 compressed objects within 3 object streams
+ 55 named destinations out of 1000 (max. 500000)
+ 151 words of extra memory for PDF output out of 10000 (max. 10000000)
 

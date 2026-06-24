@@ -17,34 +17,6 @@
 \endgroup
 
 \datalist[entry]{none/global//global/global/global}
-  \entry{example_reference}{article}{}{}
-    \name{author}{2}{}{%
-      {{hash=AA}{%
-         family={Author},
-         familyi={A\bibinitperiod},
-         given={A.},
-         giveni={A\bibinitperiod},
-      }}%
-      {{hash=WB}{%
-         family={Writer},
-         familyi={W\bibinitperiod},
-         given={B.},
-         giveni={B\bibinitperiod},
-      }}%
-    }
-    \strng{namehash}{AAWB1}
-    \strng{fullhash}{AAWB1}
-    \field{labelnamesource}{author}
-    \field{labeltitlesource}{title}
-    \field{labelyear}{2026}
-    \field{labeldatesource}{}
-    \field{pages}{1\bibrangedash 10}
-    \field{title}{A study on light-trapping nanostructures}
-    \field{volume}{10}
-    \field{journaltitle}{Journal of Nanophotonics}
-    \field{year}{2026}
-  \endentry
-
   \entry{torcwa}{article}{}{}
     \name{author}{2}{}{%
       {{hash=KC}{%
