@@ -1304,14 +1304,15 @@ def train_tandem(
             
             base_loss = criterion(pred, target)
             wl = target.shape[-1] // 2
-            # Spectral Loss (FFT Magnitude) - insensitive to small peak shifts
-            fft_pred_p = torch.fft.rfft(pred[:, :wl], dim=-1).abs()
-            fft_pred_s = torch.fft.rfft(pred[:, wl:], dim=-1).abs()
-            fft_target_p = torch.fft.rfft(target[:, :wl], dim=-1).abs()
-            fft_target_s = torch.fft.rfft(target[:, wl:], dim=-1).abs()
+            # Spectral Loss (FFT Magnitude) - matching train_forward
+            fft_pred_p = torch.fft.rfft(pred[:, :wl], dim=-1, norm="ortho").abs()
+            fft_pred_s = torch.fft.rfft(pred[:, wl:], dim=-1, norm="ortho").abs()
+            fft_target_p = torch.fft.rfft(target[:, :wl], dim=-1, norm="ortho").abs()
+            fft_target_s = torch.fft.rfft(target[:, wl:], dim=-1, norm="ortho").abs()
             
-            spectral_loss = (criterion(fft_pred_p, fft_target_p) + criterion(fft_pred_s, fft_target_s)) / wl
-            loss = base_loss + 0.5 * spectral_loss
+            spectral_loss = criterion(fft_pred_p, fft_target_p) + criterion(fft_pred_s, fft_target_s)
+            lambda_fft = 1.0
+            loss = base_loss + lambda_fft * spectral_loss
             
             optimizer.zero_grad(); loss.backward(); optimizer.step()
             train_loss_accum += loss.item()
@@ -1331,13 +1332,14 @@ def train_tandem(
                 
                 base_loss = criterion(pred, target)
                 wl = target.shape[-1] // 2
-                fft_pred_p = torch.fft.rfft(pred[:, :wl], dim=-1).abs()
-                fft_pred_s = torch.fft.rfft(pred[:, wl:], dim=-1).abs()
-                fft_target_p = torch.fft.rfft(target[:, :wl], dim=-1).abs()
-                fft_target_s = torch.fft.rfft(target[:, wl:], dim=-1).abs()
+                fft_pred_p = torch.fft.rfft(pred[:, :wl], dim=-1, norm="ortho").abs()
+                fft_pred_s = torch.fft.rfft(pred[:, wl:], dim=-1, norm="ortho").abs()
+                fft_target_p = torch.fft.rfft(target[:, :wl], dim=-1, norm="ortho").abs()
+                fft_target_s = torch.fft.rfft(target[:, wl:], dim=-1, norm="ortho").abs()
                 
-                spectral_loss = (criterion(fft_pred_p, fft_target_p) + criterion(fft_pred_s, fft_target_s)) / wl
-                val_loss_accum += (base_loss + 0.5 * spectral_loss).item()
+                spectral_loss = criterion(fft_pred_p, fft_target_p) + criterion(fft_pred_s, fft_target_s)
+                lambda_fft = 1.0
+                val_loss_accum += (base_loss + lambda_fft * spectral_loss).item()
                 
                 abs_err = torch.abs(pred - target)
                 val_mae_accum += abs_err.mean().item()

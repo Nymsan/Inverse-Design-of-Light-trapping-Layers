@@ -15,18 +15,18 @@ echo "Job starting on $(hostname), Task ID: ${LSB_JOBINDEX}"
 
 export CUDA_VISIBLE_DEVICES=""
 
-if [ ${LSB_JOBINDEX} -le 50 ]; then
+if [ ${LSB_JOBINDEX} -le 25 ]; then
     MATERIAL="Si"
     SEED=42
     BATCH_IDX=$((LSB_JOBINDEX - 1))
-elif [ ${LSB_JOBINDEX} -le 100 ]; then
+elif [ ${LSB_JOBINDEX} -le 50 ]; then
     MATERIAL="TiO2"
     SEED=43
-    BATCH_IDX=$((LSB_JOBINDEX - 51))
+    BATCH_IDX=$((LSB_JOBINDEX - 26))
 else
     MATERIAL="Si3N4"
     SEED=44
-    BATCH_IDX=$((LSB_JOBINDEX - 101))
+    BATCH_IDX=$((LSB_JOBINDEX - 51))
 fi
 
 START_BATCH=${BATCH_IDX}
@@ -38,15 +38,15 @@ echo "Batch Range: ${START_BATCH} to ${END_BATCH}"
 echo "======================================"
 
 uv run --no-sync python Scripts/generate_3d_dataset.py \
-    --num_samples 5000 \
+    --num_samples 2500 \
     --batch_size 100 \
-    --order_N 10 \
-    --order_N_y 10 \
-    --height_per_layer 5.0 \
+    --order_N 8 \
+    --order_N_y 8 \
+    --height_per_layer 10.0 \
     --grating_period 1000.0 \
     --grating_period_y 1000.0 \
-    --nx 500 \
-    --ny 500 \
+    --nx 128 \
+    --ny 128 \
     --grating_material ${MATERIAL} \
     --seed ${SEED} \
     --n_jobs 4 \

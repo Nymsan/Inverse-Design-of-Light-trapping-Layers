@@ -4,6 +4,17 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
+plt.rcParams.update({
+    "font.size": 16,
+    "axes.titlesize": 18,
+    "axes.labelsize": 16,
+    "xtick.labelsize": 14,
+    "ytick.labelsize": 14,
+    "legend.fontsize": 14,
+    "figure.titlesize": 20
+})
+
 from pathlib import Path
 import re
 import sys
@@ -124,14 +135,14 @@ def plot_1d_convergence(h_nm: int, suffix: str = ""):
             
             ax_p.plot(c_wls, c_abs_p, 'k--', lw=2, label="COMSOL")
             ax_p.plot(c_wls, t_p, alpha=0.8, label=f"Torcwa")
-            ax_p.set_title(f"p-pol ({nl} L)")
+            ax_p.set_title(f"p-pol ({nl} layers)")
             if i == 0: ax_p.set_ylabel("Absorptance")
             else: plt.setp(ax_p.get_yticklabels(), visible=False)
             ax_p.legend()
             
             ax_s.plot(c_wls, c_abs_s, 'k--', lw=2, label="COMSOL")
             ax_s.plot(c_wls, t_s, alpha=0.8, label=f"Torcwa")
-            ax_s.set_title(f"s-pol ({nl} L)")
+            ax_s.set_title(f"s-pol ({nl} layers)")
             ax_s.set_xlabel('Wavelength (nm)')
             if i == 0: ax_s.set_ylabel("Absorptance")
             else: plt.setp(ax_s.get_yticklabels(), visible=False)
@@ -285,7 +296,11 @@ def plot_combinations(h_nm: int, pattern_base: str):
     ax.set_yscale('log')
     ax.set_xlabel('Number of Layers')
     ax.set_ylabel(f'Mean Abs Error vs (Order {max_ox}, Layers {max_nl})')
-    ax.set_title(f'{pattern_base} Convergence (grating height = {h_nm} nm)')
+    display_name = pattern_base.replace("sweep_combination_", "").replace("sweep_combination", "").replace("_", " ").title()
+    if display_name.strip():
+        ax.set_title(f'{display_name} Convergence (grating height = {h_nm} nm)')
+    else:
+        ax.set_title(f'Convergence (grating height = {h_nm} nm)')
     ax.grid(True, which="both", ls="-", alpha=0.5)
     ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
     
