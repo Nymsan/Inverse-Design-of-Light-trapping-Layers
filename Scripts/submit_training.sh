@@ -126,7 +126,7 @@ uv run python count_params.py \
 
 if [ "$TRAIN_FORWARD" = true ]; then
     echo -e "\n=== Starting Forward Training ==="
-    for frac in 0.1 0.5 0.9 1.0; do
+    for frac in 0.1 0.5 1.0; do
         echo "Training forward model with fraction: $frac"
         uv run python train_forward.py \
             --data_dir ../Data \
@@ -136,7 +136,7 @@ if [ "$TRAIN_FORWARD" = true ]; then
             --epochs 500 \
             --lr 1e-3 \
             --patience 100 \
-            --val_split 0.01 \
+            --val_split 0.2 \
             --train_subset_fraction $frac \
             --seed 42 \
             --embed_dim $EMBED_DIM \
@@ -157,10 +157,10 @@ if [ "$TRAIN_INVERSE" = true ]; then
         --target_key all_film \
         --epochs 2000 \
         --batch_size 768 \
-        --lr 2e-3 \
+        --lr 5e-4 \
         --patience 200 \
-        --val_split 0.05 \
-        --seed 1337 \
+        --val_split 0.2 \
+        --seed 42 \
         --embed_dim $EMBED_DIM \
         --latent_dim_gen $LATENT_DIM_GEN \
         --latent_dim_cvae $LATENT_DIM_CVAE \

@@ -17,13 +17,11 @@ if project_root not in sys.path:
 from Utils.utils import geo_dtype, RCWAConfig, get_absorptance_curve
 default_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-def process_sample_3d(i, h_arr, inc_ang_arr, azi_ang_arr, wl_arr, amps_x_arr, phases_x_arr, amps_y_arr, phases_y_arr, args):
+def process_sample_3d(i, h_arr, wl_arr, amps_x_arr, phases_x_arr, amps_y_arr, phases_y_arr, args):
     torch.set_num_threads(1)
     device = torch.device('cpu')
     
     h = h_arr[i]
-    inc_ang_deg = inc_ang_arr[i]
-    azi_ang_deg = azi_ang_arr[i]
     wl = wl_arr[i]
     
     params_x_data = [[amps_x_arr[i, j], phases_x_arr[i, j]] for j in range(5)]
@@ -31,7 +29,7 @@ def process_sample_3d(i, h_arr, inc_ang_arr, azi_ang_arr, wl_arr, amps_x_arr, ph
     params_x = torch.tensor(params_x_data, dtype=geo_dtype, device=device)
     params_y = torch.tensor(params_y_data, dtype=geo_dtype, device=device)
     
-    wavelength_tensor = torch.tensor([wl], dtype=torch.float64) + 1e-3
+    wavelength_tensor = torch.tensor([wl, 495.0], dtype=torch.float64) + 1e-3
     
     base_config = RCWAConfig(
         grating_period=args.grating_period, grating_period_y=args.grating_period_y,
@@ -44,14 +42,7 @@ def process_sample_3d(i, h_arr, inc_ang_arr, azi_ang_arr, wl_arr, amps_x_arr, ph
     
     base_config.inc_ang = 1e-3 * np.pi/180
     base_config.azi_ang = 1e-3 * np.pi/180
-    A_film_norm, A_grat_norm = get_absorptance_curve(
-        params_x=params_x, params_y=params_y,
-        wavelengths=wavelength_tensor, config=base_config
-    )
-    
-    base_config.inc_ang = (inc_ang_deg + 1e-3) * np.pi/180
-    base_config.azi_ang = (azi_ang_deg + 1e-3) * np.pi/180
-    A_film_obl, A_grat_obl = get_absorptance_curve(
+    A_film_both, A_grat_both = get_absorptance_curve(
         params_x=params_x, params_y=params_y,
         wavelengths=wavelength_tensor, config=base_config
     )
@@ -59,32 +50,30 @@ def process_sample_3d(i, h_arr, inc_ang_arr, azi_ang_arr, wl_arr, amps_x_arr, ph
     return {
         'wavelength': float(wl),
         'h': float(h),
-        'inc_ang': float(inc_ang_deg),
-        'azi_ang': float(azi_ang_deg),
+        'inc_ang': 0.0,
+        'azi_ang': 0.0,
         'params_x': params_x.cpu(),
         'params_y': params_y.cpu(),
-        'A_film_normal': A_film_norm.cpu(),
-        'A_grating_normal': A_grat_norm.cpu(),
-        'A_film_oblique': A_film_obl.cpu(),
-        'A_grating_oblique': A_grat_obl.cpu(),
+        'A_film_normal': A_film_both[0].cpu(),
+        'A_grating_normal': A_grat_both[0].cpu(),
+        'A_film_max_wl': A_film_both[1].cpu(),
+        'A_grating_max_wl': A_grat_both[1].cpu(),
     }
 
 def get_lhs_samples(num_samples, seed=42):
-    sampler = LatinHypercube(d=24, seed=seed)
+    sampler = LatinHypercube(d=22, seed=seed)
     sample = sampler.random(n=num_samples)
     
     h = 1000 + 2000 * sample[:, 0]            # 1000 nm to 3000 nm
-    inc_ang = 0 + 45 * sample[:, 1]          # 0 to 45 degrees
-    azi_ang = 0 + 360 * sample[:, 2]         # 0 to 360 degrees
-    wavelengths = 300 + 800 * sample[:, 3]   # 300 nm to 1100 nm
+    wavelengths = 300 + 800 * sample[:, 1]    # 300 nm to 1100 nm
     
-    amps_x = 0 + 15 * sample[:, 4:9]         # 0 to 15 nm max
-    phases_x = 0 + 2 * np.pi * sample[:, 9:14] # 0 to 2*pi
+    amps_x = 0 + 15 * sample[:, 2:7]         # 0 to 15 nm max
+    phases_x = 0 + 2 * np.pi * sample[:, 7:12] # 0 to 2*pi
     
-    amps_y = 0 + 15 * sample[:, 14:19]       # 0 to 15 nm max
-    phases_y = 0 + 2 * np.pi * sample[:, 19:24] # 0 to 2*pi
+    amps_y = 0 + 15 * sample[:, 12:17]       # 0 to 15 nm max
+    phases_y = 0 + 2 * np.pi * sample[:, 17:22] # 0 to 2*pi
     
-    return h, inc_ang, azi_ang, wavelengths, amps_x, phases_x, amps_y, phases_y
+    return h, wavelengths, amps_x, phases_x, amps_y, phases_y
 
 def get_or_create_samples_3d(out_dir, num_samples, seed=42):
     samples_file = os.path.join(out_dir, '_lhs_samples_3d.npz')
@@ -94,16 +83,16 @@ def get_or_create_samples_3d(out_dir, num_samples, seed=42):
         if len(data['h']) == num_samples:
             print(f"Loaded existing LHS samples from {samples_file}")
             sys.stdout.flush()
-            return data['h'], data['inc_ang'], data['azi_ang'], data['wavelengths'], data['amps_x'], data['phases_x'], data['amps_y'], data['phases_y']
+            return data['h'], data['wavelengths'], data['amps_x'], data['phases_x'], data['amps_y'], data['phases_y']
         else:
             print(f"WARNING: Existing samples have {len(data['h'])} entries but {num_samples} requested. Regenerating...")
             sys.stdout.flush()
             
-    h, inc_ang, azi_ang, wavelengths, amps_x, phases_x, amps_y, phases_y = get_lhs_samples(num_samples, seed=seed)
-    np.savez(samples_file, h=h, inc_ang=inc_ang, azi_ang=azi_ang, wavelengths=wavelengths, amps_x=amps_x, phases_x=phases_x, amps_y=amps_y, phases_y=phases_y)
+    h, wavelengths, amps_x, phases_x, amps_y, phases_y = get_lhs_samples(num_samples, seed=seed)
+    np.savez(samples_file, h=h, wavelengths=wavelengths, amps_x=amps_x, phases_x=phases_x, amps_y=amps_y, phases_y=phases_y)
     print(f"Generated and saved LHS samples to {samples_file}")
     sys.stdout.flush()
-    return h, inc_ang, azi_ang, wavelengths, amps_x, phases_x, amps_y, phases_y
+    return h, wavelengths, amps_x, phases_x, amps_y, phases_y
 
 def main():
     parser = argparse.ArgumentParser(description="Generate 3D LHS Dataset for Inverse Design (CPU parallel)")
@@ -150,7 +139,7 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
     
     # Generate LHS
-    h_arr, inc_ang_arr, azi_ang_arr, wl_arr, amps_x_arr, phases_x_arr, amps_y_arr, phases_y_arr = get_or_create_samples_3d(out_dir, args.num_samples, seed=args.seed)
+    h_arr, wl_arr, amps_x_arr, phases_x_arr, amps_y_arr, phases_y_arr = get_or_create_samples_3d(out_dir, args.num_samples, seed=args.seed)
     
     num_batches = int(np.ceil(args.num_samples / args.batch_size))
     
@@ -190,8 +179,7 @@ def main():
         
         worker = partial(
             process_sample_3d,
-            h_arr=h_arr, inc_ang_arr=inc_ang_arr, azi_ang_arr=azi_ang_arr,
-            wl_arr=wl_arr, amps_x_arr=amps_x_arr, phases_x_arr=phases_x_arr,
+            h_arr=h_arr, wl_arr=wl_arr, amps_x_arr=amps_x_arr, phases_x_arr=phases_x_arr,
             amps_y_arr=amps_y_arr, phases_y_arr=phases_y_arr, args=args
         )
         
@@ -213,8 +201,8 @@ def main():
         all_params_y = torch.stack([s['params_y'] for s in sample_dicts])
         all_A_film_normal = torch.stack([s['A_film_normal'] for s in sample_dicts])
         all_A_grating_normal = torch.stack([s['A_grating_normal'] for s in sample_dicts])
-        all_A_film_oblique = torch.stack([s['A_film_oblique'] for s in sample_dicts])
-        all_A_grating_oblique = torch.stack([s['A_grating_oblique'] for s in sample_dicts])
+        all_A_film_max_wl = torch.stack([s['A_film_max_wl'] for s in sample_dicts])
+        all_A_grating_max_wl = torch.stack([s['A_grating_max_wl'] for s in sample_dicts])
         
         # Save batch as stacked tensors (DataLoader-friendly)
         save_dict = {
@@ -231,8 +219,8 @@ def main():
             'params_y': all_params_y,
             'A_film_normal': all_A_film_normal,
             'A_grating_normal': all_A_grating_normal,
-            'A_film_oblique': all_A_film_oblique,
-            'A_grating_oblique': all_A_grating_oblique,
+            'A_film_max_wl': all_A_film_max_wl,
+            'A_grating_max_wl': all_A_grating_max_wl,
         }
         torch.save(save_dict, batch_file)
         print(f"Saved {batch_file}")

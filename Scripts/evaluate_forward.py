@@ -105,13 +105,24 @@ def plot_forward_parity(models: dict[str, nn.Module], val_loader, save_path: str
         ax.set_aspect("equal")
         ax.set_title(f"{name.replace('_', ' ').title()}", fontsize=12)
         
-        # Add a small inset histogram
-        ax_hist = ax.inset_axes([0.6, 0.1, 0.35, 0.35])
-        ax_hist.hist(true, bins=30, alpha=0.5, color='black', density=True, label="True")
-        ax_hist.hist(pred, bins=30, alpha=0.5, color='blue', density=True, label="Pred")
-        ax_hist.set_yticks([])
-        ax_hist.set_xticks([])
-        ax_hist.legend(fontsize=8, loc='upper left')
+        # Create separate side-by-side histogram plot
+        save_dir = Path(save_path).parent
+        fig_hist, axes_hist = plt.subplots(1, 2, figsize=(10, 4), sharey=True, layout="constrained")
+        
+        axes_hist[0].hist(true, bins=40, color='black', alpha=0.7)
+        axes_hist[0].set_xlabel("Average Absorptance")
+        axes_hist[0].set_ylabel("Count")
+        axes_hist[0].set_title("True Validation Distribution")
+        
+        axes_hist[1].hist(pred, bins=40, color='blue', alpha=0.7)
+        axes_hist[1].set_xlabel("Average Absorptance")
+        axes_hist[1].set_title("Predicted Validation Distribution")
+        
+        fig_hist.suptitle(f"{name.replace('_', ' ').title()} - Performance Histograms", fontsize=14)
+        hist_save_path = save_dir / f"histogram_{name}.png"
+        fig_hist.savefig(hist_save_path)
+        plt.close(fig_hist)
+        print(f"  Saved: {hist_save_path}")
 
     plt.savefig(save_path)
     plt.close()

@@ -110,10 +110,8 @@ def main():
             full_file = os.path.join(d_dir, "full_dataset.pt")
             if os.path.exists(full_file):
                 data_files[mat_name].append(full_file)
-            else:
-                print(f"Warning: Missing {full_file}. Falling back to batch files.")
-                batch_files = glob.glob(os.path.join(d_dir, "batch_*.pt"))
-                data_files[mat_name].extend(batch_files)
+            else
+                return "No full dataset.pt"
                 
     # Temporarily load just to get sizes for splitting
     temp_dataset = GratingDataset(data_files, target_key=args.target_key)
@@ -144,6 +142,8 @@ def main():
         
         train_indices[mat_name] = t_idx
         val_indices[mat_name] = v_idx
+        
+        print(f"  {mat_name}: Split generated -> Val = {len(v_idx)}, Train ({args.train_subset_fraction}x) = {len(t_idx)}")
         
     train_set = GratingDataset(data_files, target_key=args.target_key, subset_indices=train_indices)
     val_set = GratingDataset(data_files, target_key=args.target_key, subset_indices=val_indices, geo_min=train_set.geo_min, geo_max=train_set.geo_max)
