@@ -87,5 +87,8 @@ to get
 \label{eq:adjoint}
 \frac{d\mathcal{L}}{dp} = \frac{\partial \mathcal{L}}{\partial p} + \lambda^T\frac{\partial f}{\partial p}.
 \end{equation}
-Whereby we have obtained an expression for the figure of merit derived with respect to the set of design variables. \cite{Hughes2018} has includes two system variables, the electric field and its conjugate, but the general idea is the same.
-In essence, what this means is that 
+Whereby we have obtained an expression for the figure of merit derived with respect to the set of design variables. \cite{Hughes2018} includes two system variables, the electric field and its conjugate, but the general idea is the same.
+Essentially, the original field $x$, which is a forward pass of a physics simulator, has to be solved for, after which the figure of merit dependence is often a scalar derived by a vector value, $\frac{\mathcal{L}}{x}$.
+From here, the adjoint field can be simulated backwards by realizing that solving the system for the adjoint variable is essentially the problem in reverse. Mathematically, this is very close to how gradients flow backwards in reverse-mode auto differentiation software such as Pytorch, and 
+by extension TORCWA, \cite{torcwa}. Instead of numerically differentiating the figure of merit by every design variable, the system can be simulated forward, and by trackcing the chain rule, once obtaining the figure of merit, can be efficiently tracked backward.
+For an example of the physics, see \cite{Hughes2018}, and for an example of 
