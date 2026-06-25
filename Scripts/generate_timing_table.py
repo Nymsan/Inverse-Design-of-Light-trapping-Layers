@@ -7,6 +7,7 @@ with open("Results/timing_results.json", "r") as f:
 lines = []
 lines.append(r"\begin{table}[htbp]")
 lines.append(r"    \centering")
+lines.append(r"    \resizebox{\textwidth}{!}{%")
 lines.append(r"    \begin{tabular}{lcccc}")
 lines.append(r"        \toprule")
 lines.append(r"        \textbf{Model} & \textbf{Sequential Total (s)} & \textbf{Batched Total (s)} & \textbf{Speedup (Sequential)} & \textbf{Speedup (Batched)} \\")
@@ -14,6 +15,9 @@ lines.append(r"        \midrule")
 
 torcwa_seq_total = data["torcwa_sequential_total_s"]
 num_samples = data["num_samples"]
+
+# Add TORCWA baseline row
+lines.append(f"        TORCWA & {torcwa_seq_total:.1f} & -- & 1$\\times$ & -- \\\\")
 
 models = data["models"]
 for m, stats in models.items():
@@ -29,8 +33,9 @@ for m, stats in models.items():
     lines.append(f"        {m_name} & {seq_tot:.4f} & {bat_tot:.4f} & {speed_seq:,.0f}$\\times$ & {speed_bat:,.0f}$\\times$ \\\\")
 
 lines.append(r"        \bottomrule")
-lines.append(r"    \end{tabular}")
-lines.append(r"    \caption{Computational timing comparison between RCWA and surrogate models for evaluating 10 sample structures. RCWA required an average of 163 seconds per sample (total: " + f"{torcwa_seq_total:.1f}" + " s). Surrogate models show massive acceleration, especially when batched.}")
+lines.append(r"    \end{tabular}%")
+lines.append(r"    }")
+lines.append(r"    \caption{Computational timing comparison between TORCWA and surrogate models for evaluating 10 sample structures. Surrogate models show massive acceleration, especially when batched.}")
 lines.append(r"    \label{tab:timing_comparison}")
 lines.append(r"\end{table}")
 
@@ -39,3 +44,4 @@ with open("Report/tables/timing_stats.tex", "w") as f:
     f.write("\n".join(lines) + "\n")
 
 print("Generated Report/tables/timing_stats.tex")
+

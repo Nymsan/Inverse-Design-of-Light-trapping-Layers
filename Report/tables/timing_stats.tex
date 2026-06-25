@@ -1,14 +1,17 @@
 \begin{table}[htbp]
     \centering
+    \resizebox{\textwidth}{!}{%
     \begin{tabular}{lcccc}
         \toprule
         \textbf{Model} & \textbf{Sequential Total (s)} & \textbf{Batched Total (s)} & \textbf{Speedup (Sequential)} & \textbf{Speedup (Batched)} \\
         \midrule
+        TORCWA & 1629.7 & -- & 1$\times$ & -- \\
         Skip CNN & 0.0351 & 0.0011 & 46,427$\times$ & 1,433,628$\times$ \\
         SIREN & 0.0213 & 0.0029 & 76,555$\times$ & 553,664$\times$ \\
         Forward MLP & 0.0041 & 0.0024 & 399,039$\times$ & 680,356$\times$ \\
         \bottomrule
-    \end{tabular}
-    \caption{Computational timing comparison between RCWA and surrogate models for evaluating 10 sample structures. RCWA required an average of 163 seconds per sample (total: 1629.7 s). Surrogate models show massive acceleration, especially when batched.}
+    \end{tabular}%
+    }
+    \caption{Computational timing comparison between TORCWA and surrogate models for evaluating 10 sample structures. Surrogate models show massive acceleration, especially when batched.}
     \label{tab:timing_comparison}
 \end{table}

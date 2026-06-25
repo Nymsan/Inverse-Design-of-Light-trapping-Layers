@@ -5,7 +5,7 @@ from typing import List, Tuple, Optional
 from tqdm import tqdm
 from Utils.models import MATERIAL_LIBRARY
 from Utils.models import build_profile
-from Utils.utils import sun_weights
+from Utils.utils import sun_weights, get_jsc_scaling_factor
 
 class BatchedSurrogateOptimizer:
     def __init__(self, forward_model: nn.Module, geo_min: torch.Tensor, geo_max: torch.Tensor, n_harmonics: int, nx: int = 128, device: torch.device = torch.device("cpu"), max_inc_deg: float = None, h_val: float = None, inc_val: float = None):
@@ -84,9 +84,10 @@ class BatchedSurrogateOptimizer:
             
         return jsc
 
-    def optimize_geometry(self, bands: List[Tuple[float, float]], n_restarts: int = 100, n_dense_samples: int = 1000000, steps: int = 300, lr: float = 0.005, allowed_materials: list[int] = None, top_k: int = 2, show_progress: bool = True, optimize_jsc: bool = False) -> dict:
+    def optimize_geometry(self, bands: List[Tuple[float, float]], n_restarts: int = 100, n_dense_samples: int = 1000000, steps: int = 300, lr: float = 0.005, allowed_materials: list[int] = None, top_k: int = 2, show_progress: bool = True, optimize_jsc: bool = False, override_n_wavelengths: Optional[int] = None) -> dict:
         self.forward_model.eval()
-        target, mask = self._get_target_and_mask(bands)
+        _n_wl_kwargs = {"n_wavelengths": override_n_wavelengths} if override_n_wavelengths is not None else {}
+        target, mask = self._get_target_and_mask(bands, **_n_wl_kwargs)
         
         if allowed_materials is None:
             allowed_materials = list(range(self.n_materials))
@@ -350,9 +351,10 @@ class BatchedSurrogateOptimizer:
         }
 
     def optimize_de(self, bands: List[Tuple[float, float]], pop_size: int = 10000, generations: int = 300, 
-                    F: float = 0.8, CR: float = 0.9, allowed_materials: list[int] = None, top_k: int = 2, show_progress: bool = True) -> dict:
+                    F: float = 0.8, CR: float = 0.9, allowed_materials: list[int] = None, top_k: int = 2, show_progress: bool = True, override_n_wavelengths: Optional[int] = None) -> dict:
         self.forward_model.eval()
-        target, mask = self._get_target_and_mask(bands)
+        _n_wl_kwargs = {"n_wavelengths": override_n_wavelengths} if override_n_wavelengths is not None else {}
+        target, mask = self._get_target_and_mask(bands, **_n_wl_kwargs)
         
         if allowed_materials is None:
             allowed_materials = list(range(self.n_materials))

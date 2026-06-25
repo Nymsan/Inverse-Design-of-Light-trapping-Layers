@@ -16,7 +16,7 @@ torch.set_float32_matmul_precision("high")
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from Utils.models import N_MATERIALS, build_profile, MATERIAL_LIBRARY
+from Utils.models import N_MATERIALS, build_profile, MATERIAL_LIBRARY, SIREN
 from Scripts.evaluate_dataset_baseline import get_dataset_baseline
 from Utils.surrogate_optimization import BatchedSurrogateOptimizer, recover_geometry_from_profile
 from Utils.utils import RCWAConfig, get_absorptance_curve
@@ -43,6 +43,8 @@ def parse_args():
     p.add_argument("--force_forward_model", type=str, default=None, help="Force load a specific forward model (e.g. 'siren.pt')")
     p.add_argument("--expand_amps", type=float, default=None, help="Temporarily expand the maximum amplitude bounds (e.g., to 25.0 nm)")
     p.add_argument("--optimize_jsc", action="store_true", help="Optimize Short-Circuit Current (Jsc) weighted by AM1.5G photon flux and cos(inc_ang), rather than average absorptance.")
+    p.add_argument("--eval_resolution", type=int, default=None, help="Number of wavelengths between 300-1100 nm used for the final Torcwa validation curve. Default: dataset n_wavelengths // 2.")
+    p.add_argument("--siren_search_resolution", type=int, default=None, help="(SIREN only) Number of wavelengths queried per forward pass during surrogate optimisation. Default: model's trained n_wavelengths // 2.")
     return p.parse_args()
 
 def get_folder_name(args) -> str:
@@ -145,6 +147,22 @@ def main():
     
     print(f"Loaded {Path(fwd_name).name} for surrogate optimization (test loss: {test_loss:.4f})")
     
+    # --- Resolution overrides ---
+    is_siren = isinstance(model, SIREN)
+    
+    # Torcwa eval resolution: number of wavelengths in the final physics simulation
+    eval_n_wl = args.eval_resolution if args.eval_resolution is not None else stats["n_wavelengths"] // 2
+    
+    # Surrogate search resolution: wavelengths queried per SIREN forward pass during optimisation
+    # For non-SIREN models the output size is fixed, so this flag is ignored.
+    search_n_wl = None  # None means "use model default" (passed as n_wavelengths to optimizer)
+    if args.siren_search_resolution is not None:
+        if is_siren:
+            search_n_wl = args.siren_search_resolution * 2  # _get_target_and_mask expects total (p+s)
+            model.seq_len = args.siren_search_resolution
+            print(f"[*] SIREN search resolution overridden to {args.siren_search_resolution} wavelengths per polarisation")
+        else:
+            print(f"[!] --siren_search_resolution ignored: loaded model is not a SIREN (it is {type(model).__name__})")
     
     print(f"\nRunning Surrogate Optimization ({args.mode} mode) ...")
     
@@ -187,7 +205,8 @@ def main():
             allowed_materials=valid_mat_indices,
             top_k=args.top_k,
             show_progress=True,
-            optimize_jsc=args.optimize_jsc
+            optimize_jsc=args.optimize_jsc,
+            override_n_wavelengths=search_n_wl
         )
         geo = res["best_geometry"]
         profile, h_tensor, inc_tensor = build_profile(geo.unsqueeze(0), n_harmonics_opt, nx=128)
@@ -196,7 +215,7 @@ def main():
         inc_ang = geo[-1].item()
         
     elif args.mode == "de":
-        res = opt.optimize_de(bands, pop_size=args.restarts, generations=args.steps, F=0.8, CR=0.9, allowed_materials=valid_mat_indices, top_k=args.top_k)
+        res = opt.optimize_de(bands, pop_size=args.restarts, generations=args.steps, F=0.8, CR=0.9, allowed_materials=valid_mat_indices, top_k=args.top_k, override_n_wavelengths=search_n_wl)
         geo = res["best_geometry"]
         profile, h_tensor, inc_tensor = build_profile(geo.unsqueeze(0), n_harmonics_opt, nx=128)
         profile = profile[0]
@@ -292,7 +311,7 @@ def main():
         if args.height_per_layer is not None:
             base_config.height_per_layer = args.height_per_layer
             
-        WAVELENGTHS = np.linspace(300, 1100, stats["n_wavelengths"] // 2)
+        WAVELENGTHS = np.linspace(300, 1100, eval_n_wl)
         A_film, _ = get_absorptance_curve(
             params_x=px,
             params_y=None,
