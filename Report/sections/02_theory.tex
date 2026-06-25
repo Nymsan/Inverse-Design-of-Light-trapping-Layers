@@ -8,7 +8,7 @@ Since I have compared my results with the commercial finite-element method solve
 I will discuss the adjoint method, reverse mode differentiation of electromagnetic problems, and the outlook on surrogate models for optimization.
 
 \label{sec:theory}
-% Introduction to methods chosen here.
+
 \section{Thin-Film Solar Cells}
 As discussed in section \ref{sec:thinfilmintro}, due to the prevalence of crystalline silicon in the global photovoltaic market and litterature, I will in this project focus on crytalline silicon as the active material of the solar cells, though to note, 
 the employed methods would also work with other active materials. 
@@ -92,13 +92,14 @@ for a film height of 3000 nm, the peaks at the lower wavelengths of $\lambda_0\a
 
 figure \ref{fig:fabry_perot} show the structure profile, absorptance curve from $300 \text{nm}$ to $1100$ nm and average field at a wavelength of $495$ nm of a Fabry-Perot like resonator, and the bottom row shows almost the same structure, but it has a fourier patterned grating of TiO$_2$.
 One thing to note is that the location of the absorptance peaks approximately overlap. Non of them are meaningfully widened, but for about $800$ nm, the spectrum starts to exhibit smaller peak oscillations. If the wavelength resolution were even higher, perhaps these peaks would have noticeable heights.
-the interpretation is of course that the grating can kick the momentum of the incoming light into a nearby resonance. Another thing to note is that the region without oscillations is significantly widened. This is the region where crystalline silicon film absorbs/reflects light well enough, forward and backward reflections cant live in the film.
-The light is either absorbed before standing waves occur with their high frequency oscillations, or the light is reflected. But for light of about 400 nm, the absorptance is for the given grating higher than $80\%$, indicating that the graing works well as an anti-reflective coating (ARC) here.
+the interpretation is of course that the grating can kick the momentum of the incoming light into a nearby resonance. Another thing to note is that the region without oscillations is significantly widened. In this region, for the pure Fabry-Perot cavity either light is reflected from the surface, or the light is not trapped within the cavity.
+The light is either absorbed before standing waves occur, with their high frequency oscillations, or the light is absorbed exactly because the momentum is kicked into a trapped mode. For light of about 400 nm, the absorptance is for the given grating higher than $80\%$, indicating that the graing works well as an anti-reflective coating (ARC) here. This is what functions as the largest hint of what an optimal Fourier patterned surface does.
+Where the refractive index is high enough, it kicks light into a trapped and resonant mode. For 300nm, the absorptance is actually worse for the Fourier patterned structure. This  would seem to indicate that either more of the light is reflected, or the light is accidentally less trapped.   
 
 \section{Rigorous Coupled Wave Analysis}
 \label{classical_solvers}
 This subsection will introduce the concept of RCWA, a method in numerical photonics suited well
-for stacked periodic structures in the x and y axis with a period $\Lambda_x,\Lambda_y$ respectively, and where each layer is homogeneous in the z-direction\cite{torcwa}.
+for stacked periodic structures in the x and y axis with a period $\Lambda_x,\Lambda_y$ respectively, and where each layer is homogeneous in the z-direction (\cite{torcwa}).
 The structure's optical properties are completely described by the relative permitivity $\epsilon$ and relative permeability $\mu$ of each layer, meaning that each structure
 will have a geometry described by
 \begin{equation}
@@ -189,22 +190,154 @@ precise only to this fourier order. The final fields are reconstructed as an inv
 \mathbf{H} = \exp{i\mathbf{k}\cdot\mathbf{r}}\sum_{m=-M}^{M}\sum_{n=-N}^{N}\mathbf{H}_{m,n}\exp{i(mL_xx+nL_yy)},
 \end{equation}
 where $L_x = \frac{2\pi}{\Lambda_x}$ and $L_y = \frac{2\pi}{\Lambda_y}$, 
-and the parameters $\epsilon_{m,n}, \mu_{m,n}, \mathbf{E}_{m,n}$ and $\mathbf{H}_{m,n}$ are the fourier amplitudes of the $m,n$'th diffraction order.
+and the parameters $\epsilon_{m,n}, \mu_{m,n}, \mathbf{E}_{m,n} = (E_{x,m,n},E_{y,m,n},E_{z,m,n})$ and $\mathbf{H}_{m,n} = i\sqrt{\frac{\epsilon_0}{\mu_0}} (H_{x,m,n},H_{y,m,n},H_{z,m,n})$ are the fourier amplitudes of the $m,n$'th diffraction order, and where the factor $i\sqrt{\frac{\epsilon_0}{\mu_0}}$ has been written out for convenience.
+These are the Bloch eigenmodes of a single block of the fourier modal method.
 It is worth mentioning, that since the momentum of light is always conserved, $k_z$ implicitly depends on the expansion orders $m,n$, and writing out the k-vector in full, including the fourier components, yields
 \begin{align}
 \label{eq:kmn}
-\mathbf{k}_{m,n} &= (k_x+mL_x,k_y+mL_y,k_z(m,n)) = \\ &= \left(k_x+mL_x,k_y+mL_y,\sqrt{k_0^2-(k_x+mL_x)^2-(k_y+mL_y)^2}\right),
+\mathbf{k}_{m,n} &= (k_x+mL_x,k_y+nL_y,k_z(m,n)) = (k_{x,m},k_{y,n},k_{z,m,n}) \\ &= \left(k_x+mL_x,k_y+nL_y,\sqrt{k_0^2-(k_x+mL_x)^2-(k_y+nL_y)^2}\right),
 \end{align}
 where equation \ref{eq:dispersionk} has been used. The physical interpretation of the fourier series of the electromagnetic fields is then made obvious;
-the different terms are different diffraction orders, each with part of the initial z-component momentum kicked into either the x- or y-direction.
+the different terms are different diffraction orders, each with part of the initial z-component momentum kicked into either the x- or y-direction. It is also noted, that for high enough orders of $m,n$, the term inside the square root becomes negative.
+At this point, the diffracted order turns to an evanscent mode, that decays with propagation in the z direction.
 It is noted how the permitivity and permeability is expanded to twice the order of the electromagnetic fields $E$ and $H$. This arises
 from the fact that the algebraic components of equations \ref{eq:faraday} and \ref{eq:ampere} include products of Fourier series, so to reach order $M,N$ in the electromagnetic fields,
-the permitivity and permeability must be truncated at twice the order. An example for just one fourier order will be given below, but for more details, I refer to \cite{fmm}.
-By inserting 
+the permitivity and permeability must be truncated at twice the order. For more details, I refer to \cite{fmm} section 3.
+By inserting equations \ref{eq:fourierFaraday} and \ref{eq:fourierAmpere} into the curl equations \ref{eq:faraday} and \ref{eq:ampere} yields a mess of a matrix equation, but an algebraic expression for the fourier amplitudes nonetheless. I will show the first of them, the rest look about the same, and I will show the matrix eigenvalue problem
+\begin{align}
+\label{eq:hell}
+k_0 \sum_{s}\sum_{t} \mu_{m-s,n-t}H_{x,s,t} = ik_zE_{y,m,n}-ik_{y,m,n}E_{z,m,n}
+\\
+\text{and so on...}
+\end{align}
+The fields  may be written as vectors of dimension $G=(2M+1)(2N+1)$, and solved as eigenvalue equations. I refer to \cite{fmm} eq. 3.14.
+An important point here is that the expansion of $\mu$ and $\epsilon$ couples different diffraction orders together.
+After many manipulations, one can arrive at the two simplified $2(2M+1)(2N+1)$ matrix equations. The details are not important for the point here
 
+\begin{equation}
+\mathbf{P} \left(\begin{matrix}
+    \bar H_y \\
+    \bar H_x
+\end{matrix}\right) = \frac{jk_z}{k_0}\left(\begin{matrix}
+    \bar E_y \\
+    \bar E_x
+\end{matrix}\right)
+\end{equation}
+and 
+\begin{equation}
+\mathbf{Q} \left(\begin{matrix}
+    \bar E_y \\
+    \bar E_x
+\end{matrix}\right) = \frac{jk_z}{k_0}\left(\begin{matrix}
+    \bar H_y \\
+    \bar H_x
+\end{matrix}\right).
+\end{equation}
+The specific content of $P,Q$ is not of great importance, but it is a highly symmetric matrix containing all the different orders of $\mu,\epsilon,k_x$ and $k_y$.
+The bar notation contains all the G different combinations of m,n.
 
+Inserting these two equations together yields an eigenvalue problem,
 
-% Detail the rigorous coupled-wave analysis (Torcwa)
+\begin{equation}
+\label{eq:fucking hell}
+PQ\left(\begin{matrix}
+    \bar E_y \\
+    \bar E_x
+\end{matrix}\right)  = \left(\frac{jk_z}{k_0}\right)^2 \left(\begin{matrix}
+    \bar E_y \\
+    \bar E_x
+\end{matrix}\right).
+\end{equation}
+Being a squared eigenvalue, the given $k_z$ allows both a positive and a negative mode, $\pm k_z$, and the x and y components can be polarized in two ways.
+Since $k_z$ is implicitly given from $k_x$ and $k_y$, of which there are $(2M+1)$ and $(2N+1)$ of each, it stands to reason that there exists
+$4(2M+1)(2N+1)$ legal eigenmodes of $k_z$, counting the positive and negative modes and the polarzations of the fields. \cite{fmm} suggests refering to all the the eigenvalues $jk_z = a \pm jb$ as the negative eigenmodes and all the eigenvalues
+$jk_z = -a \pm jb$ as the positive eigenvalues. This suggests an ordering where each field mode is given uniquely by the $k_z^{(g)}$ eigenvalue,
+\begin{align}
+\label{eq: newbasis who dis}
+\left(\begin{matrix}
+    \mathbf{E}^{(g)} \\
+    \mathbf{H}^{(g)}
+\end{matrix}\right) &= \left(\begin{matrix}
+    \mathbf{E}^{(g)}_x, \mathbf{E}^{(g)}_y, \mathbf{E}^{(g)}_z \\
+    \mathbf{H}^{(g)}_x, \mathbf{H}^{(g)}_y, \mathbf{H}^{(g)}_z
+\end{matrix}\right) \\
+ &= \exp{ik_z^{(g)}z}\sum_{-M}^{M}\sum_{-N}^{N}\left(\begin{matrix}
+    E_{x,m,m}^{(g)}, E_{y,m,m}^{(g)}, E_{z,m,m}^{(g)} \\
+    H_{x,m,m}^{(g)}, H_{y,m,m}^{(g)}, H_{z,m,m}^{(g)} .
+\end{matrix}\right)\exp{j\left(k_{x,m}x+k_{y,m}y\right)},
+\end{align}
+Where it should be noted that there are $M^+=2G=2(2M+1)(2N+1)$ positive modes and $M^-=2G=2(2M+1)(2N+1)$ negative modes. With this, all the fourier expanded coefficents can be solved for uniquely, which means that inside a structure with the $z$-independent $x$- and $y$-periodic material, the field
+can be uniquely recovered (up to a phase factor) by inverse Fourier transformation. But most of the dynamics comes from the coupling with neighbouring layers, described by the S-matrix.
+We now perceive the forward and backward modes as a new basis,
+
+\begin{equation}
+\label{eq:blochbasis}
+\begin{pmatrix}
+    \mathbf{E} \\
+    \mathbf{H}
+\end{pmatrix}
+=
+\sum_{g=1}^{M^+} \mathbf{C}_{a,g}^+
+\begin{pmatrix}
+    \mathbf{E}^{(g)+} \\
+    \mathbf{H}^{(g)+}
+\end{pmatrix}
++
+\sum_{g=1}^{M^-} \mathbf{C}_{a,g}^-
+\begin{pmatrix}
+    \mathbf{E}^{(g)-} \\
+    \mathbf{H}^{(g)-}
+\end{pmatrix}
+\end{equation}
+
+The objective of the S-matrix is to find the coupling orders between forward and backward propagating modes in each block interface. Figure \ref{fig:s-matrix}, shows the the coupling between equation \ref{eq:blochbasis} 
+and the incident incoming light from $z=z_-$, and the light that reflects to the left and transmits to the right, and vice versa for the bottom of the figure, but mirrored. Importantly, $C_{a,g}^+$ is the coupling coefficients, where subscript $a$ denotes coupling coefficients for the forward, left to right problem, $b$ denotes for the backward, and superscript $\pm$ denotes positive and negative modes.
+Intuitively, this means that an incident plane wave from left to right (with its own fourier transfer decomposition), couples into eacc eigenmode of the system according to $C^+_{a,g}$.
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=1\textwidth]{figures/Bidirectional.png}
+    \caption{Figure is borrowed from \cite{fmm}: (a) shows left to right directional characterization and (b) shows right to left}
+    \label{fig:s-matrix}
+\end{figure}
+By carefully mapping the forward and backward, incident, transmitted and reflected fields fourier amplitudes to the Bloch modes equation \ref{eq:blochbasis}, and applying the boundary conditions of Maxwells equations
+a new algebraic system appears. In essence it boils down to a scattering matrix
+\begin{equation}
+\label{S-matrix}
+\mathbf{S} = \left(\begin{matrix}
+    S_{11}, S_{12} \\
+    S_{21}, S_{22}
+\end{matrix}\right) = \left(\begin{matrix}
+    T_a, R_b \\
+    R_a, T_b
+\end{matrix}\right),
+\end{equation}
+which couples forward and backward modes of each fourier order to each other. The scattering matrix of the overall, N-block system compounds through a product operation called the redheffer star product\footnote{\url{https://en.wikipedia.org/wiki/Redheffer_star_product}}.
+The effective of the N'th layer is given as
+$$
+\mathbf{S}^{total} = \mathbf{S}^{in}\star\mathbf{S}^0\star \mathbf{S}^1\star...\star \mathbf{S}^N \star \mathbf{S}^{out} = \left(\begin{matrix}
+    T_a^{total}, R_b^{total} \\
+    R_a^{total}, T_b^{total}
+\end{matrix}\right),
+$$.
+where the $in$ and $out$ layer are the final half infinite homogeneous layers.
+The total transmittance and reflectance of interaction with the entire system can be found directly from the final $S$ matrix, as all the order couplings are contained here. This also means that for lossy systems, the total absorptance can be found directly from the $S-matrix$, by Utilizing
+$$
+A = 1 - R - T.
+$$
+Sadly, for the fourier patterned gratings the metric I am interested in the se absorptance only in the film layer, not in the grating nor the backreflector. As such, I have to evaluate the fields to calculate the absorptance from the power in the fields.
+Doing this naively by fourier transforming the fields back in the entire space, and integrating over the film region is not the most efficient way to do this. Luckily, the open source python and pytorch implementation of RCWA called TORCWA \cite{torcwa} has a function to obtain the fields only at a single z-coordinate.
+By having the fields, we can find the power incident on a layer by taking the z-component of the poynting vector given by
+$$
+\label{poynting}
+S_z = \frac{1}{2}\Re\left(E_x \cdot H_y^* - E_y \cdot H_x^*\right)
+$$
+Since RCWA is inherently a periodic analytical method, and all the fields are constited from their fourier amplitudes and Bloch eigenmodes, the same is true for the poynting vector. This means we now have to integrate the poynting vector over the surface. This is easily solved by numerically integrating the sampled field points.
+Compared to the heavy $O([2(2M+1)(2N+1)]^3) \approx O(N^6)$ order linear solves performed when calculating the S-matrices, this takes virtually no extra time. For this order, I have assumed that $M=N$, meaning the same fourier order is used in the x-direction as the y-direction.
+Calling the number of layers $N_L$ and the number of wavelengths $N_w$, the total algorithmic time of RCWA is $N_L \cdot N_w \cdot O(N^6)$, which scales extremely poorly for 3 dimensions. I will discuss this a bit more in my results and numerical implementation, but compare for a moment to a good surrogate solver.
+The target is the absorptance curve, no matter the input space. If the design space is 5 input amplitudes, 5 input phases, a height and 
+
+One of the upsides of RCWA is that its algorithmic time doesnt depend on the size of the optical system. The entire calculation takes place in fourier space.
+This also leads to one of its largest downsides. Poorly truncated fourier series, that cant resolve the periodic structure leads to ill-conditioning of the problem. If structures have harsh, sharp edges, 
 
 \section{Finite Element Method}
 
@@ -212,7 +345,7 @@ By inserting
 \section{The Adjoint Method}
 \label{sec:adjoint}
 Nanophotonic topology optimization leverages computational optimization  techniques to discover nonintuitive, compact devices, with a high performance
-on a clearly defined figure-of-merit. As described by \cite{Hughes2018}. Inverse design starts with the figure of merit,
+on a clearly defined figure-of-merit. As described by \cite{Hughes2018}, adjoint inverse design starts with the figure of merit,
 \begin{equation}
 \label{eq:FoM}
 \mathcal{L}=\mathcal{L}(x,p),
@@ -223,7 +356,7 @@ and the governing equations in their general form
 f(x,p) = 0,
 \end{equation}
 where x is the state variable, lets say here representing the
-electromagnetic fields, whereby $f(x,p)$ represents Maxwell's equations. The  $p$ is the set of real-valued design variables. In this project, this set of design variables will be the set of $a_n,a_m,\phi_n,\phi_m$, along with the film height $h$. You could also see the incident angle $\theta$ and azimuthal angle $\phi_a$ of incoming light 
+electromagnetic fields, whereby $f(x,p)$ represents Maxwell's equations. The  $p$ is the set of real-valued design variables. In this project, this set of design variables will be the set of $a_n,a_m,\phi_n,\phi_m$, along with the film height $h$, see equation \ref{eq:grating}. You could also see the incident angle $\theta$ and azimuthal angle $\phi_a$ of incoming light 
 along with the grating periods $\Lambda_x,\Lambda_y$ as design variables, but for the most case, I have held these constant.
 The adjoint method is a method for finding the derivative of the figure of merit with respect to the design variables, where you only need to solve the system forward, for the solution and backward to find an adjoint variable.
 Taking first the total derivative with respect to the design variables and using the chain rule, we get
@@ -258,4 +391,7 @@ by extension TORCWA, \cite{torcwa}. Instead of numerically differentiating the f
 For an example of the physics, see \cite{Hughes2018}, for more discussion on the adjoint method, see \cite{Hughes2019} and for an example of the reverse mode auto differentiation of for example pytorch, see \cite{torcwa}.
 
 Though this method is powerful, and allows for numerical exact gradients of optical fields with respect to a large number of variables, the optimization problem is still a local optimization problem in a vast design space.
-Optimization still requires solving large scale forward problems for every single optimization step. As discussed in the introduction, 
+Optimization still requires solving large scale forward problems for every single optimization step. As discussed in the introduction, the combination of the vast parameter space and poorly scaling large physics simulations, the development of a surrogate method using machine learning is a promising path.
+The next section will describe the theory of the machine learning methods utilized in this project.
+
+\section{Machine learning models for predicting absorptance curves.}
