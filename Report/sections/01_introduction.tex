@@ -2,22 +2,90 @@
 \label{sec:introduction}
 This project explores the use of machine learning informed inverse design to beat classical bottlenecks in adjoint-based topology optimization for light-trapping layers in thin-film solar cells.
 In particular, I focus on replacing computationally expensive classical solvers with light-weight and scalable surrogate solvers, and I benchmark their performance, upsides and downsides.
-This chapter describes background on the topic, and motivates the use of surrogate solvers for inverse design of broadband and multimaterial 
+This chapter describes background on the topic, and motivates the use of surrogate solvers for inverse design of broadband and multimaterial optimization. 
 
 
 %Introduce the problem of adjoint optimization of broadband light-trapping layers here.
 %introduce classical topology optical
 \section{Thin-film solar cells and light-trapping layers}
+\label{sec:thinfilmintro}
 Where conventional solar cells typically are rigid cells made of $~200\mathrm{\mu m}$ thick crystalline silicon or other highly absorbing materials in the visible light range, 
-thin-film crystalline silicon solar cells are typically much thinner, in the range of 2 micrometres according to \cite{machin2024advancements}. Crystalline silicon is a material of interest due to having
+thin-film crystalline silicon solar cells are typically much thinner, in the range of 2 micrometres according to \cite{machin2024advancements}. One of the main reasons to prefer thin-film solar cells 
+is the cheaper material costs and smaller ecological impact according to \cite{Pearce2002}.
+Crystalline silicon is a material of interest due to having
 ideal semiconductor properties for converting sunlight into electricity. Its material bandgap overlaps with a broad range of the solar spectrum, maximizing potential energy conversion efficiency, see \cite{solar_cells_green}. But the absorbtion of light scales with
-the lights optical length in the solar cell. As such, thinner photovoltaic cells need ways to make light stay in the cell longer, to match the performance of thicker cells.
+the light's optical path length in the solar cell. As such, thinner photovoltaic cells require ways to tap light in the cell for longer, to match the performance of thicker cells.
 According to an article by \cite{amalathas2019nanostructures}, more than 90\% of the global photovoltaic solar cell market is dominated by crystalline silicon based solar cells.
 The article also discusses how reductions in production cost and conversion efficiency improvements can be improved by light trapping approaches.
 Nanophotonic light trapping layers are structures on the scale of the wavelength of the light, that simultaneously seek to minimize reflections from and transmission through the solar cell.
 If the light can enter the material, but stay trapped within the active layer by total internal reflections or guided modes, the optical path length of the solar cell increases, and for the purpose
-of absorbing light, becomes thicker than it really is. Due to the prevalence of crystalline silicon in the global photovoltaic market, I will in this project focus on crytalline silicon as the active material of the solar cells, though to note, 
-the employed methods would also work with other active materials. 
-\section{Topology optimization and the adjoint method}
+of absorbing light, becomes thicker than it really is. A classical limit for light-trapping arises from ray optics analysis,
+where it can be shown that the maximum achievable absorption enchancement in a solar cell is the so called Yablonovitch limit $4n^2$, where n is the refractive index of the active absorbing material.
+According to \cite{high-index-nanostructures}, for nanoscale photonic structures, the conventional ray optics models break down, potentially leading to even higher performance limits. The promise of a good nanophotonic light-trapping layer is high performing solar cells
+at a fraction of the cost of conventional solar cells.
+The same article also notes that brute-force, full-field electromagnetic simulations are too computationally expensive to search the entire design space for optimal performance light trapping layers due to the vast design space. 
+Nonetheless topology optimization remains a widely used method for finding optimal light trapping layers. Some of the strengths and limitations will be discussed in the introduction, but first I will introduce the idea of fourier patterned light-trapping layers.
 
 \section{Fourier patterned light-trapping layers}
+\label{sec:fourier}
+Inspired by \cite{HOPE}, a grating coupler consisting of a thin film layer of crystalline silicon, a back substrate layer that is highly reflective, and a top sine-wave modulated grating layer is considered
+as the starting point of the light trapping layer design space of this project. In his article, Hope found that a grating layer with an amplitude much lower than the incoming wavelength of light strongly coupled light incident at certain angles into the film layer.
+As the absorptance in a lossy medium is directly proportional to the intensity of the field in that medium, $A \propto |E|^2$, the idea of coupling incoming sunlight strongly by sine modulations is interesting.
+A logical extension might be to consider geometries with a sum of different sine modulations in the grating material. I have chosen to parameterize my light trapping layers as a grating with the profile
+\begin{equation}
+\label{eq:grating}
+g(x,y) = g_0 + \sum_{n=1}^{N}a_{n} \cos{\left(\frac{2\pi n x}{\Lambda_x}-\phi_n\right)}+ \sum_{m=1}^{M}a_{m} \cos{\left(\frac{2\pi m y}{\Lambda_y}-\phi_y\right)},
+\end{equation}
+the $g(x,y)$ is the height of the grating at coordinates $x$ and $y$, $a_n,a_m$ are amplitudes in $x,y$ oscillations, $\phi_n,\phi_m$ are the phases delays of the oscillations, $\Lambda_x,\Lambda_y$ are the spatial periods in x and y and $g_0=\sum_{n=1}^{N} a_n + \sum_{m=1}^{M} a_m$ is half of the total grating height. Keeping the constant offset term of the Fourier series equal to the sum of all amplitudes, means that when all the oscillatory terms
+are exactly in phase, the grating will at one point go to exactly, zero, and at one point go to exactly $2g_0$. The upsides will be clear when i discuss the numerical implementation later, but for now, this is just thought of as a generalized version of the grating by \cite{HOPE}.
+One upside of formulating a periodic grating in this formalism is, that this mathematically is just the amplitude-phase form of the fourier series\footnote{\url{https://en.wikipedia.org/wiki/Fourier_series}} meaning that for infinite terms, any function that is periodic with period $\Lambda_x$ in the x-direction and period $\Lambda_y$ in the y-direction.
+may be approximated by this expression.
+
+For practical considerations, light-trapping layers should be able to be manufactured. \Cite{Erbas2024} have in a recent Nature article shown incredible manufacturing capability of grayscale structured nanosurfaces using so called thermal scanning probe lithography, able to etch lateral features at a resolution less than 10 nm, and a vertical resolution of less than 1 nm. Grayscale structures are also called 2.5D structures, since they appear at scales that are classically 2D materials, but exhibit full 3 dimensional properties.
+In short, the method works by spin-coating a thin dielectric with heat-sensitive resist, and thereafter by programming an atomic force microscope (AFM) cantilever and a heated nanotip to modulate with a given frequency while moving over a layer of resist. After the resist melts away, the resist can be etched away, transfering the grayscale nanopattern onto the dielectric. If the dielectric has a higher etch rate than the resist, the pattern is amplified. A figure from the article can be seen in the appendix, figure \ref{fig:erbas2024}.
+An example of using this technique to create a negative mask-stamp, that can be used to transfer such periodic patterns to dielectrics is seen in the appendix figure \ref{fig:erbas2024_2}.
+Another figure of the possible 3D structures that can be made using this technique is seen in figure \ref{fig:erbas2024_3}. It is noted, that the generalized grating shape of equation \ref{eq:grating} follows this same kind of pattern.
+This inspired the use of such grayscale nanopatterns for use as light-trapping layers in thin-film solar cells. In this project, I will explore the capabilites of such a parameterization of nanostructures for light-trapping layers.
+Though it has not been empirically shown, the vision is large scale thin-film solar cell stamping with a pre-made mask, that will improve the solar cells optical performance.
+As has been described earlier, the main goal of this project is to explore machine learning techniques to explore how to beat slow classical topology optimization in nanophotonics, but the explored design space is as such inspired by \cite{Erbas2024}.
+
+\section{Topology optimization and the adjoint method}
+Nanophotonic topology optimization leverages computational optimization  techniques to discover nonintuitive, compact devices, with a high performance
+on a clearly defined figure-of-merit. As described by \cite{Hughes2018}. Inverse design starts with the figure of merit,
+\begin{equation}
+\label{eq:FoM}
+\mathcal{L}=\mathcal{L}(x,p),
+\end{equation}
+and the governing equations in their general form
+\begin{equation}
+\label{eq:constrainAdjoint}
+f(x,p) = 0,
+\end{equation}
+where x is the state variable, lets say here representing the
+electromagnetic fields, whereby $f(x,p)$ represents Maxwell's equations. The  $p$ is the set of real-valued design variables. In this project, this set of design variables will be the set of $a_n,a_m,\phi_n,\phi_m$, along with the film height $h$. You could also see the incident angle $\theta$ and azimuthal angle $\phi_a$ of incoming light 
+along with the grating periods $\Lambda_x,\Lambda_y$ as design variables, but for the most case, I have held these constant.
+The adjoint method is a method for finding the derivative of the figure of merit with respect to the design variables, where you only need to solve the system forward, for the solution and backward to find an adjoint variable.
+Taking first the total derivative with respect to the design variables and using the chain rule, we get
+\begin{equation}
+\label{eq:totalDeriv}
+\frac{d\mathcal{L}}{d p} = \frac{\partial\mathcal{L}}{\partial p} + \frac{\partial\mathcal{L}}{\partial x}\frac{\partial x}{\partial p}.
+\end{equation}
+The notation here is general by design, and usually both p and x are large vector spaces, so the derivative $\frac{\partial x}{\partial p}$ is a large Jacobian matrix.
+In the continuous case, we may get around this by introducing a bright idea and a lagrangian multiplier $\lambda^T$. Utilizing the fact that the governing equation is zero, by the chain rule it must also be true that
+\begin{equation}
+\label{eq:chainrulegovern}
+\lambda^T\frac{dg}{dp} = \lambda^T\frac{\partial g }{\partial x}\frac{\partial x }{\partial p} + \frac{\partial g}{\partial p} = 0
+\end{equation}
+As this expression is zero, we can freely add it to equation \ref{eq:totalDeriv}. After grouping common terms, we obtain
+\begin{equation}
+\label{eq:lagrangian}
+\frac{d\mathcal{L}}{dp} = \frac{\partial \mathcal{L}}{\partial p} + \lambda^T \frac{\partial f}{\partial p} + \left( \frac{\partial \mathcal{L}}{\partial x} + \lambda^T \frac{\partial f}{\partial x} \right) \frac{\partial x}{\partial p}
+\end{equation}
+Since $\lambda$ is free, we can choose a vector that kills off the large Jacobian $\lambda^T\frac{\partial f}{\partial x} = -\frac{\partial \mathcal{L}}{\partial x} $,
+to get
+\begin{equation}
+\label{eq:adjoint}
+\frac{d\mathcal{L}}{dp} = \frac{\partial \mathcal{L}}{\partial p} + \lambda^T\frac{\partial f}{\partial p}.
+\end{equation}
+Whereby we have obtained an expression for the figure of merit derived with respect to the set of design variables. \cite{Hughes2018} has includes two system variables, the electric field and its conjugate, but the general idea is the same.
+In essence, what this means is that 
