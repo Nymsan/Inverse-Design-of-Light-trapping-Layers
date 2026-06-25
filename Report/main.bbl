@@ -262,52 +262,105 @@
     \field{year}{2024}
   \endentry
 
-  \entry{Hughes2018}{article}{}{}
-    \name{author}{4}{}{%
-      {{hash=HTW}{%
-         family={Hughes},
-         familyi={H\bibinitperiod},
-         given={Tyler\bibnamedelima W.},
-         giveni={T\bibinitperiod\bibinitdelim W\bibinitperiod},
-      }}%
-      {{hash=MM}{%
-         family={Minkov},
+  \entry{Molesky2018}{article}{}{}
+    \name{author}{6}{}{%
+      {{hash=MS}{%
+         family={Molesky},
          familyi={M\bibinitperiod},
-         given={Momchil},
-         giveni={M\bibinitperiod},
-      }}%
-      {{hash=WIAD}{%
-         family={Williamson},
-         familyi={W\bibinitperiod},
-         given={Ian A.\bibnamedelima D.},
-         giveni={I\bibinitperiod\bibinitdelim A\bibinitperiod\bibinitdelim D\bibinitperiod},
-      }}%
-      {{hash=FS}{%
-         family={Fan},
-         familyi={F\bibinitperiod},
-         given={Shanhui},
+         given={Sean},
          giveni={S\bibinitperiod},
       }}%
+      {{hash=LZ}{%
+         family={Lin},
+         familyi={L\bibinitperiod},
+         given={Zin},
+         giveni={Z\bibinitperiod},
+      }}%
+      {{hash=PAY}{%
+         family={Piggott},
+         familyi={P\bibinitperiod},
+         given={Alexander\bibnamedelima Y.},
+         giveni={A\bibinitperiod\bibinitdelim Y\bibinitperiod},
+      }}%
+      {{hash=JW}{%
+         family={Jin},
+         familyi={J\bibinitperiod},
+         given={Weiliang},
+         giveni={W\bibinitperiod},
+      }}%
+      {{hash=VJ}{%
+         family={Vu{\v{c}}kovi{\'{c}}},
+         familyi={V\bibinitperiod},
+         given={Jelena},
+         giveni={J\bibinitperiod},
+      }}%
+      {{hash=RAW}{%
+         family={Rodriguez},
+         familyi={R\bibinitperiod},
+         given={Alejandro\bibnamedelima W.},
+         giveni={A\bibinitperiod\bibinitdelim W\bibinitperiod},
+      }}%
     }
-    \strng{namehash}{HTW+1}
-    \strng{fullhash}{HTWMMWIADFS1}
+    \strng{namehash}{MS+1}
+    \strng{fullhash}{MSLZPAYJWVJRAW1}
     \field{labelnamesource}{author}
     \field{labeltitlesource}{title}
     \field{labelyear}{2018}
     \field{labeldatesource}{}
     \verb{doi}
-    \verb 10.1021/acsphotonics.8b01522
+    \verb 10.1038/s41566-018-0246-9
     \endverb
-    \field{number}{12}
-    \field{pages}{4781\bibrangedash 4787}
-    \field{title}{Adjoint Method and Inverse Design for Nonlinear Nanophotonic Devices}
+    \field{number}{11}
+    \field{pages}{659\bibrangedash 670}
+    \field{title}{Inverse design in nanophotonics}
     \verb{url}
-    \verb https://momchilmm.github.io/publications/Hughes_ACS-phot_2018.pdf
+    \verb https://doi.org/10.1038/s41566-018-0246-9
     \endverb
-    \field{volume}{5}
-    \field{journaltitle}{ACS Photonics}
-    \field{month}{12}
+    \field{volume}{12}
+    \field{journaltitle}{Nature Photonics}
+    \field{month}{11}
     \field{year}{2018}
+  \endentry
+
+  \entry{Jiang2021}{article}{}{}
+    \name{author}{3}{}{%
+      {{hash=JJ}{%
+         family={Jiang},
+         familyi={J\bibinitperiod},
+         given={Jiaqi},
+         giveni={J\bibinitperiod},
+      }}%
+      {{hash=CM}{%
+         family={Chen},
+         familyi={C\bibinitperiod},
+         given={Mingkun},
+         giveni={M\bibinitperiod},
+      }}%
+      {{hash=FJA}{%
+         family={Fan},
+         familyi={F\bibinitperiod},
+         given={Jonathan\bibnamedelima A.},
+         giveni={J\bibinitperiod\bibinitdelim A\bibinitperiod},
+      }}%
+    }
+    \strng{namehash}{JJCMFJA1}
+    \strng{fullhash}{JJCMFJA1}
+    \field{labelnamesource}{author}
+    \field{labeltitlesource}{title}
+    \field{labelyear}{2021}
+    \field{labeldatesource}{}
+    \verb{doi}
+    \verb 10.1038/s41578-020-00260-1
+    \endverb
+    \field{number}{8}
+    \field{title}{Deep neural networks for the evaluation and design of photonic devices}
+    \verb{url}
+    \verb https://www.nature.com/articles/s41578-020-00260-1
+    \endverb
+    \field{volume}{6}
+    \field{journaltitle}{Nature Reviews Materials}
+    \field{month}{08}
+    \field{year}{2021}
   \endentry
 
   \entry{torcwa}{article}{}{}
@@ -387,6 +440,103 @@
     \field{labeldatesource}{}
     \field{title}{Fourier Modal Method and Its Applications in Computational Nanophotonics}
     \field{year}{2012}
+  \endentry
+
+  \entry{Hughes2018}{article}{}{}
+    \name{author}{4}{}{%
+      {{hash=HTW}{%
+         family={Hughes},
+         familyi={H\bibinitperiod},
+         given={Tyler\bibnamedelima W.},
+         giveni={T\bibinitperiod\bibinitdelim W\bibinitperiod},
+      }}%
+      {{hash=MM}{%
+         family={Minkov},
+         familyi={M\bibinitperiod},
+         given={Momchil},
+         giveni={M\bibinitperiod},
+      }}%
+      {{hash=WIAD}{%
+         family={Williamson},
+         familyi={W\bibinitperiod},
+         given={Ian A.\bibnamedelima D.},
+         giveni={I\bibinitperiod\bibinitdelim A\bibinitperiod\bibinitdelim D\bibinitperiod},
+      }}%
+      {{hash=FS}{%
+         family={Fan},
+         familyi={F\bibinitperiod},
+         given={Shanhui},
+         giveni={S\bibinitperiod},
+      }}%
+    }
+    \strng{namehash}{HTW+1}
+    \strng{fullhash}{HTWMMWIADFS1}
+    \field{labelnamesource}{author}
+    \field{labeltitlesource}{title}
+    \field{labelyear}{2018}
+    \field{labeldatesource}{}
+    \verb{doi}
+    \verb 10.1021/acsphotonics.8b01522
+    \endverb
+    \field{number}{12}
+    \field{pages}{4781\bibrangedash 4787}
+    \field{title}{Adjoint Method and Inverse Design for Nonlinear Nanophotonic Devices}
+    \verb{url}
+    \verb https://momchilmm.github.io/publications/Hughes_ACS-phot_2018.pdf
+    \endverb
+    \field{volume}{5}
+    \field{journaltitle}{ACS Photonics}
+    \field{month}{12}
+    \field{year}{2018}
+  \endentry
+
+  \entry{Hughes2019}{article}{}{}
+    \name{author}{4}{}{%
+      {{hash=HTW}{%
+         family={Hughes},
+         familyi={H\bibinitperiod},
+         given={Tyler\bibnamedelima W.},
+         giveni={T\bibinitperiod\bibinitdelim W\bibinitperiod},
+      }}%
+      {{hash=WIAD}{%
+         family={Williamson},
+         familyi={W\bibinitperiod},
+         given={Ian A.\bibnamedelima D.},
+         giveni={I\bibinitperiod\bibinitdelim A\bibinitperiod\bibinitdelim D\bibinitperiod},
+      }}%
+      {{hash=MM}{%
+         family={Minkov},
+         familyi={M\bibinitperiod},
+         given={Momchil},
+         giveni={M\bibinitperiod},
+      }}%
+      {{hash=FS}{%
+         family={Fan},
+         familyi={F\bibinitperiod},
+         given={Shanhui},
+         giveni={S\bibinitperiod},
+      }}%
+    }
+    \strng{namehash}{HTW+1}
+    \strng{fullhash}{HTWWIADMMFS1}
+    \field{labelnamesource}{author}
+    \field{labeltitlesource}{title}
+    \field{labelyear}{2019}
+    \field{labeldatesource}{}
+    \verb{eprint}
+    \verb 1908.10507
+    \endverb
+    \field{number}{11}
+    \field{pages}{3010\bibrangedash 3016}
+    \field{title}{Forward-Mode Differentiation of Maxwell's Equations}
+    \verb{url}
+    \verb https://arxiv.org/abs/1908.10507
+    \endverb
+    \field{volume}{6}
+    \field{journaltitle}{ACS Photonics}
+    \field{eprinttype}{arXiv}
+    \field{month}{10}
+    \field{year}{2019}
   \endentry
 \enddatalist
 \endinput

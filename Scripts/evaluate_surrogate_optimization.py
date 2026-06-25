@@ -42,6 +42,7 @@ def parse_args():
     p.add_argument("--top_k", type=int, default=1, help="Number of top structures to show and simulate per material")
     p.add_argument("--force_forward_model", type=str, default=None, help="Force load a specific forward model (e.g. 'siren.pt')")
     p.add_argument("--expand_amps", type=float, default=None, help="Temporarily expand the maximum amplitude bounds (e.g., to 25.0 nm)")
+    p.add_argument("--optimize_jsc", action="store_true", help="Optimize Short-Circuit Current (Jsc) weighted by AM1.5G photon flux and cos(inc_ang), rather than average absorptance.")
     return p.parse_args()
 
 def get_folder_name(args) -> str:
@@ -57,6 +58,10 @@ def get_folder_name(args) -> str:
     if args.bands:
         bands_str = "_".join([f"{int(args.bands[i])}-{int(args.bands[i+1])}" for i in range(0, len(args.bands), 2)])
         parts.append(f"bands{bands_str}")
+        
+    if getattr(args, "optimize_jsc", False):
+        parts.append("jsc")
+        
     return "_".join(parts) if parts else "all_data"
 
 def main():
@@ -181,7 +186,8 @@ def main():
             lr=0.005,
             allowed_materials=valid_mat_indices,
             top_k=args.top_k,
-            show_progress=True
+            show_progress=True,
+            optimize_jsc=args.optimize_jsc
         )
         geo = res["best_geometry"]
         profile, h_tensor, inc_tensor = build_profile(geo.unsqueeze(0), n_harmonics_opt, nx=128)
@@ -220,10 +226,10 @@ def main():
     # Scan dataset for best raw performance in bands
     print("\nScanning dataset for best raw performance in bands...")
     try:
-        baseline_res, _ = get_dataset_baseline(ckpt_dir, bands=bands, h_val=args.h_val, inc_val=args.inc_val)
-        best_dataset_abs = {m: r["avg_abs"].max().item() for m, r in baseline_res.items()}
-        best_dataset_target = {m: r["targets"][r["avg_abs"].argmax()].clone() for m, r in baseline_res.items()}
-        best_dataset_geo = {m: r["geos"][r["avg_abs"].argmax()].clone() for m, r in baseline_res.items()}
+        baseline_res, _ = get_dataset_baseline(ckpt_dir, bands=bands, h_val=args.h_val, inc_val=args.inc_val, optimize_jsc=args.optimize_jsc)
+        best_dataset_abs = {m: r["metric"].max().item() for m, r in baseline_res.items()}
+        best_dataset_target = {m: r["targets"][r["metric"].argmax()].clone() for m, r in baseline_res.items()}
+        best_dataset_geo = {m: r["geos"][r["metric"].argmax()].clone() for m, r in baseline_res.items()}
         
         for m, score in best_dataset_abs.items():
             print(f"Dataset Best {m}: {score:.4f}")
