@@ -42,9 +42,35 @@ def parse_args():
     p.add_argument("--target_key", type=str, default="A_film_normal",
                    choices=["A_film_normal", "A_grating_normal"],
                    help="Dataset key to use for absorptance (default: A_film_normal)")
+    p.add_argument("--h_val", nargs="+", type=float, help="Target height in nm, or range (min max)")
+    p.add_argument("--h_tolerance", type=float, default=0.5, help="Tolerance for height matching")
     p.add_argument("--output_dir", type=str, default=None,
                    help="Directory to save the plots. Defaults to '<data_dir>/evaluation'")
     return p.parse_args()
+
+def get_folder_name(args) -> str:
+    parts = []
+    if args.h_val is not None:
+        if len(args.h_val) == 2:
+            parts.append(f"h{int(args.h_val[0])}-{int(args.h_val[1])}")
+        else:
+            parts.append(f"h{int(args.h_val[0])}_tol{args.h_tolerance}")
+    if hasattr(args, "inc_val") and args.inc_val is not None:
+        parts.append(f"inc{args.inc_val}_tol{args.inc_tolerance}")
+    return "_".join(parts) if parts else "all_data"
+
+def get_plot_title_suffix(args) -> str:
+    parts = []
+    if args.h_val is not None:
+        if len(args.h_val) == 2:
+            parts.append(f"height: {int(args.h_val[0])}-{int(args.h_val[1])} nm")
+        else:
+            parts.append(f"height: {int(args.h_val[0])}±{args.h_tolerance} nm")
+    if hasattr(args, "inc_val") and args.inc_val is not None:
+        parts.append(f"inc_ang: {args.inc_val}°")
+    elif args.h_val is not None and "oblique" not in getattr(args, "target_key", ""):
+        parts.append("inc_ang: 0°")
+    return " | ".join(parts)
 
 def analyze_dataset_folder(data_path: Path, args):
     print("=" * 80)
@@ -98,6 +124,15 @@ def analyze_dataset_folder(data_path: Path, args):
             
         # Simple sanity filter (absorptance must be within physical ranges)
         valid = (tgt.max(dim=1).values <= 1.05) & (tgt.min(dim=1).values >= -0.05)
+        
+        # Apply height filtering
+        h = d["h"].float()
+        if args.h_val is not None:
+            if len(args.h_val) == 2:
+                valid &= (h >= args.h_val[0]) & (h <= args.h_val[1])
+            else:
+                h_target = args.h_val[0]
+                valid &= (torch.abs(h - h_target) <= args.h_tolerance)
         
         all_wls.append(d["wavelength"].float()[valid])
         all_hs.append(d["h"].float()[valid])
@@ -182,7 +217,7 @@ def analyze_dataset_folder(data_path: Path, args):
     if args.output_dir:
         out_dir = Path(args.output_dir)
     else:
-        out_dir = data_path / "evaluation"
+        out_dir = data_path / "evaluation" / get_folder_name(args)
     out_dir.mkdir(parents=True, exist_ok=True)
     
     # Plotting
@@ -190,7 +225,8 @@ def analyze_dataset_folder(data_path: Path, args):
     
     # Left: Histogram
     counts, bins, patches = ax1.hist(absorptances, bins=50, edgecolor='black', alpha=0.7, color='#1f77b4')
-    ax1.set_title(f"Absorptance Distribution\n({material_name})")
+    title_suffix = f"\n({get_plot_title_suffix(args)})" if get_plot_title_suffix(args) else ""
+    ax1.set_title(f"Absorptance Distribution\n({material_name}){title_suffix}")
     ax1.set_xlabel(f"Average Absorptance ({args.target_key})")
     ax1.set_ylabel("Count")
     ax1.grid(True, linestyle=':', alpha=0.6)
@@ -209,7 +245,8 @@ def analyze_dataset_folder(data_path: Path, args):
     cbar = fig.colorbar(sc, ax=ax2)
     cbar.set_label("Wavelength (nm)")
     
-    ax2.set_title(f"Absorptance vs Wavelength\n({material_name})")
+    title_suffix = f"\n({get_plot_title_suffix(args)})" if get_plot_title_suffix(args) else ""
+    ax2.set_title(f"Absorptance vs Wavelength\n({material_name}){title_suffix}")
     ax2.set_xlabel("Wavelength (nm)")
     ax2.set_ylabel(f"Average Absorptance ({args.target_key})")
     ax2.set_xlim(280, 1120)
@@ -218,7 +255,8 @@ def analyze_dataset_folder(data_path: Path, args):
     
     plt.tight_layout()
     
-    plot_name = f"dataset_baseline_3d_{args.target_key}_{args.split}.png"
+    folder_suffix = get_folder_name(args)
+    plot_name = f"dataset_baseline_3d_{args.target_key}_{args.split}_{folder_suffix}.png"
     save_path = out_dir / plot_name
     plt.savefig(save_path, dpi=200)
     plt.close()

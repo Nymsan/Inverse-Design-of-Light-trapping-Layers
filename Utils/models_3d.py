@@ -166,22 +166,30 @@ class SkipCNN3D(nn.Module):
     Builds the exact same 2-D height map z(x,y) = profile_x(x) + profile_y(y)
     that the RCWA simulator uses (outer sum, matching get_continuous_boundary),
     then encodes it with a stack of 2-D circular-padded residual conv blocks.
-    The flattened feature map is combined with BatchNorm-normalised h and
-    wavelength scalars before the MLP head predicts [A_p, A_s].
 
-    Default parameters give ~1.0 M weights, matching the SkipCNN 2-D budget.
+    Both h and wavelength are passed through a learned flat embedding
+    (BatchNorm → Linear(1, scalar_embed_dim) → GELU) before being concatenated
+    with the CNN features.  A bare 1-neuron scalar gives the MLP head almost no
+    capacity to condition on wavelength; an embedding of size `scalar_embed_dim`
+    lets it learn a rich representation of each physical scalar independently.
+    This matters especially for wavelength, which is no longer implicit in the
+    output dimensions (as it was in SkipCNN 2-D where the output was a full
+    spectrum).
+
+    Default parameters give ~1.1 M weights, matching the SkipCNN 2-D budget.
     """
 
     def __init__(
         self,
-        n_harmonics:    int   = 5,
-        nx:             int   = 64,        # 2-D grid is nx×nx; keep small to save memory
-        grating_period: float = 1000.0,
-        conv_channels:  tuple = (16, 32, 64, 32),
-        kernel_size:    int   = 5,
-        fc_dims:        tuple = (256, 128),
-        dropout:        float = 0.0,
-        n_outputs:      int   = 2,         # [p-pol, s-pol]
+        n_harmonics:     int   = 5,
+        nx:              int   = 64,
+        grating_period:  float = 1000.0,
+        conv_channels:   tuple = (8, 16, 16, 8),
+        kernel_size:     int   = 5,
+        fc_dims:         tuple = (128,),
+        dropout:         float = 0.0,
+        n_outputs:       int   = 2,
+        scalar_embed_dim: int  = 16,
     ):
         super().__init__()
         self.n_harmonics    = n_harmonics
@@ -192,9 +200,16 @@ class SkipCNN3D(nn.Module):
         self.register_buffer("y_grid",       torch.linspace(0, grating_period, nx + 1)[:-1])
         self.register_buffer("harmonic_idx", torch.arange(1, n_harmonics + 1, dtype=torch.float32))
 
-        # Scalar input normalisation
-        self.h_norm  = nn.BatchNorm1d(1)
-        self.wl_norm = nn.BatchNorm1d(1)
+        self.scalar_embed_dim = scalar_embed_dim
+
+        # Scalar normalisation + learned flat embedding for h and wavelength.
+        # BatchNorm centres/scales the raw nm values; the Linear then projects
+        # each into a `scalar_embed_dim`-dim vector so the MLP head has real
+        # capacity to condition on them independently.
+        self.h_norm   = nn.BatchNorm1d(1)
+        self.wl_norm  = nn.BatchNorm1d(1)
+        self.h_embed  = nn.Linear(1, scalar_embed_dim)
+        self.wl_embed = nn.Linear(1, scalar_embed_dim)
 
         # 2-D CNN backbone
         in_ch  = 1   # single-channel height map
@@ -210,8 +225,8 @@ class SkipCNN3D(nn.Module):
             dummy      = torch.zeros(1, 1, nx, nx)
             spatial_hw = self.cnn(dummy).shape[-1]   # square, so just one dim
 
-        # conv_channels[-1] * spatial_hw² + h + wavelength
-        fc_in = conv_channels[-1] * spatial_hw * spatial_hw + 2
+        # conv_channels[-1] * spatial_hw²  +  h_embed  +  wl_embed
+        fc_in = conv_channels[-1] * spatial_hw * spatial_hw + 2 * scalar_embed_dim
 
         head = []
         for fc_dim in fc_dims:
@@ -240,11 +255,11 @@ class SkipCNN3D(nn.Module):
         # 2-D CNN  →  flatten
         feat = self.cnn(surface).view(B, -1)
 
-        # Inject scalar physics
-        h_n  = self.h_norm(h.view(B, 1))
-        wl_n = self.wl_norm(wavelength.view(B, 1))
+        # Embed scalar physics  (normalise → project → GELU)
+        h_emb  = torch.nn.functional.gelu(self.h_embed(self.h_norm(h.view(B, 1))))
+        wl_emb = torch.nn.functional.gelu(self.wl_embed(self.wl_norm(wavelength.view(B, 1))))
 
-        x = torch.cat([feat, h_n, wl_n], dim=1)
+        x = torch.cat([feat, h_emb, wl_emb], dim=1)
         return self.fc_head(x)
 
 

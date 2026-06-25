@@ -238,7 +238,7 @@ def main():
             continue
         valid_metric = metric_vals[valid_idx].numpy()
         ax_hist.hist(valid_metric, bins=bin_edges, alpha=0.5, label=mat_name)
-    ax_hist.set_xlabel(r"Short-Circuit Current $J_{sc}$)" if args.optimize_jsc else "Average Absorptance")
+    ax_hist.set_xlabel(r"Short-Circuit Current $J_{sc}$ (mA/cm$^2$)" if args.optimize_jsc else "Average Absorptance")
     ax_hist.set_ylabel("Count")
     ax_hist.set_yscale("log")
     

@@ -23,12 +23,12 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 # Styling
 plt.rcParams.update({
-    "font.size": 12,
+    "font.size": 16,
     "axes.titlesize": 14,
     "axes.labelsize": 12,
-    "xtick.labelsize": 10,
-    "ytick.labelsize": 10,
-    "legend.fontsize": 10,
+    "xtick.labelsize": 14,
+    "ytick.labelsize": 14,
+    "legend.fontsize": 14,
     "figure.dpi": 150,
     "savefig.dpi": 150,
 })
@@ -42,9 +42,37 @@ def parse_args():
     p.add_argument("--target_key", type=str, default="A_film_normal",
                    choices=["A_film_normal", "A_film_oblique", "A_grating_normal", "A_grating_oblique"],
                    help="Dataset key to use for absorptance (default: A_film_normal)")
+    p.add_argument("--h_val", nargs="+", type=float, help="Target height in nm, or range (min max)")
+    p.add_argument("--h_tolerance", type=float, default=0.5, help="Tolerance for height matching")
+    p.add_argument("--inc_val", type=float, default=None, help="Target incident angle in degrees (e.g., 0.0 for normal)")
+    p.add_argument("--inc_tolerance", type=float, default=0.5, help="Tolerance for matching inc_val (degrees)")
     p.add_argument("--output_dir", type=str, default=None,
                    help="Directory to save the plots. Defaults to '<data_dir>/evaluation'")
     return p.parse_args()
+
+def get_folder_name(args) -> str:
+    parts = []
+    if args.h_val is not None:
+        if len(args.h_val) == 2:
+            parts.append(f"h{int(args.h_val[0])}-{int(args.h_val[1])}")
+        else:
+            parts.append(f"h{int(args.h_val[0])}_tol{args.h_tolerance}")
+    if hasattr(args, "inc_val") and args.inc_val is not None:
+        parts.append(f"inc{args.inc_val}_tol{args.inc_tolerance}")
+    return "_".join(parts) if parts else "all_data"
+
+def get_plot_title_suffix(args) -> str:
+    parts = []
+    if args.h_val is not None:
+        if len(args.h_val) == 2:
+            parts.append(f"height: {int(args.h_val[0])}-{int(args.h_val[1])} nm")
+        else:
+            parts.append(f"height: {int(args.h_val[0])}±{args.h_tolerance} nm")
+    if hasattr(args, "inc_val") and args.inc_val is not None:
+        parts.append(f"inc_ang: {args.inc_val}°")
+    elif args.h_val is not None and "oblique" not in getattr(args, "target_key", ""):
+        parts.append("incident angle: 0°")
+    return " | ".join(parts)
 
 def analyze_dataset_folder(data_path: Path, args):
     print("=" * 80)
@@ -53,6 +81,9 @@ def analyze_dataset_folder(data_path: Path, args):
     
     # Extract material name from directory
     material_name = data_path.name.replace("LHS_Dataset_", "")
+    
+    prefix = "A_film" if "film" in args.target_key else "A_grating"
+    target_name = prefix if args.inc_val is None else args.target_key
     
     # Find files to load
     files_to_load = []
@@ -76,26 +107,60 @@ def analyze_dataset_folder(data_path: Path, args):
         
     all_targets = []
     all_hs = []
+    all_inc_angs = []
     all_params_x = []
     
     for split_name, file_path in files_to_load:
         print(f"Loading {split_name} split from: {file_path.name} ...")
         d = torch.load(file_path, map_location="cpu", weights_only=False)
         
-        if args.target_key not in d:
-            print(f"Warning: Target key '{args.target_key}' not found in {file_path.name}. Skipping this file.")
-            continue
+        prefix = "A_film" if "film" in args.target_key else "A_grating"
+        
+        A_list = []
+        inc_list = []
+        
+        # Determine which keys to append
+        if args.inc_val is None or args.inc_val <= 1e-3:
+            norm_key = f"{prefix}_normal"
+            if norm_key in d:
+                A_list.append((norm_key, d[norm_key].float()))
+                inc_list.append(torch.zeros_like(d["h"].float()))
+                
+        if args.inc_val is None or (args.inc_val is not None and args.inc_val > 1e-3):
+            obl_key = f"{prefix}_oblique"
+            if obl_key in d:
+                A_list.append((obl_key, d[obl_key].float()))
+                inc_list.append(d["inc_ang"].float() if "inc_ang" in d else torch.zeros_like(d["h"].float()))
+                
+        for key_name, tgt in A_list:
+            # Simple sanity filter (absorptance must be within physical ranges)
+            # Check max/min across all wavelengths and polarizations
+            valid = (tgt.max(dim=2).values.max(dim=1).values <= 1.05) & (tgt.min(dim=2).values.min(dim=1).values >= -0.05)
             
-        tgt = d[args.target_key].float()  # (B, wl_len, 2)
-        
-        # Simple sanity filter (absorptance must be within physical ranges)
-        # Check max/min across all wavelengths and polarizations
-        valid = (tgt.max(dim=2).values.max(dim=1).values <= 1.05) & (tgt.min(dim=2).values.min(dim=1).values >= -0.05)
-        
-        all_targets.append(tgt[valid])
-        all_hs.append(d["h"].float()[valid])
-        if "params_x" in d:
-            all_params_x.append(d["params_x"].float()[valid])
+            # Apply height filtering
+            h = d["h"].float()
+            if args.h_val is not None:
+                if len(args.h_val) == 2:
+                    valid &= (h >= args.h_val[0]) & (h <= args.h_val[1])
+                else:
+                    h_target = args.h_val[0]
+                    valid &= (torch.abs(h - h_target) <= args.h_tolerance)
+                    
+            # Extract incident angle for this particular target (e.g. oblique or normal)
+            if "oblique" in key_name:
+                inc_ang = d["inc_ang"].float() if "inc_ang" in d else torch.zeros_like(h)
+            else:
+                inc_ang = torch.zeros_like(h)
+                
+            # Apply incident angle filtering
+            if args.inc_val is not None:
+                valid &= (torch.abs(inc_ang - args.inc_val) <= args.inc_tolerance)
+                
+            all_targets.append(tgt[valid])
+            all_hs.append(h[valid])
+            all_inc_angs.append(inc_ang[valid])
+            if "params_x" in d:
+                all_params_x.append(d["params_x"].float()[valid])
             
     if not all_targets:
         print("No valid samples loaded.")
@@ -103,6 +168,7 @@ def analyze_dataset_folder(data_path: Path, args):
         
     targets = torch.cat(all_targets) # (N, wl_len, 2)
     hs = torch.cat(all_hs).numpy()
+    inc_angs = torch.cat(all_inc_angs).numpy()
     
     if all_params_x:
         params_x = torch.cat(all_params_x).numpy()
@@ -140,21 +206,21 @@ def analyze_dataset_folder(data_path: Path, args):
         
     # Find the top structures
     top_indices = np.argsort(spectrum_averaged_abs)[::-1][:5]
-    print(f"\n--- Top 5 Performing Structures ({args.target_key}) ---")
-    print(f"{'Rank':<6}{'Avg Abs':<12}{'Height (nm)':<14}{'Max Amp (nm)':<16}")
+    print(f"\n--- Top 5 Performing Structures ({target_name}) ---")
+    print(f"{'Rank':<6}{'Avg Abs':<12}{'Height (nm)':<14}{'Total Grat H (nm)':<20}")
     for rank, idx in enumerate(top_indices):
         h_val = hs[idx]
         abs_val = spectrum_averaged_abs[idx]
         
-        max_amp = np.max(params_x[idx]) if params_x is not None else 0.0
+        tot_grat_h = 2.0 * np.sum(params_x[idx, :, 0]) if params_x is not None else 0.0
         
-        print(f"{rank+1:<6}{abs_val:<12.4f}{h_val:<14.2f}{max_amp:<16.2f}")
+        print(f"{rank+1:<6}{abs_val:<12.4f}{h_val:<14.2f}{tot_grat_h:<20.2f}")
         
     # Setup output directory
     if args.output_dir:
         out_dir = Path(args.output_dir)
     else:
-        out_dir = data_path / "evaluation"
+        out_dir = data_path / "evaluation" / get_folder_name(args)
     out_dir.mkdir(parents=True, exist_ok=True)
     
     # Plotting
@@ -162,8 +228,9 @@ def analyze_dataset_folder(data_path: Path, args):
     
     # Left: Histogram of spectrum-averaged absorptances
     counts, bins, patches = ax1.hist(spectrum_averaged_abs, bins=50, edgecolor='black', alpha=0.7, color='#1f77b4')
-    ax1.set_title(f"Spectrum-Averaged Absorptance\n({material_name})")
-    ax1.set_xlabel(f"Average Absorptance ({args.target_key})")
+    title_suffix = f"\n({get_plot_title_suffix(args)})" if get_plot_title_suffix(args) else ""
+    ax1.set_title(f"Spectrum-Averaged Absorptance\n({material_name}){title_suffix}")
+    ax1.set_xlabel(f"Average Absorptance ({target_name})")
     ax1.set_ylabel("Count")
     ax1.grid(True, linestyle=':', alpha=0.6)
     
@@ -179,21 +246,101 @@ def analyze_dataset_folder(data_path: Path, args):
     cbar = fig.colorbar(sc, ax=ax2)
     cbar.set_label("Wavelength (nm)")
     
-    ax2.set_title(f"Spectral Response Density\n({material_name})")
+    title_suffix = f"\n({get_plot_title_suffix(args)})" if get_plot_title_suffix(args) else ""
+    ax2.set_title(f"Spectral Response Density\n({material_name}){title_suffix}")
     ax2.set_xlabel("Wavelength (nm)")
-    ax2.set_ylabel(f"Absorptance ({args.target_key})")
+    ax2.set_ylabel(f"Absorptance ({target_name})")
     ax2.set_xlim(280, 1120)
     ax2.set_ylim(-0.05, 1.05)
     ax2.grid(True, linestyle=':', alpha=0.6)
     
     plt.tight_layout()
     
-    plot_name = f"dataset_baseline_2d_{args.target_key}_{args.split}.png"
+    folder_suffix = get_folder_name(args)
+    plot_name = f"dataset_baseline_2d_{target_name}_{args.split}_{folder_suffix}.png"
     save_path = out_dir / plot_name
     plt.savefig(save_path, dpi=200)
     plt.close()
     
     print(f"\nSaved plots to: {save_path}")
+    
+    # ------------------ Plotting Jsc ------------------
+    # Calculate Jsc
+    from Utils.utils import sun_weights, get_jsc_scaling_factor
+    wls_t = torch.tensor(WAVELENGTHS, dtype=torch.float32)
+    photon_flux = sun_weights(wls_t) * wls_t
+    
+    # Calculate Jsc for P and S polarizations
+    jsc_p = (targets[:, :, 0] * photon_flux.unsqueeze(0)).sum(dim=1)
+    jsc_s = (targets[:, :, 1] * photon_flux.unsqueeze(0)).sum(dim=1)
+    jsc = ((jsc_p + jsc_s) / 2.0) * get_jsc_scaling_factor(wl_len)
+    jsc = jsc.numpy()
+    
+    # Cosine correction
+    cos_theta = np.cos(inc_angs * np.pi / 180.0)
+    jsc = jsc * cos_theta
+    
+    # Calculate Jsc statistics
+    jsc_mean = np.mean(jsc)
+    jsc_std = np.std(jsc)
+    jsc_min = np.min(jsc)
+    jsc_max = np.max(jsc)
+    
+    print("\n--- Statistics (Short-Circuit Current Jsc, mA/cm2) ---")
+    print(f"Mean Jsc:    {jsc_mean:.4f}")
+    print(f"Std Dev:     {jsc_std:.4f}")
+    print(f"Minimum:     {jsc_min:.4f}")
+    print(f"Maximum:     {jsc_max:.4f}")
+    
+    jsc_perc_vals = np.percentile(jsc, percentiles)
+    for p, v in zip(percentiles, jsc_perc_vals):
+        print(f"{p}th percentile:   {v:.4f}")
+        
+    # Find the top structures by Jsc
+    top_jsc_indices = np.argsort(jsc)[::-1][:5]
+    print(f"\n--- Top 5 Performing Structures by Jsc ({target_name}) ---")
+    print(f"{'Rank':<6}{'Jsc (mA/cm2)':<16}{'Height (nm)':<14}{'Total Grat H (nm)':<20}")
+    for rank, idx in enumerate(top_jsc_indices):
+        h_val = hs[idx]
+        jsc_val = jsc[idx]
+        tot_grat_h = 2.0 * np.sum(params_x[idx, :, 0]) if params_x is not None else 0.0
+        print(f"{rank+1:<6}{jsc_val:<16.4f}{h_val:<14.2f}{tot_grat_h:<20.2f}")
+        
+    # Jsc Figure
+    fig_jsc, (ax1_j, ax2_j) = plt.subplots(1, 2, figsize=(15, 6), gridspec_kw={'width_ratios': [1, 1.2]})
+    
+    # Left: Jsc Histogram
+    ax1_j.hist(jsc, bins=50, edgecolor='black', alpha=0.7, color='#2ca02c')
+    ax1_j.set_title(f"Short-Circuit Current $J_{{sc}}$ Distribution\n({material_name}{title_suffix})")
+    ax1_j.set_xlabel(r"Short-Circuit Current $J_{sc}$ (mA/cm$^2$)")
+    ax1_j.set_ylabel("Count")
+    ax1_j.grid(True, linestyle=':', alpha=0.6)
+    
+    # Right: Scatter Plot of Grating Height vs Jsc colored by Total Grating Height
+    if params_x is not None:
+        tot_grat_hs = 2.0 * np.sum(params_x[:, :, 0], axis=1)
+        # Sort by tot_grat_hs ascending so high values are drawn last (on top)
+        sort_idx = np.argsort(tot_grat_hs)
+        sc_j = ax2_j.scatter(hs[sort_idx], jsc[sort_idx], c=tot_grat_hs[sort_idx], cmap='viridis', s=15, alpha=0.7, edgecolors='none')
+        cbar_j = fig_jsc.colorbar(sc_j, ax=ax2_j)
+        cbar_j.set_label("Total Grating Height (nm)")
+    else:
+        # Scatter plot of h vs Jsc, simple
+        ax2_j.scatter(hs, jsc, color='#2ca02c', s=15, alpha=0.6, edgecolors='none')
+        
+    ax2_j.set_title(f"$J_{{sc}}$ vs Film Height\n({material_name}{title_suffix})")
+    ax2_j.set_xlabel("Film Height (nm)")
+    ax2_j.set_ylabel(r"Short-Circuit Current $J_{sc}$ (mA/cm$^2$)")
+    ax2_j.grid(True, linestyle=':', alpha=0.6)
+    
+    plt.tight_layout()
+    
+    jsc_plot_name = f"dataset_baseline_2d_jsc_{target_name}_{args.split}_{folder_suffix}.png"
+    jsc_save_path = out_dir / jsc_plot_name
+    plt.savefig(jsc_save_path, dpi=200)
+    plt.close()
+    
+    print(f"Saved Jsc plots to: {jsc_save_path}")
     print("=" * 80 + "\n")
 
 def main():

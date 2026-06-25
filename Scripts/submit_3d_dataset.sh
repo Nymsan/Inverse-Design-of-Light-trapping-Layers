@@ -1,5 +1,5 @@
 #!/bin/sh
-#BSUB -J generate_3d_dataset[1-75]
+#BSUB -J generate_3d_dataset[1-600]
 #BSUB -q hpc
 #BSUB -n 4
 #BSUB -R "rusage[mem=4GB]"
@@ -15,18 +15,18 @@ echo "Job starting on $(hostname), Task ID: ${LSB_JOBINDEX}"
 
 export CUDA_VISIBLE_DEVICES=""
 
-if [ ${LSB_JOBINDEX} -le 25 ]; then
+if [ ${LSB_JOBINDEX} -le 200 ]; then
     MATERIAL="Si"
     SEED=42
     BATCH_IDX=$((LSB_JOBINDEX - 1))
-elif [ ${LSB_JOBINDEX} -le 50 ]; then
+elif [ ${LSB_JOBINDEX} -le 400 ]; then
     MATERIAL="TiO2"
     SEED=43
-    BATCH_IDX=$((LSB_JOBINDEX - 26))
+    BATCH_IDX=$((LSB_JOBINDEX - 201))
 else
     MATERIAL="Si3N4"
     SEED=44
-    BATCH_IDX=$((LSB_JOBINDEX - 51))
+    BATCH_IDX=$((LSB_JOBINDEX - 401))
 fi
 
 START_BATCH=${BATCH_IDX}
@@ -38,7 +38,7 @@ echo "Batch Range: ${START_BATCH} to ${END_BATCH}"
 echo "======================================"
 
 uv run --no-sync python Scripts/generate_3d_dataset.py \
-    --num_samples 2500 \
+    --num_samples 20000 \
     --batch_size 100 \
     --order_N 8 \
     --order_N_y 8 \

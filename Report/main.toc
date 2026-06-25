@@ -10,21 +10,21 @@
 \contentsline {section}{\numberline {2.1}Thin-Film Solar Cells}{4}{section.0.2.1}%
 \contentsline {section}{\numberline {2.2}Fabry-Perot Interferometers}{6}{section.0.2.2}%
 \contentsline {section}{\numberline {2.3}Rigorous Coupled Wave Analysis}{7}{section.0.2.3}%
-\contentsline {section}{\numberline {2.4}Finite Element Method}{11}{section.0.2.4}%
-\contentsline {section}{\numberline {2.5}The Adjoint Method}{11}{section.0.2.5}%
+\contentsline {section}{\numberline {2.4}Finite Element Method}{12}{section.0.2.4}%
+\contentsline {section}{\numberline {2.5}The Adjoint Method}{12}{section.0.2.5}%
 \contentsline {section}{\numberline {2.6}Machine learning models for predicting absorptance curves.}{13}{section.0.2.6}%
 \contentsline {chapter}{\numberline {3}Methods}{14}{chapter.0.3}%
 \contentsline {section}{\numberline {3.1}Numerical implementation}{14}{section.0.3.1}%
 \contentsline {section}{\numberline {3.2}Convergence tests}{14}{section.0.3.2}%
 \contentsline {section}{\numberline {3.3}Machine Learning Surrogates}{14}{section.0.3.3}%
 \contentsline {section}{\numberline {3.4}Optimization Strategies}{14}{section.0.3.4}%
-\contentsline {chapter}{\numberline {4}Results \& Discussion}{15}{chapter.0.4}%
-\contentsline {section}{\numberline {4.1}Generated Dataset}{15}{section.0.4.1}%
-\contentsline {section}{\numberline {4.2}Surrogate Model Training}{15}{section.0.4.2}%
-\contentsline {chapter}{\numberline {5}Outlook}{17}{chapter.0.5}%
-\contentsline {chapter}{\numberline {6}Conclusion}{18}{chapter.0.6}%
-\contentsline {chapter}{Bibliography}{19}{chapter*.13}%
-\contentsline {chapter}{\numberline {A}Appendix}{21}{appendix.A}%
-\contentsline {section}{\numberline {A.1}Additional Convergence Tests}{21}{section.A.1}%
-\contentsline {subsection}{\numberline {A.1.1}Convergence Tests for 1000 nm Grating}{21}{subsection.A.1.1}%
-\contentsline {subsection}{\numberline {A.1.2}Convergence Tests without Subpixel Smoothing}{24}{subsection.A.1.2}%
+\contentsline {chapter}{\numberline {4}Results \& Discussion}{16}{chapter.0.4}%
+\contentsline {section}{\numberline {4.1}Generated Dataset}{16}{section.0.4.1}%
+\contentsline {section}{\numberline {4.2}Surrogate Model Training}{16}{section.0.4.2}%
+\contentsline {chapter}{\numberline {5}Outlook}{18}{chapter.0.5}%
+\contentsline {chapter}{\numberline {6}Conclusion}{19}{chapter.0.6}%
+\contentsline {chapter}{Bibliography}{21}{chapter*.14}%
+\contentsline {chapter}{\numberline {A}Appendix}{23}{appendix.A}%
+\contentsline {section}{\numberline {A.1}Additional Convergence Tests}{23}{section.A.1}%
+\contentsline {subsection}{\numberline {A.1.1}Convergence Tests for 1000 nm Grating}{23}{subsection.A.1.1}%
+\contentsline {subsection}{\numberline {A.1.2}Convergence Tests without Subpixel Smoothing}{26}{subsection.A.1.2}%

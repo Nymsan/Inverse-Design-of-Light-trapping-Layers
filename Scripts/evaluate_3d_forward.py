@@ -171,8 +171,6 @@ def plot_error_distribution(pred: np.ndarray, true: np.ndarray, save_path: Path)
     for ax, pol_idx, color in zip(axes, [0, 1], colors):
         err = pred[:, pol_idx] - true[:, pol_idx]
         ax.hist(err, bins=80, color=color, alpha=0.75, edgecolor="none")
-        ax.axvline(0, color="k", lw=1.5, ls="--")
-        ax.axvline(np.mean(err), color="red", lw=1.5, ls=":", label=f"mean={np.mean(err):.4f}")
         ax.set_xlabel(f"Pred − True  ({POL_LABELS[pol_idx]})")
         ax.set_ylabel("Count")
         ax.set_title(f"Signed Error — {POL_LABELS[pol_idx]}")
