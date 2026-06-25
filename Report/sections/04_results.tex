@@ -4,7 +4,32 @@ In this section I will present the results and performance of my surrogate model
 I will discuss the results as I present them, as I believe this fits the spirit of the project better as it is an exploration of machine learning tools in nanophotonic inverse design.
 
 \section{Generated Dataset}
-First, I present the generated 
+First, I present the generated dataset, both for 2D and 3D data. As described in sections \ref{sec:methods}, the data has been samled using Latin Hypercube Sampling, to try to explore the 16 dimensional as well as possible.
+Table \ref{tab:sampled_parameters} shows the stat overview of the sampled dataset for both the generated 2D and 3D dataset. The choice of film height was inspired by the sampling 
+\begin{table}[htbp]
+\centering
+\caption{Overview of sampled parameters for the 2D and 3D datasets.}
+\label{tab:sampled_parameters}
+\begin{tabular}{@{}llcccc@{}}
+\toprule
+& & \multicolumn{2}{c}{\textbf{2D Dataset}} & \multicolumn{2}{c}{\textbf{3D Dataset}} \\
+\cmidrule(lr){3-4} \cmidrule(l){5-6}
+\textbf{Parameter} & \textbf{Symbol} & \textbf{Min} & \textbf{Max} & \textbf{Min} & \textbf{Max} \\
+\midrule
+Number of Samples & $N$ & \multicolumn{2}{c}{120000} & \multicolumn{2}{c}{15000} \\
+Number of Harmonics & $N_h$ & \multicolumn{2}{c}{$7$} & \multicolumn{2}{c}{$5\times 2$} \\
+Film Height (nm) & $h$ & $1000 \text{nm} $& $3000 \text{nm}$ & $1000 \text{nm}$ & $3000 \text{nm}$ \\
+Incidence Angle ($^\circ$) & $\theta$ & $0$ & $45$ & $0$ & $0$ \\
+Amplitudes & $A$ & $0 \text{nm}$ & $15 \text{nm} $& 0 $\text{nm}$& $15 \text{nm}$ \\
+Phases & $\phi$ & $0$ & $2\pi$ & $0$ & $2\pi$ \\
+Wavelengths & $\lambda$ & $300\text{nm} - 1100 \text{nm}$ & $5 \text{nm steps}$ & $300 \text{nm}$ & $1100 \text{nm}$\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+
+
 \section{Surrogate Model Training}
 Table \ref{tab:frac_models_stats} summarizes the training history of various surrogate models across different sizes of the dataset ($10\%$, $25\%$, $50\%$, and $100\%$). For each dataset configuration, three architectures were trained: an MLP baseline (\texttt{forward\_mlp}), a Convolutional Neural Network with skip connections (\texttt{skip\_cnn}), and a SIREN network.
 
@@ -22,10 +47,3 @@ Table \ref{tab:frac_models_stats} summarizes the training history of various sur
     \label{fig:loss_curves}
 \end{figure}
 \input{tables/timing_stats.tex}
-\begin{figure}[htbp]
-    \centering
-    \includegraphics[width=0.48\textwidth]{figures/convergence/sweep_combination_100nm.png}
-    \includegraphics[width=0.48\textwidth]{figures/convergence/sweep_combination_3d_100nm.png}
-    \caption{Convergence sweeps and combinations for the 100 nm grating structure. Left: 1D sweep combinations. Right: 3D convergence combinations.}
-    \label{fig:convergence_combinations}
-\end{figure}

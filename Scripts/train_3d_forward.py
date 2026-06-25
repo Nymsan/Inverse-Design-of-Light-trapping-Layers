@@ -42,7 +42,7 @@ def train_3d(
     val_loader,
     *,
     epochs: int = 500,
-    lr: float = 1e-3,
+    lr: float = 1e-4,
     weight_decay: float = 1e-5,
     patience: int = 100,
     device,
@@ -52,7 +52,7 @@ def train_3d(
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     scheduler_patience = max(1, patience // 10)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", factor=0.5, patience=scheduler_patience, min_lr=1e-7
+        optimizer, mode="min", factor=0.5, patience=scheduler_patience, min_lr=1e-8
     )
     criterion = torch.nn.HuberLoss(delta=0.01, reduction="none")
     best_val, patience_ctr = float("inf"), 0
@@ -156,11 +156,13 @@ def get_args():
     p.add_argument("--num_workers",type=int,   default=4)
     # Architecture
     p.add_argument("--nx",              type=int,   default=64)
-    p.add_argument("--conv_channels",   type=int, nargs="+", default=[16, 32, 64, 32])
+    p.add_argument("--conv_channels",   type=int, nargs="+", default=[8, 16, 16, 8])
     p.add_argument("--kernel_size",     type=int,   default=5)
-    p.add_argument("--fc_dims",         type=int, nargs="+", default=[256, 128])
-    p.add_argument("--dropout",         type=float, default=0.0)
-    p.add_argument("--grating_period",  type=float, default=1000.0)
+    p.add_argument("--fc_dims",          type=int, nargs="+", default=[128])
+    p.add_argument("--dropout",          type=float, default=0.0)
+    p.add_argument("--grating_period",   type=float, default=1000.0)
+    p.add_argument("--scalar_embed_dim", type=int,   default=16,
+                   help="Projection size for the h and wavelength flat embeddings")
     return p.parse_args()
 
 
@@ -215,6 +217,7 @@ def main():
         fc_dims=tuple(args.fc_dims),
         dropout=args.dropout,
         n_outputs=2,
+        scalar_embed_dim=args.scalar_embed_dim,
     )
     model = SkipCNN3D(**model_kwargs)
     n_params = sum(p.numel() for p in model.parameters())

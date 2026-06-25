@@ -331,10 +331,11 @@ $$
 \label{poynting}
 S_z = \frac{1}{2}\Re\left(E_x \cdot H_y^* - E_y \cdot H_x^*\right)
 $$
+%poynting theorem
 Since RCWA is inherently a periodic analytical method, and all the fields are constited from their fourier amplitudes and Bloch eigenmodes, the same is true for the poynting vector. This means we now have to integrate the poynting vector over the surface. This is easily solved by numerically integrating the sampled field points.
 Compared to the heavy $O([2(2M+1)(2N+1)]^3) \approx O(N^6)$ order linear solves performed when calculating the S-matrices, this takes virtually no extra time. For this order, I have assumed that $M=N$, meaning the same fourier order is used in the x-direction as the y-direction.
 Calling the number of layers $N_L$ and the number of wavelengths $N_w$, the total algorithmic time of RCWA is $N_L \cdot N_w \cdot O(N^6)$, which scales extremely poorly for 3 dimensions. I will discuss this a bit more in my results and numerical implementation, but compare for a moment to a good surrogate solver.
-The target is the absorptance curve, no matter the input space. If the design space is 5 input amplitudes, 5 input phases, a height and 
+The target is the absorptance curve, no matter the input space. If the design space is 7 input amplitudes, 7 input phases, a height and an incident angle, this makes the first layers a bit denser in the neural networks, but all in all, it barely changes the weights, and therefore barely changes the inference time.
 
 One of the upsides of RCWA is that its algorithmic time doesnt depend on the size of the optical system. The entire calculation takes place in fourier space.
 This also leads to one of its largest downsides. Poorly truncated fourier series, that cant resolve the periodic structure leads to ill-conditioning of the problem. If structures have harsh, sharp edges, 
