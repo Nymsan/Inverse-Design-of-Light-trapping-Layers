@@ -1,14 +1,14 @@
 # Fdb version 4
-["bibtex main"] 1782338876.2988 "main.aux" "main.bbl" "main" 1782342541.69231 0
-  "./main-blx.bib" 1782342541.40534 343 7df4daaf12a96e5cb5559adaf253a91c ""
-  "./references.bib" 1782338733.17453 2032 610658e91ac8ab63a4bda83dade62152 ""
+["bibtex main"] 1782345372.74956 "main.aux" "main.bbl" "main" 1782345374.87797 0
+  "./main-blx.bib" 1782345374.60185 343 7df4daaf12a96e5cb5559adaf253a91c ""
+  "./references.bib" 1782344980.25165 2404 1c2c2e24743df6f3857ef60283836e28 ""
   "/usr/share/texmf-dist/bibtex/bst/biblatex/biblatex.bst" 1775415801 65510 9a2a51799b543ff279b8ea2dd91ec499 ""
-  "main.aux" 1782342541.40034 9730 0b70b300ffec84a6115383312056f0c7 "pdflatex"
+  "main.aux" 1782345374.59465 9730 0b70b300ffec84a6115383312056f0c7 "pdflatex"
   (generated)
   "main.bbl"
   "main.blg"
   (rewritten before read)
-["pdflatex"] 1782342539.85332 "/home/an/Documents/Inverse-Design-of-Light-trapping-Layers/Report/main.tex" "main.pdf" "main" 1782342541.6926 0
+["pdflatex"] 1782345372.82268 "/home/an/Documents/Inverse-Design-of-Light-trapping-Layers/Report/main.tex" "main.pdf" "main" 1782345374.87813 0
   "/home/an/Documents/Inverse-Design-of-Light-trapping-Layers/Report/main.tex" 1782334952.76754 1122 e7048cdce73c2d53a179ef4d79110052 ""
   "/usr/share/texmf-dist/fonts/map/fontname/texfonts.map" 1775415801 3524 cb3e574dea2d1052e39280babc910dc8 ""
   "/usr/share/texmf-dist/fonts/tfm/public/amsfonts/cmextra/cmex7.tfm" 1775415801 1004 54797486969f23fa377b128694d548df ""
@@ -275,16 +275,16 @@
   "Frontmatter/Frontpage.tex" 1782319128.69496 1477 994949c918d5333706d689814f4d7dd9 ""
   "Pictures/DTU_stock_photo.jpg" 1782240313.64262 2480821 1a2d27990674c372d6eae204eacf5626 ""
   "Pictures/Logos/white_cmyk.pdf" 1782240313.64657 745068 7e868c6f6f65a3109f7a0c8e8a4f09ac ""
-  "Setup/Preamble.tex" 1782301101.54847 1889 241e328c37a968b199bea53fc02ae5e6 ""
+  "Setup/Preamble.tex" 1782345355.2088 1889 241e328c37a968b199bea53fc02ae5e6 ""
   "Setup/Settings.tex" 1782300881.03401 9729 2d92a9229660ef8b8495c617c5585fd8 ""
   "Setup/Statics.tex" 1782320292.59441 568 738ef465b712e59c9e20b05ae47d0f55 ""
-  "main.aux" 1782342541.40034 9730 0b70b300ffec84a6115383312056f0c7 "pdflatex"
-  "main.bbl" 1782338876.34891 5632 1205b2c65627a683b6595f20427ce419 "bibtex main"
-  "main.out" 1782342541.40334 3758 45ec197c14ddd91d1f8ffb8245aa2735 "pdflatex"
-  "main.run.xml" 1782342541.40656 2528 47d98899412914b94d26319bb09fe473 "pdflatex"
+  "main.aux" 1782345374.59465 9730 0b70b300ffec84a6115383312056f0c7 "pdflatex"
+  "main.bbl" 1782345372.81845 5632 1205b2c65627a683b6595f20427ce419 "bibtex main"
+  "main.out" 1782345374.59881 3758 45ec197c14ddd91d1f8ffb8245aa2735 "pdflatex"
+  "main.run.xml" 1782345374.60337 2528 47d98899412914b94d26319bb09fe473 "pdflatex"
   "main.tex" 1782334952.76754 1122 e7048cdce73c2d53a179ef4d79110052 ""
-  "main.toc" 1782342541.40656 1778 198eb0cca5e8fbb8d9b80d4af105dad2 "pdflatex"
-  "sections/01_introduction.tex" 1782342539.71639 2453 2ec4b689e356b0aef6acc705ce1e36cc ""
+  "main.toc" 1782345374.60337 1778 198eb0cca5e8fbb8d9b80d4af105dad2 "pdflatex"
+  "sections/01_introduction.tex" 1782344980.25095 2709 66e48f69155fdae9477002294307c3bf ""
   "sections/02_theory.tex" 1782335823.2671 7694 ea990a3dea8793e3bf30a412cfdf616d ""
   "sections/03_methods.tex" 1782335266.18119 591 875bcb64b3e772b02382330b622de886 ""
   "sections/04_results.tex" 1782300302.74759 325 9e1fb42ae23e93a1c66dde275b686e4b ""

@@ -392,12 +392,13 @@ def main():
         ax_p2.set_ylim(-0.5, 2 * np.pi + 0.5)
         ax_h.set_title(f"Harmonics Amplitudes & Phases", fontsize=13)
 
-    out_path = out_dir / f"naive_optimization_{args.method}_{bands_str}.png"
+    suffix = f"_{args.material}" if args.material else ""
+    out_path = out_dir / f"naive_optimization_{args.method}_{bands_str}{suffix}.png"
     plt.savefig(out_path)
     plt.close()
     print(f"\nSaved dashboard to {out_path}")
     
-    metrics_path = out_dir / f"naive_optimization_{args.method}_{bands_str}.json"
+    metrics_path = out_dir / f"naive_optimization_{args.method}_{bands_str}{suffix}.json"
     with open(metrics_path, "w") as f:
         json.dump(results_list, f, indent=2)
 

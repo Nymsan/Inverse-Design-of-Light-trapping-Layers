@@ -1193,9 +1193,9 @@ def train_forward_model(
             pred_f32 = pred.float()
             target_f32 = target.float()
             
-            # Scale loss by the average predicted absorptance (self-regularizing against hallucinated peaks)
+            # Scale loss by the average absorptance of the true target (giving more weight to high-performing structures)
             # Add a small epsilon 0.1 so that terrible structures aren't completely ignored
-            weights = pred_f32.mean(dim=-1, keepdim=True) + 0.1
+            weights = target_f32.mean(dim=-1, keepdim=True)
             
             base_loss = (criterion(pred_f32, target_f32) * weights).mean()
             wl = target_f32.shape[-1] // 2
@@ -1228,7 +1228,7 @@ def train_forward_model(
                                     batch["material_id"].to(device), batch["target"].to(device))
                 pred = model(geo, mat)
                 
-                weights = pred.mean(dim=-1, keepdim=True) + 0.1
+                weights = target.mean(dim=-1, keepdim=True)
                 base_loss = (criterion(pred, target) * weights).mean()
                 wl = target.shape[-1] // 2
                 
