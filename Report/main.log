@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026/Arch Linux) (preloaded format=pdflatex 2026.6.19)  25 JUN 2026 06:54
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026/Arch Linux) (preloaded format=pdflatex 2026.6.19)  25 JUN 2026 14:19
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -1144,12 +1144,12 @@ Underfull \hbox (badness 10000) in paragraph at lines 13--19
 
  []
 
-<Pictures/Logos/white_cmyk.pdf, id=99, 597.50829pt x 845.0471pt>
+<Pictures/Logos/white_cmyk.pdf, id=111, 597.50829pt x 845.0471pt>
 File: Pictures/Logos/white_cmyk.pdf Graphic file (type pdf)
 <use Pictures/Logos/white_cmyk.pdf>
 Package pdftex.def Info: Pictures/Logos/white_cmyk.pdf  used on input line 41.
 (pdftex.def)             Requested size: 41.9678pt x 59.35275pt.
-<Pictures/DTU_stock_photo.jpg, id=100, 669.09975pt x 602.25pt>
+<Pictures/DTU_stock_photo.jpg, id=112, 669.09975pt x 602.25pt>
 File: Pictures/DTU_stock_photo.jpg Graphic file (type jpg)
 <use Pictures/DTU_stock_photo.jpg>
 Package pdftex.def Info: Pictures/DTU_stock_photo.jpg  used on input line 50.
@@ -1233,29 +1233,70 @@ Chapter 1.
 
 ] [2]) (./sections/02_theory.tex [3]
 Chapter 2.
+<figures/refractive_indices.pdf, id=276, 578.16pt x 361.35pt>
+File: figures/refractive_indices.pdf Graphic file (type pdf)
+<use figures/refractive_indices.pdf>
+Package pdftex.def Info: figures/refractive_indices.pdf  used on input line 18.
+(pdftex.def)             Requested size: 341.43437pt x 213.39314pt.
 [4
 
-] [5]) (./sections/03_methods.tex [6]
+ <./figures/refractive_indices.pdf>] [5]
+<figures/fabry_perot_grid.pdf, id=347, 1156.32pt x 650.43pt>
+File: figures/fabry_perot_grid.pdf Graphic file (type pdf)
+<use figures/fabry_perot_grid.pdf>
+Package pdftex.def Info: figures/fabry_perot_grid.pdf  used on input line 78.
+(pdftex.def)             Requested size: 405.45047pt x 228.06082pt.
+ [6 <./figures/fabry_perot_grid.pdf>] [7] [8] [9]) (./sections/03_methods.tex [10]
 Chapter 3.
-) (./sections/04_results.tex [7
+<figures/convergence/convergence_num_layers_100nm.png, id=485, 1156.32pt x 433.62pt>
+File: figures/convergence/convergence_num_layers_100nm.png Graphic file (type png)
+<use figures/convergence/convergence_num_layers_100nm.png>
+Package pdftex.def Info: figures/convergence/convergence_num_layers_100nm.png  used on input line 13.
+(pdftex.def)             Requested size: 362.77525pt x 136.03523pt.
+<figures/convergence/convergence_order_N_100nm.png, id=487, 1156.32pt x 433.62pt>
+File: figures/convergence/convergence_order_N_100nm.png Graphic file (type png)
+<use figures/convergence/convergence_order_N_100nm.png>
+Package pdftex.def Info: figures/convergence/convergence_order_N_100nm.png  used on input line 20.
+(pdftex.def)             Requested size: 362.77525pt x 136.03523pt.
+) (./sections/04_results.tex [11
 
-]
+ <./figures/convergence/convergence_num_layers_100nm.png> <./figures/convergence/convergence_order_N_100nm.png>]
 Chapter 4.
-) (./sections/05_discussion.tex [8
+(./tables/frac_models_stats.tex)
+<figures/loss_curves/loss_Si_TiO2_Si3N4.png, id=498, 1084.05pt x 289.08pt>
+File: figures/loss_curves/loss_Si_TiO2_Si3N4.png Graphic file (type png)
+<use figures/loss_curves/loss_Si_TiO2_Si3N4.png>
+Package pdftex.def Info: figures/loss_curves/loss_Si_TiO2_Si3N4.png  used on input line 18.
+(pdftex.def)             Requested size: 384.1096pt x 102.42783pt.
+ (./tables/timing_stats.tex
+Overfull \hbox (91.24297pt too wide) in paragraph at lines 3--12
+ [][] 
+ []
 
-]
+)
+<figures/convergence/sweep_combination_100nm.png, id=499, 722.7pt x 578.16pt>
+File: figures/convergence/sweep_combination_100nm.png Graphic file (type png)
+<use figures/convergence/sweep_combination_100nm.png>
+Package pdftex.def Info: figures/convergence/sweep_combination_100nm.png  used on input line 25.
+(pdftex.def)             Requested size: 204.85802pt x 163.88629pt.
+<figures/convergence/sweep_combination_3d_100nm.png, id=500, 722.7pt x 578.16pt>
+File: figures/convergence/sweep_combination_3d_100nm.png Graphic file (type png)
+<use figures/convergence/sweep_combination_3d_100nm.png>
+Package pdftex.def Info: figures/convergence/sweep_combination_3d_100nm.png  used on input line 26.
+(pdftex.def)             Requested size: 204.85802pt x 163.88629pt.
+) (./sections/05_discussion.tex [12
+
+ <./figures/loss_curves/loss_Si_TiO2_Si3N4.png>] [13 <./figures/convergence/sweep_combination_100nm.png> <./figures/convergence/sweep_combination_3d_100nm.png>]
 Chapter 5.
-) (./sections/06_outlook.tex [9
+) (./sections/06_outlook.tex [14
 
 ]
 Chapter 6.
-) (./sections/07_conclusion.tex [10
+) (./sections/07_conclusion.tex [15
 
 ]
 Chapter 7.
-) [11
-
-] [12
+) [16
 
 ]
 LaTeX Font Info:    Font shape `OT1/cmss/m/it' in size <10.95> not available
@@ -1266,39 +1307,94 @@ LaTeX Font Warning: Font shape `OT1/cmss/m/sc' in size <10.95> not available
 (Font)              Font shape `OT1/cmr/m/sc' tried instead on input line 38.
 
 
-Overfull \hbox (1.67307pt too wide) in paragraph at lines 38--38
-\OT1/cmss/m/n/10.95 Nanopho-tonic De-vices". In: \OT1/cmss/m/sl/10.95 ACS Pho-ton-ics \OT1/cmss/m/n/10.95 5.12, pp. 4781{4787. \OT1/cmr/m/sc/10.95 doi\OT1/cmss/m/n/10.95 : []$10 . 1021 / acsphotonics .
- []
-
-
 Overfull \hbox (3.53912pt too wide) in paragraph at lines 38--38
 \OT1/cmss/m/n/10.95 2022 . 108552$[]. \OT1/cmr/m/sc/10.95 url\OT1/cmss/m/n/10.95 : []$https : / / www . sciencedirect . com / science / article / pii / S0010465522002715$[]. 
  []
 
-[13
 
-] [14
+Overfull \hbox (1.67307pt too wide) in paragraph at lines 38--38
+\OT1/cmss/m/n/10.95 Nanopho-tonic De-vices". In: \OT1/cmss/m/sl/10.95 ACS Pho-ton-ics \OT1/cmss/m/n/10.95 5.12, pp. 4781{4787. \OT1/cmr/m/sc/10.95 doi\OT1/cmss/m/n/10.95 : []$10 . 1021 / acsphotonics .
+ []
+
+[17
+
+
+] [18
 
 ] (./Backmatter/Appendix.tex
 Appendix A.
-<figures/Erbas2024.png, id=369, 1185.67969pt x 633.11531pt>
+<figures/Erbas2024.png, id=568, 1185.67969pt x 633.11531pt>
 File: figures/Erbas2024.png Graphic file (type png)
 <use figures/Erbas2024.png>
 Package pdftex.def Info: figures/Erbas2024.png  used on input line 5.
 (pdftex.def)             Requested size: 426.79135pt x 227.89235pt.
-<figures/Erbas2024_2.png, id=373, 1073.51062pt x 423.08063pt>
+<figures/Erbas2024_2.png, id=571, 1073.51062pt x 423.08063pt>
 File: figures/Erbas2024_2.png Graphic file (type png)
 <use figures/Erbas2024_2.png>
 Package pdftex.def Info: figures/Erbas2024_2.png  used on input line 12.
 (pdftex.def)             Requested size: 426.79135pt x 168.20279pt.
-<figures/Erbas2024_3.png, id=378, 1085.55562pt x 633.11531pt>
+<figures/Erbas2024_3.png, id=576, 1085.55562pt x 633.11531pt>
 File: figures/Erbas2024_3.png Graphic file (type png)
 <use figures/Erbas2024_3.png>
 Package pdftex.def Info: figures/Erbas2024_3.png  used on input line 19.
 (pdftex.def)             Requested size: 426.79135pt x 248.9137pt.
-) [15
+<figures/convergence/convergence_num_layers_1000nm.png, id=583, 1156.32pt x 433.62pt>
+File: figures/convergence/convergence_num_layers_1000nm.png Graphic file (type png)
+<use figures/convergence/convergence_num_layers_1000nm.png>
+Package pdftex.def Info: figures/convergence/convergence_num_layers_1000nm.png  used on input line 32.
+(pdftex.def)             Requested size: 362.77525pt x 136.03523pt.
+<figures/convergence/convergence_order_N_1000nm.png, id=584, 1156.32pt x 433.62pt>
+File: figures/convergence/convergence_order_N_1000nm.png Graphic file (type png)
+<use figures/convergence/convergence_order_N_1000nm.png>
+Package pdftex.def Info: figures/convergence/convergence_order_N_1000nm.png  used on input line 39.
+(pdftex.def)             Requested size: 362.77525pt x 136.03523pt.
+<figures/convergence/sweep_combination_1000nm.png, id=585, 722.7pt x 578.16pt>
+File: figures/convergence/sweep_combination_1000nm.png Graphic file (type png)
+<use figures/convergence/sweep_combination_1000nm.png>
+Package pdftex.def Info: figures/convergence/sweep_combination_1000nm.png  used on input line 46.
+(pdftex.def)             Requested size: 204.85802pt x 163.88629pt.
+<figures/convergence/sweep_combination_3d_1000nm.png, id=586, 722.7pt x 578.16pt>
+File: figures/convergence/sweep_combination_3d_1000nm.png Graphic file (type png)
+<use figures/convergence/sweep_combination_3d_1000nm.png>
+Package pdftex.def Info: figures/convergence/sweep_combination_3d_1000nm.png  used on input line 47.
+(pdftex.def)             Requested size: 204.85802pt x 163.88629pt.
+[19
 
- <./figures/Erbas2024.png> <./figures/Erbas2024_2.png>] [16 <./figures/Erbas2024_3.png>] [17
+ <./figures/Erbas2024.png> <./figures/Erbas2024_2.png>] [20 <./figures/Erbas2024_3.png> <./figures/convergence/convergence_num_layers_1000nm.png> <./figures/convergence/convergence_order_N_1000nm.png>] [21 <./figures/convergence/sweep_combination_1000nm.png> <./figures/convergence/sweep_combination_3d_1000nm.png>]
+<figures/convergence/convergence_num_layers_no_subpixel_100nm.png, id=612, 1156.32pt x 433.62pt>
+File: figures/convergence/convergence_num_layers_no_subpixel_100nm.png Graphic file (type png)
+<use figures/convergence/convergence_num_layers_no_subpixel_100nm.png>
+Package pdftex.def Info: figures/convergence/convergence_num_layers_no_subpixel_100nm.png  used on input line 58.
+(pdftex.def)             Requested size: 362.77525pt x 136.03523pt.
+<figures/convergence/convergence_order_N_no_subpixel_100nm.png, id=613, 1156.32pt x 433.62pt>
+File: figures/convergence/convergence_order_N_no_subpixel_100nm.png Graphic file (type png)
+<use figures/convergence/convergence_order_N_no_subpixel_100nm.png>
+Package pdftex.def Info: figures/convergence/convergence_order_N_no_subpixel_100nm.png  used on input line 65.
+(pdftex.def)             Requested size: 362.77525pt x 136.03523pt.
+<figures/convergence/sweep_combination_no_subpixel_100nm.png, id=614, 722.7pt x 578.16pt>
+File: figures/convergence/sweep_combination_no_subpixel_100nm.png Graphic file (type png)
+<use figures/convergence/sweep_combination_no_subpixel_100nm.png>
+Package pdftex.def Info: figures/convergence/sweep_combination_no_subpixel_100nm.png  used on input line 72.
+(pdftex.def)             Requested size: 204.85802pt x 163.88629pt.
+<figures/convergence/convergence_num_layers_no_subpixel_1000nm.png, id=615, 1156.32pt x 433.62pt>
+File: figures/convergence/convergence_num_layers_no_subpixel_1000nm.png Graphic file (type png)
+<use figures/convergence/convergence_num_layers_no_subpixel_1000nm.png>
+Package pdftex.def Info: figures/convergence/convergence_num_layers_no_subpixel_1000nm.png  used on input line 79.
+(pdftex.def)             Requested size: 362.77525pt x 136.03523pt.
+<figures/convergence/convergence_order_N_no_subpixel_1000nm.png, id=616, 1156.32pt x 433.62pt>
+File: figures/convergence/convergence_order_N_no_subpixel_1000nm.png Graphic file (type png)
+<use figures/convergence/convergence_order_N_no_subpixel_1000nm.png>
+Package pdftex.def Info: figures/convergence/convergence_order_N_no_subpixel_1000nm.png  used on input line 86.
+(pdftex.def)             Requested size: 362.77525pt x 136.03523pt.
+<figures/convergence/sweep_combination_no_subpixel_1000nm.png, id=617, 722.7pt x 578.16pt>
+File: figures/convergence/sweep_combination_no_subpixel_1000nm.png Graphic file (type png)
+<use figures/convergence/sweep_combination_no_subpixel_1000nm.png>
+Package pdftex.def Info: figures/convergence/sweep_combination_no_subpixel_1000nm.png  used on input line 93.
+(pdftex.def)             Requested size: 204.85802pt x 163.88629pt.
+ [22
+
+ <./figures/convergence/convergence_num_layers_no_subpixel_100nm.png> <./figures/convergence/convergence_order_N_no_subpixel_100nm.png>] [23 <./figures/convergence/sweep_combination_no_subpixel_100nm.png> <./figures/convergence/convergence_num_layers_no_subpixel_1000nm.png> <./figures/convergence/convergence_order_N_no_subpixel_1000nm.png>] [24 <./figures/convergence/sweep_combination_no_subpixel_1000nm.png>]) [25
+
 
 ] (./Backmatter/Backpage.tex
 *geometry* verbose mode - [ newgeometry ] result:
@@ -1333,7 +1429,7 @@ Package pdftex.def Info: figures/Erbas2024_3.png  used on input line 19.
 * \@reversemarginfalse
 * (1in=72.27pt=25.4mm, 1cm=28.453pt)
 
-) [18
+) [26
 
 ] (./main.aux)
  ***********
@@ -1345,7 +1441,7 @@ L3 programming layer <2026-01-19>
 LaTeX Warning: There were undefined references.
 
 Package rerunfilecheck Info: File `main.out' has not changed.
-(rerunfilecheck)             Checksum: 352C24EA9D1643B2EB9F13902ACDD0EF;3758.
+(rerunfilecheck)             Checksum: 77E05004C2520CB78486366943AD62B3;4440.
 
 Package biblatex Warning: Please (re)run BibTeX on the file(s):
 (biblatex)                main
@@ -1356,18 +1452,18 @@ Package logreq Info: Writing requests to 'main.run.xml'.
 
  ) 
 Here is how much of TeX's memory you used:
- 49963 strings out of 469515
- 1141462 string characters out of 5470807
- 1927875 words of memory out of 5000000
- 77834 multiletter control sequences out of 15000+600000
- 647408 words of font info for 103 fonts, out of 8000000 for 9000
+ 50213 strings out of 469515
+ 1151105 string characters out of 5470807
+ 1931876 words of memory out of 5000000
+ 78036 multiletter control sequences out of 15000+600000
+ 648487 words of font info for 107 fonts, out of 8000000 for 9000
  14 hyphenation exceptions out of 8191
  107i,12n,110p,1974b,1803s stack positions out of 10000i,1000n,20000p,200000b,200000s
-</usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx8.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmcsc10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi6.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi8.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmr8.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmss10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmss17.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmss8.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmss9.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmssbx10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmssi10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy8.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/symbols/msbm10.pfb>
-Output written on main.pdf (26 pages, 4607573 bytes).
+</usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx8.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmcsc10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi6.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi8.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmr8.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmss10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmss17.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmss8.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmss9.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmssbx10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmssi10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy8.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/symbols/msbm10.pfb>
+Output written on main.pdf (34 pages, 5866494 bytes).
 PDF statistics:
- 500 PDF objects out of 1000 (max. 8388607)
- 404 compressed objects within 5 object streams
- 87 named destinations out of 1000 (max. 500000)
- 222 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 760 PDF objects out of 1000 (max. 8388607)
+ 524 compressed objects within 6 object streams
+ 125 named destinations out of 1000 (max. 500000)
+ 331 words of extra memory for PDF output out of 10000 (max. 10000000)
 

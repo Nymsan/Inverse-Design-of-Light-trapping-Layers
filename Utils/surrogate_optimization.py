@@ -5,6 +5,7 @@ from typing import List, Tuple, Optional
 from tqdm import tqdm
 from Utils.models import MATERIAL_LIBRARY
 from Utils.models import build_profile
+from Utils.utils import sun_weights
 
 class BatchedSurrogateOptimizer:
     def __init__(self, forward_model: nn.Module, geo_min: torch.Tensor, geo_max: torch.Tensor, n_harmonics: int, nx: int = 128, device: torch.device = torch.device("cpu"), max_inc_deg: float = None, h_val: float = None, inc_val: float = None):
@@ -65,7 +66,25 @@ class BatchedSurrogateOptimizer:
         mask = torch.cat([mask_p, mask_p], dim=0).unsqueeze(0)
         return target, mask
 
-    def optimize_geometry(self, bands: List[Tuple[float, float]], n_restarts: int = 100, n_dense_samples: int = 1000000, steps: int = 300, lr: float = 0.005, allowed_materials: list[int] = None, top_k: int = 2, show_progress: bool = True) -> dict:
+    def _compute_metric(self, pred: torch.Tensor, mask: torch.Tensor, inc_ang_deg: torch.Tensor, optimize_jsc: bool) -> torch.Tensor:
+        if not optimize_jsc:
+            return (pred.float() * mask).sum(dim=-1) / mask.sum(dim=-1)
+            
+        wl_len = pred.shape[-1] // 2
+        wls = torch.linspace(300, 1100, wl_len, device=self.device)
+        photon_flux = sun_weights(wls) * wls
+        photon_flux = torch.cat([photon_flux, photon_flux], dim=0).unsqueeze(0)
+        
+        jsc = (pred.float() * mask * photon_flux).sum(dim=-1) / 2.0
+        jsc = jsc * get_jsc_scaling_factor(wl_len)
+        
+        if inc_ang_deg is not None:
+            cos_theta = torch.cos(inc_ang_deg.view(-1) * torch.pi / 180.0)
+            jsc = jsc * cos_theta
+            
+        return jsc
+
+    def optimize_geometry(self, bands: List[Tuple[float, float]], n_restarts: int = 100, n_dense_samples: int = 1000000, steps: int = 300, lr: float = 0.005, allowed_materials: list[int] = None, top_k: int = 2, show_progress: bool = True, optimize_jsc: bool = False) -> dict:
         self.forward_model.eval()
         target, mask = self._get_target_and_mask(bands)
         
@@ -101,7 +120,7 @@ class BatchedSurrogateOptimizer:
                     profile, h_t, inc_t = build_profile(geo_chunk, self.n_harmonics, self.nx)
                     pred = self.forward_model(profile=profile, h=h_t, inc_ang=inc_t, material_id=mat_tensor)
                     
-                    abs_vals = (pred.float() * mask_chunk).sum(dim=-1) / mask_chunk.sum(dim=-1)
+                    abs_vals = self._compute_metric(pred, mask_chunk, geo_chunk[:, -1], optimize_jsc)
                     
                     # Store top candidates from chunk
                     chunk_top_vals, chunk_top_idx = abs_vals.topk(min(n_restarts, actual_chunk))
@@ -144,7 +163,7 @@ class BatchedSurrogateOptimizer:
             profile, h_t, inc_t = build_profile(geo, self.n_harmonics, self.nx)
             pred = self.forward_model(profile=profile, h=h_t, inc_ang=inc_t, material_id=mat)
             
-            abs_vals = (pred.float() * mask).sum(dim=-1) / mask.sum(dim=-1)
+            abs_vals = self._compute_metric(pred, mask, geo[:, -1], optimize_jsc)
             
             # Boundary penalty: perfectly smooth and differentiable polynomial (N=10)
             # This only actively punishes the outer 1-5% of the bounds, allowing the model
@@ -162,7 +181,7 @@ class BatchedSurrogateOptimizer:
             
             with torch.no_grad():
                 geo.clamp_(self.geo_min, self.geo_max)
-                avg_abs = (pred.float() * mask).sum(dim=-1) / mask.sum(dim=-1)
+                avg_abs = self._compute_metric(pred, mask, geo[:, -1], optimize_jsc)
                 
                 range_geo = self.geo_max - self.geo_min
                 active_mask = (range_geo > 1e-5).float()
@@ -187,7 +206,7 @@ class BatchedSurrogateOptimizer:
         with torch.no_grad():
             profile, h_t, inc_t = build_profile(geo, self.n_harmonics, self.nx)
             pred = self.forward_model(profile=profile, h=h_t, inc_ang=inc_t, material_id=mat)
-            pure_abs = (pred.float() * mask).sum(dim=-1) / mask.sum(dim=-1)
+            pure_abs = self._compute_metric(pred, mask, geo[:, -1], optimize_jsc)
             range_geo = self.geo_max - self.geo_min
             active_mask = (range_geo > 1e-5).float()
             p_norm = (geo - self.geo_min) / (range_geo + 1e-9)

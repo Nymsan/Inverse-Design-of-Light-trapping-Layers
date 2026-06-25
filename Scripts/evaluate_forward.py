@@ -33,8 +33,15 @@ from Utils.utils import generate_test_batch
 from Utils.checkpoint import load_forward_model, _FORWARD_FILENAMES
 
 plt.rcParams.update({
-    "font.size": 11, "axes.titlesize": 13, "axes.labelsize": 12,
-    "figure.dpi": 150, "savefig.dpi": 150,
+    "font.size": 16, 
+    "axes.titlesize": 18, 
+    "axes.labelsize": 16,
+    "xtick.labelsize": 14,
+    "ytick.labelsize": 14,
+    "legend.fontsize": 14,
+    "figure.titlesize": 20,
+    "figure.dpi": 150, 
+    "savefig.dpi": 150,
 })
 
 WAVELENGTHS = np.linspace(300, 1100, 161)
@@ -47,6 +54,7 @@ def parse_args():
     p.add_argument("--h_tolerance", type=float, default=0.5, help="Tolerance for height matching")
     p.add_argument("--inc_val", type=float, default=None, help="Target incident angle in degrees (e.g., 0.0 for normal)")
     p.add_argument("--inc_tolerance", type=float, default=0.5, help="Tolerance for incident angle matching")
+    p.add_argument("--optimize_jsc", action="store_true", help="Plot Short-Circuit Current (Jsc) instead of Average Absorptance.")
     p.add_argument("--bands", nargs="+", type=float, help="Pairs of wavelength bands to evaluate, e.g., --bands 500 750 800 900")
     return p.parse_args()
 
@@ -63,6 +71,9 @@ def get_folder_name(args) -> str:
     if args.bands:
         bands_str = "_".join([f"{int(args.bands[i])}-{int(args.bands[i+1])}" for i in range(0, len(args.bands), 2)])
         parts.append(f"bands{bands_str}")
+        
+    if getattr(args, "optimize_jsc", False):
+        parts.append("jsc")
         
     return "_".join(parts) if parts else "all_data"
 
@@ -108,15 +119,15 @@ def plot_loss_curves(all_history: dict, save_path: str, train_info: str):
 
 
 @torch.no_grad()
-def plot_forward_parity(models: dict[str, nn.Module], val_loader, save_path: str, n_wavelengths: int, band_mask: torch.Tensor = None, filter_title: str = ""):
+def plot_forward_parity(models: dict[str, nn.Module], val_loader, save_path: str, n_wavelengths: int, band_mask: torch.Tensor = None, filter_title: str = "", optimize_jsc: bool = False):
     n_models = len(models)
     if n_models == 0:
         return
-    fig, axes = plt.subplots(1, n_models, figsize=(5 * n_models, 5), squeeze=False, layout="constrained")
+    fig, axes = plt.subplots(1, n_models, figsize=(6 * n_models, 6.5), squeeze=False)
     axes = axes[0]
 
     for ax, (name, model) in zip(axes, models.items()):
-        all_pred, all_true, all_mat = [], [], []
+        all_pred, all_true, all_mat, all_inc = [], [], [], []
         for batch in val_loader:
             geo, px, mat, target = (batch["geometry"], batch["params_x"],
                                     batch["material_id"], batch["target"])
@@ -128,24 +139,58 @@ def plot_forward_parity(models: dict[str, nn.Module], val_loader, save_path: str
             all_pred.append(pred)
             all_true.append(target)
             all_mat.append(mat)
+            all_inc.append(geo[:, -1])
 
-        pred = torch.cat(all_pred).mean(dim=1).numpy()
-        true = torch.cat(all_true).mean(dim=1).numpy()
+        pred_cat = torch.cat(all_pred)
+        true_cat = torch.cat(all_true)
+        inc_cat = torch.cat(all_inc)
+        
+        if optimize_jsc:
+            from Utils.utils import sun_weights, get_jsc_scaling_factor
+            wls_t = torch.linspace(300, 1100, n_wavelengths // 2, dtype=torch.float32)
+            photon_flux = sun_weights(wls_t) * wls_t
+            photon_flux = torch.cat([photon_flux, photon_flux], dim=0)
+            if band_mask is not None:
+                photon_flux = photon_flux[band_mask]
+                
+            pred_metric = (pred_cat * photon_flux.unsqueeze(0)).sum(dim=1) / 2.0
+            true_metric = (true_cat * photon_flux.unsqueeze(0)).sum(dim=1) / 2.0
+            
+            scaling = get_jsc_scaling_factor(n_wavelengths // 2)
+            pred_metric = pred_metric * scaling
+            true_metric = true_metric * scaling
+            
+            cos_theta = torch.cos(inc_cat * torch.pi / 180.0)
+            pred = (pred_metric * cos_theta).numpy()
+            true = (true_metric * cos_theta).numpy()
+        else:
+            pred = pred_cat.mean(dim=1).numpy()
+            true = true_cat.mean(dim=1).numpy()
+            
         mat_all = torch.cat(all_mat).numpy()
         if mat_all.ndim > 1: mat_all = mat_all.argmax(axis=1)
 
         ax.scatter(true, pred, alpha=0.6, s=15, c="blue", edgecolors="none")
-        ax.plot([0, 1], [0, 1], "k--", lw=1.5, alpha=0.8)
-        ax.set_xlabel("True Average Absorptance")
-        ax.set_ylabel("Pred Average Absorptance")
-        ax.set_xlim(0, 1)
-        ax.set_ylim(0, 1)
+        
+        if optimize_jsc:
+            max_val = max(np.max(true), np.max(pred)) * 1.05
+            ax.plot([0, max_val], [0, max_val], "k--", lw=1.5, alpha=0.8)
+            ax.set_xlim(0, max_val)
+            ax.set_ylim(0, max_val)
+        else:
+            ax.plot([0, 1], [0, 1], "k--", lw=1.5, alpha=0.8)
+            ax.set_xlim(0, 1)
+            ax.set_ylim(0, 1)
+            
+        metric_name = "Short-Circuit Current (mA/cm2)" if optimize_jsc else "Average Absorptance"
+        ax.set_xlabel(f"True {metric_name}")
+        ax.set_ylabel(f"Pred {metric_name}")
         ax.set_aspect("equal")
-        ax.set_title(format_model_name(name), fontsize=12)
+        ax.set_title(format_model_name(name), fontsize=14, pad=15)
         
         # Create single histogram plot
         save_dir = Path(save_path).parent
-        fig_hist, ax_hist = plt.subplots(figsize=(8, 5), layout="constrained")
+        fig_hist, ax_hist = plt.subplots(figsize=(10, 6), layout="constrained")
         
         mat_names = list(MATERIAL_LIBRARY.keys())
         colors = plt.cm.tab10.colors
@@ -155,10 +200,11 @@ def plot_forward_parity(models: dict[str, nn.Module], val_loader, save_path: str
             if not m_mask.any(): continue
             
             z = m_id + 1
-            # Compute fixed bin edges based on min/max of both true and pred
             combined_min = min(true[m_mask].min(), pred[m_mask].min())
             combined_max = max(true[m_mask].max(), pred[m_mask].max())
-            bin_width = 0.002
+            bin_width = (combined_max - combined_min) / 50.0 if combined_max > combined_min else 0.01
+            if bin_width == 0: bin_width = 0.01
+            
             grid_min = np.floor(combined_min / bin_width) * bin_width
             grid_max = np.ceil(combined_max / bin_width) * bin_width
             num_bins = max(1, int(np.round((grid_max - grid_min) / bin_width)))
@@ -170,7 +216,7 @@ def plot_forward_parity(models: dict[str, nn.Module], val_loader, save_path: str
             ax_hist.plot([], [], color=colors[m_id], linewidth=2.0, label=f"{mat_names[m_id]} (Pred)")
             ax_hist.hist(pred[m_mask], bins=bin_edges, color=colors[m_id], histtype="step", linewidth=2.0, zorder=z)
             
-        ax_hist.set_xlabel("Average Absorptance")
+        ax_hist.set_xlabel(metric_name)
         ax_hist.set_ylabel("Count")
         ax_hist.set_yscale("log")
         ax_hist.set_title("Validation Distribution (True vs Predicted)")
@@ -186,8 +232,9 @@ def plot_forward_parity(models: dict[str, nn.Module], val_loader, save_path: str
         plt.close(fig_hist)
         print(f"  Saved: {hist_save_path}")
 
+    fig.tight_layout(pad=2.0)
     plt.savefig(save_path)
-    plt.close()
+    plt.close(fig)
     print(f"  Saved: {save_path}")
 
 
@@ -470,7 +517,7 @@ def main():
 
     if forward_models:
         plot_forward_parity(forward_models, val_loader,
-                           str(eval_dir / "forward_parity.png"), n_wavelengths, band_mask, filter_title)
+                           str(eval_dir / "forward_parity.png"), n_wavelengths, band_mask, filter_title, optimize_jsc=args.optimize_jsc)
         
         print("\nComputing metrics...")
         metrics = compute_metrics(forward_models, val_loader, n_wavelengths, band_mask)

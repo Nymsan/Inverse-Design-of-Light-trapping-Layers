@@ -37,7 +37,8 @@ def parse_args():
     p.add_argument("--h_val", nargs="+", type=float, help="Target height in nm, or range (min max)")
     p.add_argument("--h_tolerance", type=float, default=0.5, help="Tolerance for height matching")
     p.add_argument("--inc_val", type=float, default=None, help="Target incident angle in degrees (e.g., 0.0 for normal)")
-    p.add_argument("--inc_tolerance", type=float, default=0.5, help="Tolerance for incident angle matching")
+    p.add_argument("--inc_tolerance", type=float, default=0.5, help="Tolerance for matching inc_val (degrees)")
+    p.add_argument("--optimize_jsc", action="store_true", help="Optimize Short-Circuit Current (Jsc) weighted by AM1.5G photon flux and cos(inc_ang), rather than average absorptance.")
     return p.parse_args()
 
 def get_folder_name(args) -> str:
@@ -54,9 +55,12 @@ def get_folder_name(args) -> str:
         bands_str = "_".join([f"{int(args.bands[i])}-{int(args.bands[i+1])}" for i in range(0, len(args.bands), 2)])
         parts.append(f"bands{bands_str}")
         
+    if getattr(args, "optimize_jsc", False):
+        parts.append("jsc")
+        
     return "_".join(parts) if parts else "all_data"
 
-def get_dataset_baseline(ckpt_dir: Path, bands=None, h_val=None, h_tolerance=0.5, inc_val=None, inc_tolerance=0.5) -> dict:
+def get_dataset_baseline(ckpt_dir: Path, bands=None, h_val=None, h_tolerance=0.5, inc_val=None, inc_tolerance=0.5, optimize_jsc=False) -> dict:
     stats_path = ckpt_dir / "dataset_stats.pt"
     if not stats_path.exists():
         raise FileNotFoundError(f"Stats not found at {stats_path}")
@@ -161,12 +165,30 @@ def get_dataset_baseline(ckpt_dir: Path, bands=None, h_val=None, h_tolerance=0.5
         avg_s = s_pol[:, mask_dataset].mean(dim=1)
         avg_abs = (avg_p + avg_s) / 2.0
         
+        if optimize_jsc:
+            from Utils.utils import sun_weights, get_jsc_scaling_factor
+            wls_t = torch.tensor(WAVELENGTHS, dtype=torch.float32)
+            photon_flux = sun_weights(wls_t) * wls_t
+            mask_t = torch.tensor(mask_dataset, dtype=torch.float32)
+            
+            jsc_p = (p_pol * mask_t * photon_flux.unsqueeze(0)).sum(dim=1)
+            jsc_s = (s_pol * mask_t * photon_flux.unsqueeze(0)).sum(dim=1)
+            metric = (jsc_p + jsc_s) / 2.0
+            metric = metric * get_jsc_scaling_factor(len(WAVELENGTHS))
+            
+            inc_ang_deg = geos[:, -1]
+            cos_theta = torch.cos(inc_ang_deg * torch.pi / 180.0)
+            metric = metric * cos_theta
+        else:
+            metric = avg_abs
+        
         valid_mask = (targets.max(dim=1).values <= 1.05)
-        avg_abs[~valid_mask] = -1.0
+        metric[~valid_mask] = -1.0
         
         results[mat_name] = {
             "targets": targets,
             "geos": geos,
+            "metric": metric,
             "avg_abs": avg_abs
         }
     return results, stats
@@ -188,19 +210,21 @@ def main():
             bands.append((args.bands[i], args.bands[i+1]))
             
     # We will evaluate based on the provided bands
-    results, stats = get_dataset_baseline(ckpt_dir, bands=bands, h_val=args.h_val, h_tolerance=args.h_tolerance, inc_val=args.inc_val, inc_tolerance=args.inc_tolerance)
+    results, stats = get_dataset_baseline(ckpt_dir, bands=bands, h_val=args.h_val, h_tolerance=args.h_tolerance, inc_val=args.inc_val, inc_tolerance=args.inc_tolerance, optimize_jsc=args.optimize_jsc)
     n_harmonics = stats["n_harmonics"]
     n_wavelengths = stats["n_wavelengths"]
     WAVELENGTHS = np.linspace(300, 1100, n_wavelengths // 2)
     
-    global_min, global_max = 1.0, 0.0
+    global_min, global_max = 1000.0, 0.0
     for res in results.values():
-        valid_idx = torch.where(res["avg_abs"] >= 0)[0]
+        valid_idx = torch.where(res["metric"] >= 0)[0]
         if len(valid_idx) > 0:
-            global_min = min(global_min, res["avg_abs"][valid_idx].min().item())
-            global_max = max(global_max, res["avg_abs"][valid_idx].max().item())
+            global_min = min(global_min, res["metric"][valid_idx].min().item())
+            global_max = max(global_max, res["metric"][valid_idx].max().item())
             
-    bin_width = 0.002
+    bin_width = (global_max - global_min) / 50.0 if global_max > global_min else 0.01
+    if bin_width == 0: bin_width = 0.01
+    
     grid_min = np.floor(global_min / bin_width) * bin_width
     grid_max = np.ceil(global_max / bin_width) * bin_width
     num_bins = max(1, int(np.round((grid_max - grid_min) / bin_width)))
@@ -208,13 +232,13 @@ def main():
     
     fig_hist, ax_hist = plt.subplots(figsize=(8, 6))
     for mat_name, res in results.items():
-        avg_abs = res["avg_abs"]
-        valid_idx = torch.where(avg_abs >= 0)[0]
+        metric_vals = res["metric"]
+        valid_idx = torch.where(metric_vals >= 0)[0]
         if len(valid_idx) == 0:
             continue
-        valid_abs = avg_abs[valid_idx].numpy()
-        ax_hist.hist(valid_abs, bins=bin_edges, alpha=0.5, label=mat_name)
-    ax_hist.set_xlabel("Average Absorptance")
+        valid_metric = metric_vals[valid_idx].numpy()
+        ax_hist.hist(valid_metric, bins=bin_edges, alpha=0.5, label=mat_name)
+    ax_hist.set_xlabel("Short-Circuit Current (mA/cm2, pseudo)" if args.optimize_jsc else "Average Absorptance")
     ax_hist.set_ylabel("Count")
     ax_hist.set_yscale("log")
     
@@ -231,9 +255,9 @@ def main():
         title_parts.append("Matched Bands")
         
     title_str = " | ".join(title_parts) if title_parts else "All Geometries, All Angles"
-    ax_hist.set_title(f"Dataset Average Absorptance Distribution\n({title_str})", fontsize=11)
+    ax_hist.set_title(f"Dataset Metric Distribution\n({title_str})", fontsize=11)
     ax_hist.legend()
-    hist_path = out_dir / "dataset_absorptance_histogram.png"
+    hist_path = out_dir / "dataset_metric_histogram.png"
     fig_hist.savefig(hist_path)
     plt.close(fig_hist)
     print(f"Saved dataset histogram to {hist_path}")
@@ -242,19 +266,19 @@ def main():
         print(f"\nPlotting baseline for material: {mat_name}")
         targets = res["targets"]
         geos = res["geos"]
-        avg_abs = res["avg_abs"]
-        # Valid structures have avg_abs >= 0
-        valid_idx = torch.where(avg_abs >= 0)[0]
+        metric = res["metric"]
+        # Valid structures have metric >= 0
+        valid_idx = torch.where(metric >= 0)[0]
         if len(valid_idx) == 0:
             print(f"No valid structures found for {mat_name}")
             continue
             
-        valid_abs = avg_abs[valid_idx]
+        valid_met = metric[valid_idx]
         
         # Determine best and worst indices
         k = min(args.top_k, len(valid_idx))
-        best_local_indices = torch.topk(valid_abs, k, largest=True).indices
-        worst_local_indices = torch.topk(valid_abs, k, largest=False).indices
+        best_local_indices = torch.topk(valid_met, k, largest=True).indices
+        worst_local_indices = torch.topk(valid_met, k, largest=False).indices
         
         best_indices = valid_idx[best_local_indices]
         worst_indices = valid_idx[worst_local_indices]
@@ -265,7 +289,7 @@ def main():
             for i, idx in enumerate(indices):
                 target = targets[idx]
                 geo = geos[idx]
-                score = avg_abs[idx].item()
+                score = metric[idx].item()
                 
                 # Reconstruct profile
                 amps = geo[0:2*n_harmonics:2].numpy()
@@ -289,7 +313,7 @@ def main():
                     for bmin, bmax in bands:
                         ax_p.axvspan(bmin, bmax, color="gray", alpha=0.2)
                 mode_str = "Best" if plot_mode == "best" else "Worst"
-                ax_p.set_title(f"{mode_str} Rank {i+1} (Avg Abs: {score:.3f}) - P-Pol", fontsize=14)
+                ax_p.set_title(f"{mode_str} Rank {i+1} (Score: {score:.3f}) - P-Pol", fontsize=14)
                 ax_p.set_ylabel("Absorptance")
                 
                 # Plot S-Pol
@@ -299,7 +323,7 @@ def main():
                 if bands:
                     for bmin, bmax in bands:
                         ax_s.axvspan(bmin, bmax, color="gray", alpha=0.2)
-                ax_s.set_title(f"{mode_str} Rank {i+1} (Avg Abs: {score:.3f}) - S-Pol", fontsize=14)
+                ax_s.set_title(f"{mode_str} Rank {i+1} (Score: {score:.3f}) - S-Pol", fontsize=14)
                 
                 # Structure Cross Section
                 ax_xs = axes[i, 2]

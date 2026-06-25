@@ -1,0 +1,21 @@
+\begin{tabular}{llccc}
+    \toprule
+    \textbf{Dataset Setup} & \textbf{Model Type} & \textbf{Test MAE} & \textbf{Test Max Err} & \textbf{Test R$^2$} \\
+    \midrule
+        Trained on 10\% train set & \texttt{forward\_mlp} & 0.1034 & 0.6288 & 0.7928 \\
+         & \texttt{skip\_cnn} & \textbf{0.0510} & \textbf{0.4710} & \textbf{0.9094} \\
+         & \texttt{siren} & 0.1007 & 0.8368 & 0.7484 \\
+        \midrule
+        Trained on 25\% train set & \texttt{forward\_mlp} & 0.0854 & 0.6987 & 0.7933 \\
+         & \texttt{skip\_cnn} & \textbf{0.0300} & \textbf{0.3305} & \textbf{0.9732} \\
+         & \texttt{siren} & 0.0331 & 0.3461 & 0.9673 \\
+        \midrule
+        Trained on 50\% train set & \texttt{forward\_mlp} & 0.0854 & 0.7117 & 0.7905 \\
+         & \texttt{skip\_cnn} & 0.0297 & 0.3259 & 0.9738 \\
+         & \texttt{siren} & \textbf{0.0285} & \textbf{0.3240} & \textbf{0.9755} \\
+        \midrule
+        Trained on 100\% train set & \texttt{forward\_mlp} & 0.0842 & 0.6840 & 0.7906 \\
+         & \texttt{skip\_cnn} & \textbf{0.0253} & \textbf{0.3126} & \textbf{0.9794} \\
+         & \texttt{siren} & 0.0283 & 0.3211 & 0.9750 \\
+    \bottomrule
+\end{tabular}

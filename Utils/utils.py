@@ -95,7 +95,28 @@ spectra = spectrum.get_reference_spectra()
 am15g = spectra['global']
 def sun_weights(w):
     device = w.device if hasattr(w, "device") else default_device
-    return torch.tensor(am15g[w.cpu().numpy()], dtype=geo_dtype, device=device)
+    vals = am15g[w.cpu().numpy()]
+    if hasattr(vals, "to_numpy"):
+        vals = vals.to_numpy()
+    return torch.tensor(vals, dtype=geo_dtype, device=device)
+
+def get_jsc_scaling_factor(wl_len):
+    """
+    Returns the scaling factor to convert the sum(A * S * lambda) into Jsc [mA/cm^2].
+    Assumes wavelengths span 300 to 1100 nm.
+    Constants:
+    q = 1.602176634e-19 C
+    h = 6.62607015e-34 J s
+    c = 299792458.0 m/s
+    """
+    d_lambda = (1100.0 - 300.0) / (wl_len - 1)
+    # Jsc [A/m^2] = sum(A * S * d_lambda * lambda * 1e-9 * q / (h * c))
+    # Jsc [mA/cm^2] = Jsc [A/m^2] * 0.1
+    q = 1.602176634e-19
+    h = 6.62607015e-34
+    c = 299792458.0
+    factor = 1e-9 * q / (h * c) * 0.1 * d_lambda
+    return factor
 
 # material
 _materials_db = {
