@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026/Arch Linux) (preloaded format=pdflatex 2026.6.19)  25 JUN 2026 01:56
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026/Arch Linux) (preloaded format=pdflatex 2026.6.19)  25 JUN 2026 06:23
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -1229,33 +1229,33 @@ Package hyperref Warning: The anchor of a bookmark and its parent's must not
 
 ] (./sections/01_introduction.tex
 Chapter 1.
-) (./sections/02_theory.tex [1
+[1
 
-]
+] [2]) (./sections/02_theory.tex [3]
 Chapter 2.
-[2
+[4
 
-] [3]) (./sections/03_methods.tex [4]
+] [5]) (./sections/03_methods.tex [6]
 Chapter 3.
-) (./sections/04_results.tex [5
+) (./sections/04_results.tex [7
 
 ]
 Chapter 4.
-) (./sections/05_discussion.tex [6
+) (./sections/05_discussion.tex [8
 
 ]
 Chapter 5.
-) (./sections/06_outlook.tex [7
+) (./sections/06_outlook.tex [9
 
 ]
 Chapter 6.
-) (./sections/07_conclusion.tex [8
+) (./sections/07_conclusion.tex [10
 
 ]
 Chapter 7.
-) [9
+) [11
 
-] [10
+] [12
 
 ]
 LaTeX Font Info:    Font shape `OT1/cmss/m/it' in size <10.95> not available
@@ -1266,17 +1266,39 @@ LaTeX Font Warning: Font shape `OT1/cmss/m/sc' in size <10.95> not available
 (Font)              Font shape `OT1/cmr/m/sc' tried instead on input line 38.
 
 
+Overfull \hbox (1.67307pt too wide) in paragraph at lines 38--38
+\OT1/cmss/m/n/10.95 Nanopho-tonic De-vices". In: \OT1/cmss/m/sl/10.95 ACS Pho-ton-ics \OT1/cmss/m/n/10.95 5.12, pp. 4781{4787. \OT1/cmr/m/sc/10.95 doi\OT1/cmss/m/n/10.95 : []$10 . 1021 / acsphotonics .
+ []
+
+
 Overfull \hbox (3.53912pt too wide) in paragraph at lines 38--38
 \OT1/cmss/m/n/10.95 2022 . 108552$[]. \OT1/cmr/m/sc/10.95 url\OT1/cmss/m/n/10.95 : []$https : / / www . sciencedirect . com / science / article / pii / S0010465522002715$[]. 
  []
 
-[11
+[13
 
-] [12
+] [14
 
 ] (./Backmatter/Appendix.tex
 Appendix A.
-) [13
+<figures/Erbas2024.png, id=367, 1185.67969pt x 633.11531pt>
+File: figures/Erbas2024.png Graphic file (type png)
+<use figures/Erbas2024.png>
+Package pdftex.def Info: figures/Erbas2024.png  used on input line 5.
+(pdftex.def)             Requested size: 426.79135pt x 227.89235pt.
+<figures/Erbas2024_2.png, id=371, 1073.51062pt x 423.08063pt>
+File: figures/Erbas2024_2.png Graphic file (type png)
+<use figures/Erbas2024_2.png>
+Package pdftex.def Info: figures/Erbas2024_2.png  used on input line 12.
+(pdftex.def)             Requested size: 426.79135pt x 168.20279pt.
+<figures/Erbas2024_3.png, id=376, 1085.55562pt x 633.11531pt>
+File: figures/Erbas2024_3.png Graphic file (type png)
+<use figures/Erbas2024_3.png>
+Package pdftex.def Info: figures/Erbas2024_3.png  used on input line 19.
+(pdftex.def)             Requested size: 426.79135pt x 248.9137pt.
+) [15
+
+ <./figures/Erbas2024.png> <./figures/Erbas2024_2.png>] [16 <./figures/Erbas2024_3.png>] [17
 
 ] (./Backmatter/Backpage.tex
 *geometry* verbose mode - [ newgeometry ] result:
@@ -1311,8 +1333,7 @@ Appendix A.
 * \@reversemarginfalse
 * (1in=72.27pt=25.4mm, 1cm=28.453pt)
 
-) [14
-
+) [18
 
 ] (./main.aux)
  ***********
@@ -1324,7 +1345,7 @@ L3 programming layer <2026-01-19>
 LaTeX Warning: There were undefined references.
 
 Package rerunfilecheck Info: File `main.out' has not changed.
-(rerunfilecheck)             Checksum: 45EC197C14DDD91D1F8FFB8245AA2735;3758.
+(rerunfilecheck)             Checksum: 352C24EA9D1643B2EB9F13902ACDD0EF;3758.
 
 Package biblatex Warning: Please (re)run BibTeX on the file(s):
 (biblatex)                main
@@ -1335,18 +1356,18 @@ Package logreq Info: Writing requests to 'main.run.xml'.
 
  ) 
 Here is how much of TeX's memory you used:
- 49840 strings out of 469515
- 1138834 string characters out of 5470807
- 1929875 words of memory out of 5000000
- 77738 multiletter control sequences out of 15000+600000
- 644318 words of font info for 91 fonts, out of 8000000 for 9000
+ 49961 strings out of 469515
+ 1141440 string characters out of 5470807
+ 1927875 words of memory out of 5000000
+ 77832 multiletter control sequences out of 15000+600000
+ 647408 words of font info for 103 fonts, out of 8000000 for 9000
  14 hyphenation exceptions out of 8191
  107i,12n,110p,1974b,1803s stack positions out of 10000i,1000n,20000p,200000b,200000s
-</usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx8.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmcsc10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi6.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi8.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmr8.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmss10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmss17.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmss9.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmssbx10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmssi10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy8.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/symbols/msbm10.pfb>
-Output written on main.pdf (22 pages, 3389081 bytes).
+</usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx8.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmcsc10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi6.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi8.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmr8.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmss10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmss17.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmss8.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmss9.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmssbx10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmssi10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy8.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/symbols/msbm10.pfb>
+Output written on main.pdf (26 pages, 4606771 bytes).
 PDF statistics:
- 412 PDF objects out of 1000 (max. 8388607)
- 333 compressed objects within 4 object streams
- 67 named destinations out of 1000 (max. 500000)
- 207 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 498 PDF objects out of 1000 (max. 8388607)
+ 402 compressed objects within 5 object streams
+ 87 named destinations out of 1000 (max. 500000)
+ 222 words of extra memory for PDF output out of 10000 (max. 10000000)
 
