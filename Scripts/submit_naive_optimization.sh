@@ -31,18 +31,16 @@ echo "=== Phase 1: Bounded Optimization (1000-3000nm) ==="
 uv run python Scripts/evaluate_naive_optimization.py \
     --material $MAT_NAME \
     --method lbfgs \
-    --max_evals 300 \
+    --max_evals 500 \
     --out_dir Naive_Optimization_Bounded \
-    --penalty \
     --h_val 1000 3000
 
 echo "=== Phase 2: Pinned Optimization (2000nm) ==="
 uv run python Scripts/evaluate_naive_optimization.py \
     --material $MAT_NAME \
     --method lbfgs \
-    --max_evals 300 \
+    --max_evals 500 \
     --out_dir Naive_Optimization_Pinned \
-    --penalty \
     --h_val 2000
 
 echo "=== Naive Torcwa Optimization Complete for $MAT_NAME ==="
