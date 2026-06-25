@@ -40,13 +40,12 @@ def get_target_curve(wavelengths: np.ndarray, bands: list[tuple[float, float]]) 
 # ---------------------------------------------------------------------------
 class TorcwaObjective:
     def __init__(self, target_curve: torch.Tensor, eval_wavelengths: torch.Tensor, 
-                 mat_name: str, device: torch.device, bounds: list[tuple[float, float]], use_penalty: bool = False):
+                 mat_name: str, device: torch.device, bounds: list[tuple[float, float]]):
         self.target_curve = target_curve.to(device)
         self.eval_wavelengths = eval_wavelengths.to(device)
         self.mat_name = mat_name
         self.device = device
         self.bounds = bounds
-        self.use_penalty = use_penalty
         
         # Extract config from first available dataset batch
         rcwa_config_dict = {}
@@ -83,6 +82,12 @@ class TorcwaObjective:
 
     def evaluate(self, x: np.ndarray, requires_grad: bool = False):
         """Evaluates MAE loss for a given parameter vector."""
+        
+        # Strictly clamp x to bounds. Scipy's finite-difference gradient approximator ('2-point')
+        # sometimes steps slightly outside bounds by epsilon, which can crash Torcwa or evaluate invalid physics.
+        for i, (b_min, b_max) in enumerate(self.bounds):
+            x[i] = np.clip(x[i], b_min, b_max)
+            
         if requires_grad:
             x_tensor = torch.tensor(x, dtype=torch.float32, device=self.device, requires_grad=True)
             h = x_tensor[0]
@@ -114,15 +119,7 @@ class TorcwaObjective:
         else:
             loss = torch.tensor(0.0, device=self.device)
         
-        penalty = 0.0
-        if self.use_penalty:
-            for i, (b_min, b_max) in enumerate(self.bounds):
-                range_val = b_max - b_min
-                if range_val > 1e-5:
-                    p_norm = (x[i] - b_min) / range_val
-                    penalty += 0.05 * ((p_norm - 0.5) * 2.0) ** 10
-                    
-        return loss + penalty, sim_curve
+        return loss, sim_curve
 
     def objective_no_grad(self, x: np.ndarray) -> float:
         """For Differential Evolution (no gradients)."""
@@ -161,7 +158,6 @@ def main():
     parser.add_argument('--device', type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument('--out_dir', type=str, default="Naive_Optimization")
     parser.add_argument('--material', type=str, default=None, help="Specific material to optimize. If not set, runs all materials sequentially.")
-    parser.add_argument('--penalty', action='store_true', help="Apply the 10th order polynomial boundary penalty (0.05 scale) used in surrogate optimization.")
     parser.add_argument('--h_val', nargs='+', type=float, default=None, help="Target height in nm, or range (min max) (fixes/bounds height during evaluation)")
     args = parser.parse_args()
 
@@ -220,7 +216,7 @@ def main():
         print(f"\n" + "="*50)
         print(f"Optimizing {mat_name}...")
         
-        obj = TorcwaObjective(target_curve, torch.tensor(eval_wavelengths, dtype=torch.float64), mat_name, device, bounds, args.penalty)
+        obj = TorcwaObjective(target_curve, torch.tensor(eval_wavelengths, dtype=torch.float64), mat_name, device, bounds)
         
         best_x = None
         best_loss = float('inf')
