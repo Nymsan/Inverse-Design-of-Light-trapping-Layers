@@ -63,7 +63,7 @@ The grating pattern is a smoothly varying curve in 3D space, meaning that to use
 In the figure, 10 harmonics are included in the x-direction, all with amplitude $10 \text{nm}$. This yields a total grating height of $200 \text{nm}$. The staircase is binarized by thresholding - if the sine wave in the given $z$ value is as high, it gets to be grating material, otherwise it is air. The curve is drawn on a x,y resolution, far above the Nyquist limit of the highest grating profile order (here $n_x$ = 5000 corresponding to a frequency of $5\frac{\text{pixels}}{nm}$, while the highest grating order is has a frequency of $0.01\frac{\text{oscillations}}{nm}$).
 The hars edges come solely from the discretization along the z-direction. Since every layer is fourier transformed, step-functions edges require more fourier orders to resolve. This is a fundamental theorem for the convergence of Fourier series on discontinuous functions. Also, note the third layer in figure \ref{fig:staircase}  (a). Here, the grating is parameterized as a gradient index material of constant height, but oscillating refractive index. Though both of these cases are simplifications and have numerical artifacts, the convergence tests below show that the smoothing improves convergence. The smoothing is done by simply dividing the height of the grating oscillation that is within the given layer height. The code snippet is shown below.
 \begin{lstlisting}
-    ef get_staircase_sine_eps(x, params_x, grating_period, num_layers, eps_high, eps_low=1., subpixel=True, y=None, params_y=None, grating_period_y=None):
+    def get_staircase_sine_eps(x, params_x, grating_period, num_layers, eps_high, eps_low=1., subpixel=True, y=None, params_y=None, grating_period_y=None):
     """Generate sine grating in staircase approximation. Supports 1D and 2D gratings."""
     params_x, params_y_split = split_params_3d(params_x)
     params_y = params_y if params_y is not None else params_y_split
@@ -71,7 +71,7 @@ The hars edges come solely from the discretization along the z-direction. Since 
     
     profile_x, height_x = _compute_1d_profile(x, params_x, grating_period)
     # Here was logic for the 3d. profile if params_y is given. Its a sum of two _compute_1d_profiles.
-    
+
         eps_profile = profile_x
         grating_height = height_x
         nx = x.shape[0]
@@ -89,6 +89,8 @@ The hars edges come solely from the discretization along the z-direction. Since 
         
     return eps_low + (eps_high - eps_low) * eps
 \end{lstlisting}
+The rest of the RCWA imlementation was about using TORCWA, and I will therefore just refer again to their article \cite{torcwa}.
+All of my own implementations are available on my github
 
 
 \section{Convergence tests}
