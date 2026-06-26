@@ -2,38 +2,159 @@
 \label{sec:methods}
 %and any classical optimization approaches used for data generation or baseline comparisons.
 \section{Numerical implementation}
+Even though the Fourier patterened data seems intuitive to use with a fourier domain methods, it should be noted that Grayscale structures are not isotropic layerwise in the z-direction.
+The grating pattern is a smoothly varying curve in 3D space, meaning that to use RCWA, the continuous sine curve must be split into multiple staircase step approximations. How this looks for varying step heights is shown in figure \ref{fig:staircase}
+
+\begin{figure}[h!]
+    \centering
+    
+    % --- Row 1: 5 Layers ---
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/convergence/staircase_approx_5.png}
+        \caption{Smoothed (5 layers)}
+        \label{fig:staircase_5}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/convergence/staircase_approx_no_smoothing_5.png}
+        \caption{No Smoothing (5 layers)}
+        \label{fig:staircase_ns_5}
+    \end{subfigure}
+    
+    \vspace{1em} % Adds vertical breathing room between rows
+    
+    % --- Row 2: 20 Layers ---
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/convergence/staircase_approx_20.png}
+        \caption{Smoothed (20 layers)}
+        \label{fig:staircase_20}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/convergence/staircase_approx_no_smoothing_20.png}
+        \caption{No Smoothing (20 layers)}
+        \label{fig:staircase_ns_20}
+    \end{subfigure}
+    
+    \vspace{1em}
+    
+    % --- Row 3: 100 Layers ---
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/convergence/staircase_approx_100.png}
+        \caption{Smoothed (100 layers)}
+        \label{fig:staircase_100}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/convergence/staircase_approx_no_smoothing_100.png}
+        \caption{No Smoothing (100 layers)}
+        \label{fig:staircase_ns_100}
+    \end{subfigure}
+    
+    \caption{(a)-(f): Comparison of the staircase approximation with and without subpixel smoothing for 5, 20, and 100 layers. }
+    \label{fig:staircase}
+\end{figure}
+In the figure, 10 harmonics are included in the x-direction, all with amplitude $10 \text{nm}$. This yields a total grating height of $200 \text{nm}$. The staircase is binarized by thresholding - if the sine wave in the given $z$ value is as high, it gets to be grating material, otherwise it is air. The curve is drawn on a x,y resolution, far above the Nyquist limit of the highest grating profile order (here $n_x$ = 5000 corresponding to a frequency of $5\frac{\text{pixels}}{nm}$, while the highest grating order is has a frequency of $0.01\frac{\text{oscillations}}{nm}$).
+The hars edges come solely from the discretization along the z-direction. Since every layer is fourier transformed, step-functions edges require more fourier orders to resolve. This is a fundamental theorem for the convergence of Fourier series on discontinuous functions. Also, note the third layer in figure \ref{fig:staircase}  (a). Here, the grating is parameterized as a gradient index material of constant height, but oscillating refractive index. Though both of these cases are simplifications and have numerical artifacts, the convergence tests below show that the smoothing improves convergence. The smoothing is done by simply dividing the height of the grating oscillation that is within the given layer height. The code snippet is shown below.
+\begin{lstlisting}
+    ef get_staircase_sine_eps(x, params_x, grating_period, num_layers, eps_high, eps_low=1., subpixel=True, y=None, params_y=None, grating_period_y=None):
+    """Generate sine grating in staircase approximation. Supports 1D and 2D gratings."""
+    params_x, params_y_split = split_params_3d(params_x)
+    params_y = params_y if params_y is not None else params_y_split
+    grating_period_y = grating_period_y or grating_period
+    
+    profile_x, height_x = _compute_1d_profile(x, params_x, grating_period)
+    # Here was logic for the 3d. profile if params_y is given. Its a sum of two _compute_1d_profiles.
+    
+        eps_profile = profile_x
+        grating_height = height_x
+        nx = x.shape[0]
+        thresholds = torch.arange(0, num_layers, device=x.device) * (grating_height / num_layers)
+        thresholds = thresholds.unsqueeze(0).expand(nx, -1)
+        eps_profile = eps_profile.unsqueeze(1).expand(-1, num_layers)
+
+    cell_height = grating_height / num_layers
+    eps = torch.clamp((eps_profile - thresholds) / cell_height, min=0, max=1)
+    
+    if not subpixel:
+        # The Straight-Through Estimator (STE) trick
+        # This avoids killing gradients
+        eps = (torch.round(eps) - eps).detach() + eps
+        
+    return eps_low + (eps_high - eps_low) * eps
+\end{lstlisting}
+
 
 \section{Convergence tests}
 To ensure the numerical stability and accuracy of the RCWA solver, rigorous convergence testing is performed. 
-Convergence criteria largely depend on the number of Fourier orders ($N$) retained and the number of layers in the staircase approximation of the fourier patterned grating.
+Convergence criteria largely depend on the number of Fourier orders $N$ retained and the number of layers in the staircase approximation of the fourier patterned grating.
 In both cases of figure \ref{fig:convergence_num_layers} and \ref{fig:convergence_order_N}, the error is compared relative to the absorptance curved obtained from the high fidelity comsol simulation of a single fourier patterned grating.
+The incident angle for these convergence simulations is $30\deg$, for no other reason than having some field components in all directions. Especially of note is it that the p-polarization has a field component in the propagation direction $z$.
+as already discussed in section \ref{sec:rcwa}, discontinuities at boundary conditions, especially for the propagation direction. This theoretical expectation fits with the observed behavior of the convergence tests for RCWA vs increased number of layers and increased order of Fourier truncation. The sudden stop in improvement for figure \ref{fig:convergence_order_N} at 10 Fourier orders for s-polarization only suggest that here, the staircase approximation is fully resolved in diffraction orders.
 
-\begin{figure}[htbp]
+\begin{figure}[h!]
     \centering
     \includegraphics[width=0.85\textwidth]{figures/convergence/convergence_num_layers_100nm.png}
-    \caption{Convergence of the RCWA implementation as a function of the number of staircase layers for a grating of height 100 nm.}
+    \caption{Convergence of the RCWA implementation as a function of the number of staircase layers for a grating of height 100 nm. The convergence test is run with 20 retained fourier orders.
+    Left: Mean error over the spectrum. Right: Max error over the spectrum.}
     \label{fig:convergence_num_layers}
 \end{figure}
 
-\begin{figure}[htbp]
+Figure \ref{fig:convergence_num_layers} shows the convergence vs the obtained absorptance curve from COMSOl as a function of the number of layers at a constant Fourier truncation order. Figure \ref{fig:convergence_order_N} shows convergence vs truncated Fourier order at a constant number of layers. Both figures simulates the same grayscale structure,
+a Fourier patterned grating of the form of equation \ref{eq:grating} with only the first amplitude nonzero at $a_x=50$, meaning the grating has a total height of $100$ nm.
+A general rule of thumb for convergence tests is that the overall physics is captured, when the improvement of the parameter under question is linear in a log plot. It might be argued that this occurs already at 10 layers yielding $10 \text{nm}$ per layer for the grating staircase,  and a fourier truncation order of 10. This also suggests that the variable held constant is sufficient for each plot.
+For these values, the mean error is below 0.01, or since it is average absorptance, correspond to an error of $\pm 1\%$ of absorbed light power. The max error for these values is on the order of $0.1$ or $10\%$ absorptance error. Though this sounds substantial, it is most likely a poorly resolved resonance peak as discussed in section \ref{sec:fabry-perot}, and the finite small width makes the weight of the error negligible. The average error is more important.
+\begin{figure}[h!]
     \centering
     \includegraphics[width=0.85\textwidth]{figures/convergence/convergence_order_N_100nm.png}
-    \caption{Convergence of the RCWA implementation as a function of the number of Fourier orders for a grating of height 100 nm.}
+    \caption{Convergence of the RCWA implementation as a function of the number of Fourier orders for a grating of height 100 nm.
+    Left: Mean error over the spectrum. Right: Max error over the spectrum.}
     \label{fig:convergence_order_N}
 \end{figure}
-
-\begin{figure}[htbp]
+With this COMSOL validation in place, 
+\begin{figure}[ht!]
     \centering
     \includegraphics[width=0.48\textwidth]{figures/convergence/sweep_combination_100nm.png}
     \includegraphics[width=0.48\textwidth]{figures/convergence/sweep_combination_3d_100nm.png}
-    \caption{Convergence sweeps and combinations for the 100 nm grating structure. Left: 1D sweep combinations. Right: 3D convergence combinations.}
+    \caption{Convergence sweeps and combinations for the 100 nm grating structure. Left: 1D sweep combinations. Right: 3D convergence combinations.
+    Left: Combinations of order N and Number of layers for 2D grating. Right: Combinations of Order N and Number of layers for a 3D grating.}
     \label{fig:convergence_combinations}
 \end{figure}
 
 \section{Machine Learning Surrogates}
-\label{subsec:ml_surrogates}
-% Describe the forward models (e.g., MLP, SpatialCNN, SIREN) and the inverse/generative models (e.g., Tandem networks, Contrastive VAE).
+The training loss curves of the final training run for the 2D dataset with the most data is seen in figure \ref{fig:loss_curves}. I have included this figure in the methods section, and not the results section, because
+i wanted to discuss how the weights of the trained model are stored. I have implemented a custom exponential moving average tracker, to handle the noisy validation scores seen in the \texttt{skip\_cnn} and \texttt{SIREN} models.
+Both of these models have a convolution based encoder, which can be sensitive to edges and small changes in the weights. As such, both the train data and validation data is more noisy than the forward mlp.
+The forward mlp is seen to slightly overfit to the train data, yet with much worse performance than the two other models.
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.9\textwidth]{figures/loss_curves/forward_loss_curves_Si_TiO2_Si3N4.png}
+    \caption{Training and validation loss curves for the surrogate models trained on the full dataset (100\% train set).}
+    \label{fig:loss_curves}
+\end{figure}
 
-\section{Optimization Strategies}
-\label{subsec:optimization_strategies}
-% Outline the active learning loop, surrogate optimization techniques, and how candidates are proposed and verified.
+The $1\%$ mean error discussed in last section represents in some way the aleatoric, or irreducible, uncertainty of the final dataset\footnote{\url{https://en.wikipedia.org/wiki/Uncertainty_quantification}}. Even with more datapoints, this error stems from the choice of solver and error from finite methods. Apart from making the problem exponentially more complex, there is nothing to do to reduce it, and it would still only get reduced linearly in a log scale.
+The final training loss/validation error of the machine learning surrogates represents in some way the epistemic uncertainty  of the surrogate models. This could be reduced by tracking the loss differently, improving model expressiveness, matching the number of model parameters to the problem at hand, or any number of improvements on the model side. But the final frontier can never be better than the $1\%$ error of the dataset itself.
+
+During training of the machine learning surrogate models, weights were stored using exponential moving average. The moving average was handled by a small custom tracker, seen below
+After every single batch, the weights of the tracker are updated smoothly by exponential decay, as seen below in the code snippet.
+\begin{lstlisting}
+    ...code...
+    "self._shadow stores the weights, self._best_snapshot stores the best seen weights"
+    @torch.no_grad()
+    def update(self, model: nn.Module) -> None:
+        """Step the EMA after one optimiser update."""
+        d = self.decay
+        for name, param in model.named_parameters():
+            self._shadow[name].mul_(d).add_(param.data, alpha=1.0 - d)
+
+    def snapshot(self) -> None:
+        """Save the current EMA shadow as the best seen so far."""
+        self._best_snapshot = {k: v.clone() for k, v in self._shadow.items()}
+\end{lstlisting}

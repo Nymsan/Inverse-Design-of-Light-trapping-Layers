@@ -5,9 +5,9 @@ I will discuss the results as I present them, as I believe this fits the spirit 
 
 \section{Generated Dataset}
 First, I present the generated dataset, both for 2D and 3D data. As described in sections \ref{sec:methods}, the data has been samled using Latin Hypercube Sampling, to try to explore the 16 dimensional as well as possible.
-Table \ref{tab:sampled_parameters} shows the stat overview of the sampled dataset for both the generated 2D and 3D dataset. The choice of film height was inspired by the discussion in section \ref{sec:fabry}, since a much higher film would make the resonance peaks have inter peak distances shorter than the wavelength sampling rate.
-While this might prove to not be catastrophic, I'd rather stay above or close to the nyquist-limit to properly capture the peaks, especially as the main loss target for the surrogate models was an fft inspired loss.
-Since sampling a varied range of the possible dataspace is essentially a monte-carlo optimization technique, this dataset sampling will act as a powerful baseline comparison for the trained surrogate models.
+Table \ref{tab:sampled_parameters} shows the stat overview of the sampled dataset for both the generated 2D and 3D dataset. The choice of film height was inspired by the discussion in section \ref{sec:fabry-perot}, since a much higher film would make the resonance peaks have inter peak distances shorter than the wavelength sampling rate.
+While this might prove to not be catastrophic, I'd rather stay above or close to the Nyquist-limit to properly capture the peaks, especially as the main loss target for the surrogate models was an fft inspired loss.
+Since sampling a varied range of the possible dataspace is essentially a monte-carlo optimization technique, this dataset sampling will act as a powerful baseline comparison for the trained surrogate models. The height per layer in the staircase approximation and the fourier truncation order for the 2D dataset exceed what was deemed acceptable in section \ref{sec:methods}, and is close to the acceptable limit for the 3D dataset.
 \begin{table}[htbp]
 \centering
 \caption{Overview of sampled parameters for the 2D and 3D datasets. *Note that half the samples of the 2D dataset was at normal incidence, while the rest where in the noted range. For the 3D dataset, note that half the samples was at $495$ nm, and the rest were sampled between $300$ nm and $1100$ nm.}
@@ -18,8 +18,9 @@ Since sampling a varied range of the possible dataspace is essentially a monte-c
 \cmidrule(lr){3-4} \cmidrule(l){5-6}
 \textbf{Parameter} & \textbf{Symbol} & \textbf{Min} & \textbf{Max} & \textbf{Min} & \textbf{Max} \\
 \midrule
-Number of Samples & $N$ & \multicolumn{2}{c}{$120000^*$} & \multicolumn{2}{c}{$15000^*$} \\
+Number of Samples & $N$ & \multicolumn{2}{c}{$119775^*$} & \multicolumn{2}{c}{$14999^*$} \\
 Number of Harmonics & $N_h$ & \multicolumn{2}{c}{$7$} & \multicolumn{2}{c}{$5\times 2$} \\
+Grating Period & $\Lambda_x, \Lambda_y$ & \multicolumn{2}{c}{$1000 \text{nm}, 0 \text{nm}$} & \multicolumn{2}{c}{$1000 \text{nm}, 1000\text{nm}$} \\
 Film Hei    ght (nm) & $h$ & $1000 \text{nm} $& $3000 \text{nm}$ & $1000 \text{nm}$ & $3000 \text{nm}$ \\
 Incidence Angle ($^\circ$) & $\theta$ & $0$ & $45$ & $0$ & $0$ \\
 Amplitudes & $A$ & $0 \text{nm}$ & $15 \text{nm} $& 0 $\text{nm}$& $15 \text{nm}$ \\
@@ -32,10 +33,12 @@ Height per Layer (nm) & $h_{layer}$ & \multicolumn{2}{c}{$5\text{nm}$} & \multic
 \end{table}
 The 3D dataset was generated using an a fourier order $M=N=8$. Refering to section \ref{sec:rcwa}, the algorithmic time complexity of RCWA even with a truncation order
 of 8 compared to twenty, is still about 32 times higher. To mitigate this, fewer samples were sampled, and only two wavelengths were sampled; one random, in the given range, and one at $495$ nm, which is the maximum of the AM1.5g solar spectrum.  
-Select visualizations of the generated dataset are included here, and more in the appendix. 
+Select visualizations of the generated dataset are included here, and more in the appendix for both the 2D and 3D datasets \ref{sec:datasetScatterPlots}.
 
 Figure \ref{fig:2dDatasetHists} shows a histogram over the 2D dataset distribution, both the short circuit current and average absorptance. Matchin these curves will be the target of the surrogte models, as this will signify that they have sufficiently learned the data space.
 It is interesting to note that while Si$_3$N$_4$ has the generally highest average absorptance, the short cirtuit current of TiO$_2$ about matches Si$_3$N$_4$. This might signify that TiO$_2$ is better at trapping light where more photons are present. We can compare directly by looking at the scatter plots in the appendix, section \ref{sec:datasetScatterPlots}.
+The reason that the number of samples for the 2D dataset is not a clean 120000, is that one of the batches exceeded the data generation scripts wall time on the HPC, losing 200 datapoints. Also, of all the other batches, 25 single curves had absorptance values exceeding 1, most likely owing to numerical instabilities in the RCWA algorithm, that occur when a scattered order is close to half the spatial period, as discussed earlier.
+Only 1 datapoint from the 3D dataset  has absorptance larger than $1$. This seems to indicate that 3D datapoints are more robust against Wood's anomalies or ill-conditioned linear systems, since there are more diffracted orders, and the matrices are less likely to become singular. 
 
 \begin{figure}[htbp]
     \centering
@@ -64,7 +67,9 @@ It is interesting to note that while Si$_3$N$_4$ has the generally highest avera
 
 
 \section{Surrogate Model Training}
-Table \ref{tab:frac_models_stats} summarizes the training history of various surrogate models across different sizes of the dataset ($10\%$, $25\%$, $50\%$, and $100\%$). For each dataset configuration, three architectures were trained: an MLP baseline (\texttt{forward\_mlp}), a Convolutional Neural Network with skip connections (\texttt{skip\_cnn}), and a SIREN network.
+Table \ref{tab:frac_models_stats} summarizes the training history of various surrogate models across different sizes of the training dataset ($10\%$, $25\%$, $50\%$, and $100\%$). For each dataset configuration, three architectures were trained: an MLP baseline (\texttt{forward\_mlp}), a Convolutional Neural Network with skip connections (\texttt{skip\_cnn}), and a SIREN network \texttt{siren}.
+The study here is to see how little data we can get away with generating for the models. It is seen that for low train dataset sizes, the \texttt{skip\_cnn} architecture dominates. From $25\%$ of the dataset and up, \texttt{siren} competes closely with the \texttt{skip\_cnn}, and actually performs best at 50\% of the training set size.
+The loss curves of the full dataset training are seen in figure \ref{fig:loss_curves}. By definition, the training/validation data set had a 80-20\% split between all the data. This might be argued to be a bit high, but it makes the validation errors more precise.
 
 \begin{table}[htbp]
     \centering
@@ -73,13 +78,7 @@ Table \ref{tab:frac_models_stats} summarizes the training history of various sur
     \label{tab:frac_models_stats}
 \end{table}
 
-\begin{figure}[htbp]
-    \centering
-    \includegraphics[width=0.9\textwidth]{figures/loss_curves/forward_loss_curves_Si_TiO2_Si3N4.png}
-    \caption{Training and validation loss curves for the surrogate models trained on the full dataset (100\% train set).}
-    \label{fig:loss_curves}
-\end{figure}
-\input{tables/timing_stats.tex}
-
+It is noted that the $\texttt{forward\_mlp}$ seems to stop improving after just $25\%$ of the training data set, as none of the test scores noticeably improve for more data afterwards.
+The $\texttt{SIREN}$ seems to be saturated after $50\%$ of the training data set. It is not certain if the $\texttt{skip\_cnn}$ is fully saturated after $100\%$ of the training data set, but the returns seem to be diminishing. Though the \texttt{forward\_mlp} saturates much earlier, validation scores are much worse. The model is just less expressive than the other two models, but it provides a good baseline.
 
 \input{tables/timing_stats.tex}

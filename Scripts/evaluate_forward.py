@@ -34,11 +34,11 @@ from Utils.checkpoint import load_forward_model, _FORWARD_FILENAMES
 
 plt.rcParams.update({
     "font.size": 18, 
-    "axes.titlesize": 24, 
+    "axes.titlesize": 22, 
     "axes.labelsize": 16,
-    "xtick.labelsize": 14,
-    "ytick.labelsize": 14,
-    "legend.fontsize": 14,
+    "xtick.labelsize": 16,
+    "ytick.labelsize": 16,
+    "legend.fontsize": 16,
     "figure.titlesize": 20,
     "figure.dpi": 150, 
     "savefig.dpi": 150,
@@ -111,7 +111,7 @@ def plot_loss_curves(all_history: dict, save_path: str, train_info: str):
         ax.legend()
         ax.grid(True, alpha=0.3)
         
-    plt.suptitle(f"Forward Training Loss Curves ({train_info})", fontsize=15)
+    plt.suptitle(f"Forward Training Loss Curves ({train_info})")
     plt.tight_layout()
     plt.savefig(save_path)
     plt.close()
@@ -186,7 +186,7 @@ def plot_forward_parity(models: dict[str, nn.Module], val_loader, save_path: str
         ax.set_xlabel(f"True {metric_name}")
         ax.set_ylabel(f"Pred {metric_name}")
         ax.set_aspect("equal")
-        ax.set_title(format_model_name(name), fontsize=14, pad=15)
+        ax.set_title(format_model_name(name), pad=15)
         
         # Create single histogram plot
         save_dir = Path(save_path).parent
@@ -218,13 +218,13 @@ def plot_forward_parity(models: dict[str, nn.Module], val_loader, save_path: str
             
         ax_hist.set_xlabel(metric_name)
         ax_hist.set_ylabel("Count")
-        ax_hist.set_yscale("log")
+        #ax_hist.set_yscale("log")
         ax_hist.set_title("Validation Distribution (True vs Predicted)")
         ax_hist.legend()
         
         suptitle = f"{format_model_name(name)} - Performance Histograms"
         if filter_title: suptitle += f"\n({filter_title})"
-        fig_hist.suptitle(suptitle, fontsize=12)
+        fig_hist.suptitle(suptitle)
         
         hist_save_path = save_dir / f"histogram_{name}.png"
         
@@ -302,7 +302,7 @@ def plot_spectrum_samples(models: dict[str, nn.Module], val_loader, save_path: s
                 ax.set_title(f"{pol_label} (inc={inc_val:.1f}°)")
                 
                 if pol_idx == 0:
-                    ax.legend(loc="upper right", fontsize=8)
+                    ax.legend(loc="upper right")
                 if i == n_samples - 1:
                     ax.set_xlabel("Wavelength (nm)")
                     
@@ -335,21 +335,21 @@ def plot_spectrum_samples(models: dict[str, nn.Module], val_loader, save_path: s
             c_phase = cmap(0.9)
             
             ax_geo.bar(x_pos, amps, color=c_amp, edgecolor="black")
-            ax_geo.set_ylabel("Amplitude (nm)", color=c_amp, fontsize=10)
+            ax_geo.set_ylabel("Amplitude (nm)", color=c_amp)
             ax_geo.tick_params(axis='y', labelcolor=c_amp, labelsize=9)
             ax_geo.tick_params(axis='x', labelsize=9)
             
             ax_p2 = ax_geo.twinx()
             ax_p2.plot(x_pos, phases, 'o', color=c_phase, markersize=5, markeredgecolor="black")
-            ax_p2.set_ylabel("Phase (rad)", color=c_phase, fontsize=10)
+            ax_p2.set_ylabel("Phase (rad)", color=c_phase)
             ax_p2.tick_params(axis='y', labelcolor=c_phase, labelsize=9)
             ax_p2.set_ylim(-0.5, 2 * np.pi + 0.5)
             
-            ax_geo.set_title(f"h: {h_val:.0f}nm, inc: {inc_val:.0f}°", fontsize=11)
+            ax_geo.set_title(f"h: {h_val:.0f}nm, inc: {inc_val:.0f}°")
             if i == n_samples - 1:
                 ax_geo.set_xlabel("Harmonic index")
 
-        fig.suptitle(f"Spectrum Samples ({filter_title})", fontsize=16)
+        fig.suptitle(f"Spectrum Samples ({filter_title})")
         model_save_path = save_path.replace(".png", f"_{name}.png")
         plt.savefig(model_save_path)
         plt.close()

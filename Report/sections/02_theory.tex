@@ -354,15 +354,21 @@ The target is the absorptance curve, no matter the input space. If the design sp
 
 One of the upsides of RCWA is that its algorithmic time does not depend on the size of the optical system. The entire calculation takes place in fourier space.
 This also leads to one of its largest downsides. Poorly truncated fourier series, that cant resolve the periodic structure leads to ill-conditioning of the problem. If structures have harsh, sharp edges, Gibbs phenomenon will require many terms to properly resolve the edges in fourier space.
-According to the boundary conditions of Maxwell's equations, the normal component of the electrical field must be discontinuous at a permitivity shift. However, since RCWA is a fourier domain method, if a particular layer is not resolved well enough or exhibits gibbs artefacts, the normal component of the predicted fields might show discontinuities even where there should be none.
-An example of this will be shown in the methods section later.
+According to the boundary conditions of Maxwell's equations, the normal component of the electrical field must be discontinuous at a permitivity shift. However, since RCWA is a fourier domain method, if a particular layer is not resolved well enough or exhibits gibbs artefacts, the normal component of the predicted fields might show discontinuities even where there should be none, especially in the propagation direction $z$, as this is where the boundary conditions are enforced.
+An example of this will be shown in the section \ref{sec:methods}. TORCWA, uses pytorches \texttt{linalg.inv} module, which is known to be prone to throw errors for close to singular matrices.
+Both solving the fields themselves and propagating the $S$ Matrices uses a linalg.inv. In fact one of the terms in the Redheffer star product includes $(I - R_a R_b)^-1$. If light ever hits a highly resonant condition, such as a so called Rayleigh anomaly, where the $k_z$ vector is kicked close to zero from the structures periodicity, the forward and backward mode reflection matrices' product may approach the identity, the total $S$ matrix ill-conditioned. This has not been a big problem for my data generation, as I will present, but it has turned out to be a problem for the baseline, classical topology optimization I perfomed.
+
 
 \section{Finite Element Method}
-
+In this project, I have used the commercial finite-element method optics solver COMSOL Multiphysics to perform convergence tests of RCWA. COMSOL allows gradient calculations by the adjoint method, and is widely used in topology optimization.
+In general, it is a slower solver than RCWA however. complexity of the solved matrices scales with number of mesh elements in the simulatiion, which again scales with size of the physical domain, quadratically for 2D simulations and by the power of three in 3D simulations.
+more often than not, the finite element method divides a problem into triangular meshed subdomains, and fits linear interpolation terms between all mesh points. These interpolation term are given by some basis, often polynomial, and a general differential operator can be turned into
+a residual algebraic minimization problem. The advantages of a flexible meshing such as this is the ability to accurately represent complex geometries such as curves. The Fouirer patterned gratings of this project benefit from this, and as such doesnt suffer as much from discretization as RCWA does.  
+The disadvantages are most of all the time complexity of the solutions. It scales worse than RCWA both in memory and time. For more details of finite element method, I refer to \cite{numerical_photonics}.
 
 \section{The Adjoint Method}
 \label{sec:adjoint}
-Nanophotonic topology optimization leverages computational optimization  techniques to discover nonintuitive, compact devices, with a high performance
+Traditional nanophotonic topology optimization leverages computational optimization techniques to discover nonintuitive, compact devices, with a high performance
 on a clearly defined figure-of-merit. As described by \cite{Hughes2018}, adjoint inverse design starts with the figure of merit,
 \begin{equation}
 \label{eq:FoM}
@@ -413,4 +419,6 @@ Optimization still requires solving large scale forward problems for every singl
 The next section will describe the theory of the machine learning methods utilized in this project.
 
 \section{Machine learning models for predicting absorptance curves.}
-Neural networks have many compelling advantages, over classical field solvers.
+Neural networks have many compelling advantages, over classical field solvers. Being universal function approximators, It is a natural thought to ask whether we can simply learn the underlying mapping from input design parameters to output absorptance curves directly, skipping completely the electromagnetic field construction.
+Neural networks implemented in modern, auto differentiable software such as pytorch are massively scalable, batches input space parameters on the GPU, and provides potential massive speedups. The challenge will be to see whether the machine learning surrogates can generalize beyond the dataset maxima. Even if they can not, there might still be useful advantages to the surrogate models, such as using them as a scout for informed starting points for classical topology optimization, or
+interpolation to higher spatial resolution from low wavelength resolution data.
