@@ -40,7 +40,7 @@ def main():
             print(f"Warning: Model {model_path} not found.")
 
     # Load 10 random samples across all materials
-    dataset_path = ckpt_dir / "dataset_splits.pt"
+    dataset_path = PROJECT_ROOT / "Data" / "LHS_Dataset_Si" / "val_dataset.pt"
     if not dataset_path.exists():
         print(f"Dataset {dataset_path} not found.")
         return

@@ -33,6 +33,14 @@ plt.rcParams.update({
     "savefig.dpi": 150,
 })
 
+# Per-material colors — match the matplotlib default cycle order used in
+# evaluate_dataset_baseline.py (Si=C0, TiO2=C1, Si3N4=C2)
+MATERIAL_COLORS = {
+    "Si":    "#1f77b4",  # tab:blue
+    "TiO2":  "#ff7f0e",  # tab:orange
+    "Si3N4": "#2ca02c",  # tab:green
+}
+
 def parse_args():
     p = argparse.ArgumentParser(description="Evaluate 2D dataset baseline statistics and distributions.")
     p.add_argument("--data_dir", type=str, default=None,
@@ -224,45 +232,43 @@ def analyze_dataset_folder(data_path: Path, args):
     out_dir.mkdir(parents=True, exist_ok=True)
     
     # Plotting
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6), gridspec_kw={'width_ratios': [1, 1.2]})
-    
-    # Left: Histogram of spectrum-averaged absorptances
-    counts, bins, patches = ax1.hist(spectrum_averaged_abs, bins=50, edgecolor='black', alpha=0.7, color='#1f77b4')
+    mat_color = MATERIAL_COLORS.get(material_name, "#1f77b4")
     title_suffix = f"\n({get_plot_title_suffix(args)})" if get_plot_title_suffix(args) else ""
+    folder_suffix = get_folder_name(args)
+
+    # --- Figure 1: Histogram of spectrum-averaged absorptances ---
+    fig_hist, ax1 = plt.subplots(figsize=(8, 6))
+    counts, bins, patches = ax1.hist(spectrum_averaged_abs, bins=50, edgecolor='black', alpha=0.7, color=mat_color)
     ax1.set_title(f"Spectrum-Averaged Absorptance\n({material_name}){title_suffix}")
     ax1.set_xlabel(f"Average Absorptance ({target_name})")
     ax1.set_ylabel("Count")
     ax1.grid(True, linestyle=':', alpha=0.6)
-    
-    # Right: Scatter Plot of Wavelength vs Absorptance colored by wavelength
-    # We tile wavelengths for all samples, and flatten the absorptance spectrum
+    plt.tight_layout()
+    hist_name = f"dataset_baseline_2d_{target_name}_{args.split}_{folder_suffix}_hist.png"
+    hist_path = out_dir / hist_name
+    plt.savefig(hist_path, dpi=200)
+    plt.close()
+    print(f"Saved histogram to: {hist_path}")
+
+    # --- Figure 2: Spectral Response Density scatter ---
     wls_scatter = np.tile(WAVELENGTHS, N)
     abs_scatter = avg_abs_spectrum.flatten()
-    
-    # Plot with small markers and alpha to handle the high density beautifully
+    fig_sc, ax2 = plt.subplots(figsize=(8, 6))
     sc = ax2.scatter(wls_scatter, abs_scatter, c=wls_scatter, cmap='turbo', s=1, alpha=0.15, edgecolors='none', rasterized=True)
-    
-    # Add a clean colorbar
-    cbar = fig.colorbar(sc, ax=ax2)
+    cbar = fig_sc.colorbar(sc, ax=ax2)
     cbar.set_label("Wavelength (nm)")
-    
-    title_suffix = f"\n({get_plot_title_suffix(args)})" if get_plot_title_suffix(args) else ""
     ax2.set_title(f"Spectral Response Density\n({material_name}){title_suffix}")
     ax2.set_xlabel("Wavelength (nm)")
     ax2.set_ylabel(f"Absorptance ({target_name})")
     ax2.set_xlim(280, 1120)
     ax2.set_ylim(-0.05, 1.05)
     ax2.grid(True, linestyle=':', alpha=0.6)
-    
     plt.tight_layout()
-    
-    folder_suffix = get_folder_name(args)
-    plot_name = f"dataset_baseline_2d_{target_name}_{args.split}_{folder_suffix}.png"
-    save_path = out_dir / plot_name
-    plt.savefig(save_path, dpi=200)
+    scatter_name = f"dataset_baseline_2d_{target_name}_{args.split}_{folder_suffix}_scatter.png"
+    scatter_path = out_dir / scatter_name
+    plt.savefig(scatter_path, dpi=200)
     plt.close()
-    
-    print(f"\nSaved plots to: {save_path}")
+    print(f"Saved spectral scatter to: {scatter_path}")
     
     # ------------------ Plotting Jsc ------------------
     # Calculate Jsc
@@ -306,41 +312,41 @@ def analyze_dataset_folder(data_path: Path, args):
         tot_grat_h = 2.0 * np.sum(params_x[idx, :, 0]) if params_x is not None else 0.0
         print(f"{rank+1:<6}{jsc_val:<16.4f}{h_val:<14.2f}{tot_grat_h:<20.2f}")
         
-    # Jsc Figure
-    fig_jsc, (ax1_j, ax2_j) = plt.subplots(1, 2, figsize=(15, 6), gridspec_kw={'width_ratios': [1, 1.2]})
-    
-    # Left: Jsc Histogram
-    ax1_j.hist(jsc, bins=50, edgecolor='black', alpha=0.7, color='#2ca02c')
-    ax1_j.set_title(f"Short-Circuit Current $J_{{sc}}$ Distribution\n({material_name}{title_suffix})")
+    # --- Jsc Figure 1: Histogram ---
+    fig_jsc_hist, ax1_j = plt.subplots(figsize=(8, 6))
+    ax1_j.hist(jsc, bins=50, edgecolor='black', alpha=0.7, color=mat_color)
+    ax1_j.set_title(f"Short-Circuit Current $J_{{sc}}$ Distribution\n({material_name}){title_suffix}")
     ax1_j.set_xlabel(r"Short-Circuit Current $J_{sc}$ (mA/cm$^2$)")
     ax1_j.set_ylabel("Count")
     ax1_j.grid(True, linestyle=':', alpha=0.6)
-    
-    # Right: Scatter Plot of Grating Height vs Jsc colored by Total Grating Height
+    plt.tight_layout()
+    jsc_hist_name = f"dataset_baseline_2d_jsc_{target_name}_{args.split}_{folder_suffix}_hist.png"
+    jsc_hist_path = out_dir / jsc_hist_name
+    plt.savefig(jsc_hist_path, dpi=200)
+    plt.close()
+    print(f"Saved Jsc histogram to: {jsc_hist_path}")
+
+    # --- Jsc Figure 2: Scatter Plot of Film Height vs Jsc ---
+    fig_jsc_sc, ax2_j = plt.subplots(figsize=(8, 6))
     if params_x is not None:
         tot_grat_hs = 2.0 * np.sum(params_x[:, :, 0], axis=1)
         # Sort by tot_grat_hs ascending so high values are drawn last (on top)
         sort_idx = np.argsort(tot_grat_hs)
         sc_j = ax2_j.scatter(hs[sort_idx], jsc[sort_idx], c=tot_grat_hs[sort_idx], cmap='viridis', s=15, alpha=0.7, edgecolors='none')
-        cbar_j = fig_jsc.colorbar(sc_j, ax=ax2_j)
+        cbar_j = fig_jsc_sc.colorbar(sc_j, ax=ax2_j)
         cbar_j.set_label("Total Grating Height (nm)")
     else:
-        # Scatter plot of h vs Jsc, simple
-        ax2_j.scatter(hs, jsc, color='#2ca02c', s=15, alpha=0.6, edgecolors='none')
-        
-    ax2_j.set_title(f"$J_{{sc}}$ vs Film Height\n({material_name}{title_suffix})")
+        ax2_j.scatter(hs, jsc, color=mat_color, s=15, alpha=0.6, edgecolors='none')
+    ax2_j.set_title(f"$J_{{sc}}$ vs Film Height\n({material_name}){title_suffix}")
     ax2_j.set_xlabel("Film Height (nm)")
     ax2_j.set_ylabel(r"Short-Circuit Current $J_{sc}$ (mA/cm$^2$)")
     ax2_j.grid(True, linestyle=':', alpha=0.6)
-    
     plt.tight_layout()
-    
-    jsc_plot_name = f"dataset_baseline_2d_jsc_{target_name}_{args.split}_{folder_suffix}.png"
-    jsc_save_path = out_dir / jsc_plot_name
-    plt.savefig(jsc_save_path, dpi=200)
+    jsc_scatter_name = f"dataset_baseline_2d_jsc_{target_name}_{args.split}_{folder_suffix}_scatter.png"
+    jsc_scatter_path = out_dir / jsc_scatter_name
+    plt.savefig(jsc_scatter_path, dpi=200)
     plt.close()
-    
-    print(f"Saved Jsc plots to: {jsc_save_path}")
+    print(f"Saved Jsc scatter to: {jsc_scatter_path}")
     print("=" * 80 + "\n")
 
 def main():

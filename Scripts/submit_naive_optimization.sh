@@ -21,8 +21,8 @@ MAT_NAME=${MATERIALS[$((LSB_JOBINDEX - 1))]}
 
 echo "=== Starting Naive Torcwa Optimization ==="
 echo "Material: $MAT_NAME"
-echo "Resolution: 10 nm (81 wavelengths)"
-echo "Method: L-BFGS-B (Gradients via Finite Difference)"
+echo "Resolution: 10 nm (161 wavelengths)"
+echo "Method: torcwa"
 echo "Budget: 300 Torcwa evaluations"
 echo "Queue: gpul40s"
 echo "========================================="

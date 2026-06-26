@@ -33,8 +33,8 @@ from Utils.utils import generate_test_batch
 from Utils.checkpoint import load_forward_model, _FORWARD_FILENAMES
 
 plt.rcParams.update({
-    "font.size": 16, 
-    "axes.titlesize": 18, 
+    "font.size": 18, 
+    "axes.titlesize": 24, 
     "axes.labelsize": 16,
     "xtick.labelsize": 14,
     "ytick.labelsize": 14,
@@ -92,7 +92,7 @@ def plot_loss_curves(all_history: dict, save_path: str, train_info: str):
     if not all_history:
         return
     n_models = len(all_history)
-    fig, axes = plt.subplots(1, n_models, figsize=(5 * n_models, 4), squeeze=False, sharey=True, layout="constrained")
+    fig, axes = plt.subplots(1, n_models, figsize=(6 * n_models, 6), squeeze=False, sharey=True, layout="constrained")
     axes = axes[0]
 
     for ax, (name, hist) in zip(axes, all_history.items()):
