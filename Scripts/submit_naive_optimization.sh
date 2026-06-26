@@ -20,27 +20,34 @@ MATERIALS=("Si" "TiO2" "Si3N4")
 MAT_NAME=${MATERIALS[$((LSB_JOBINDEX - 1))]}
 
 echo "=== Starting Naive Torcwa Optimization ==="
-echo "Material: $MAT_NAME"
-echo "Resolution: 10 nm (161 wavelengths)"
-echo "Method: torcwa"
-echo "Budget: 300 Torcwa evaluations"
-echo "Queue: gpul40s"
+echo "Material:   $MAT_NAME"
+echo "Harmonics:  7  |  order_N: 20  |  nx: 5000"
+echo "Amp bound:  0-15 nm per harmonic"
+echo "Reflector:  pec  |  height_per_layer: 5 nm"
+echo "Objective:  Jsc (mA/cm²)"
 echo "========================================="
 
-echo "=== Phase 1: Bounded Optimization (1000-3000nm) ==="
+echo ""
+echo "=== Phase 1: Bounded Optimization (h = 1000-3000 nm) ==="
 uv run python Scripts/evaluate_naive_optimization.py \
     --material $MAT_NAME \
-    --method lbfgs \
-    --max_evals 500 \
-    --out_dir Naive_Optimization_Bounded \
-    --h_val 1000 3000
+    --h_val 1000 3000 \
+    --objective jsc \
+    --n_iters 500 \
+    --n_restarts 5 \
+    --seed 42 \
+    --out_dir Results/naive_opt_bounded
 
-echo "=== Phase 2: Pinned Optimization (2000nm) ==="
+echo ""
+echo "=== Phase 2: Pinned Optimization (h = 2000 nm) ==="
 uv run python Scripts/evaluate_naive_optimization.py \
     --material $MAT_NAME \
-    --method lbfgs \
-    --max_evals 500 \
-    --out_dir Naive_Optimization_Pinned \
-    --h_val 2000
+    --h_val 2000 \
+    --objective jsc \
+    --n_iters 500 \
+    --n_restarts 5 \
+    --seed 42 \
+    --out_dir Results/naive_opt_pinned
 
+echo ""
 echo "=== Naive Torcwa Optimization Complete for $MAT_NAME ==="

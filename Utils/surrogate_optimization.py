@@ -96,7 +96,7 @@ class BatchedSurrogateOptimizer:
         
         # Dense pre-sampling
         n_dense_per_mat = n_dense_samples // n_allowed
-        chunk_size = 5000
+        chunk_size = 3000
         
         best_geos_dense = []
         

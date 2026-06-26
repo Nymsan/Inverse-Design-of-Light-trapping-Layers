@@ -185,7 +185,7 @@ class SkipCNN3D(nn.Module):
         nx:              int   = 64,
         grating_period:  float = 1000.0,
         conv_channels:   tuple = (8, 16, 16, 8),
-        kernel_size:     int   = 5,
+        kernel_size:     int   = 9,
         fc_dims:         tuple = (128,),
         dropout:         float = 0.0,
         n_outputs:       int   = 2,

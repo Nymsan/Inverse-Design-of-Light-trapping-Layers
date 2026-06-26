@@ -361,6 +361,18 @@ def main():
         
         best_target_for_mat = best_dataset_target.get(mat_name)
         best_abs_for_mat = best_dataset_abs.get(mat_name, -1.0)
+
+        # Dataset targets are stored at the dataset's native resolution (n_dataset_wl per pol).
+        # When --eval_resolution differs, we must interpolate to WAVELENGTHS before plotting.
+        if best_target_for_mat is not None:
+            n_dataset_wl = len(best_target_for_mat) // 2
+            ds_wls = np.linspace(300, 1100, n_dataset_wl)
+            ds_p = best_target_for_mat[:n_dataset_wl].numpy()
+            ds_s = best_target_for_mat[n_dataset_wl:].numpy()
+            bdt_p = np.interp(WAVELENGTHS, ds_wls, ds_p)
+            bdt_s = np.interp(WAVELENGTHS, ds_wls, ds_s)
+        else:
+            bdt_p = bdt_s = None
         
         c_surr, c_physics = cmap(0.5), cmap(0.8)
         c_dataset = cmap(0.2)
@@ -373,11 +385,11 @@ def main():
             for bmin, bmax in bands:
                 ax.axvspan(bmin, bmax, color="gray", alpha=0.15)
         ax.plot(WAVELENGTHS, target_np[:len(WAVELENGTHS)], "k--", lw=3, label="Target")
-        if best_target_for_mat is not None:
-            ax.plot(WAVELENGTHS, best_target_for_mat[:len(WAVELENGTHS)].numpy(), color=c_dataset, linestyle=":", lw=2, label="Best Dataset")
+        if bdt_p is not None:
+            ax.plot(WAVELENGTHS, bdt_p, color=c_dataset, linestyle=":", lw=2, label="Best Dataset")
         ax.plot(WAVELENGTHS, r["curve"][:len(WAVELENGTHS)].numpy(), linestyle="-", color=c_surr, lw=3, label="Surrogate")
         ax.plot(WAVELENGTHS, rcwa_p, linestyle="-", color=c_physics, lw=2.5, label="Torcwa Physics")
-        dataset_str = f" | Dataset Abs={best_abs_for_mat:.3f}" if best_target_for_mat is not None else ""
+        dataset_str = f" | Dataset Abs={best_abs_for_mat:.3f}" if bdt_p is not None else ""
         ax.set_title(f"Rank {rank}: {mat_name} (P-Pol)\nTorcwa Abs={rcwa_avg_abs:.3f} | Surr Abs={r['loss']:.4f}{dataset_str}", fontsize=16)
         ax.set_ylim(-0.05, 1.05)
         if idx == 0: ax.legend(fontsize=12)
@@ -389,11 +401,11 @@ def main():
             for bmin, bmax in bands:
                 ax.axvspan(bmin, bmax, color="gray", alpha=0.15)
         ax.plot(WAVELENGTHS, target_np[len(WAVELENGTHS):], "k--", lw=3, label="Target")
-        if best_target_for_mat is not None:
-            ax.plot(WAVELENGTHS, best_target_for_mat[len(WAVELENGTHS):].numpy(), color=c_dataset, linestyle=":", lw=2, label="Best Dataset")
+        if bdt_s is not None:
+            ax.plot(WAVELENGTHS, bdt_s, color=c_dataset, linestyle=":", lw=2, label="Best Dataset")
         ax.plot(WAVELENGTHS, r["curve"][len(WAVELENGTHS):].numpy(), linestyle="-", color=c_surr, lw=3, label="Surrogate")
         ax.plot(WAVELENGTHS, rcwa_s, linestyle="-", color=c_physics, lw=2.5, label="Torcwa Physics")
-        dataset_str2 = f" | Dataset Abs={best_abs_for_mat:.3f}" if best_target_for_mat is not None else ""
+        dataset_str2 = f" | Dataset Abs={best_abs_for_mat:.3f}" if bdt_s is not None else ""
         ax.set_title(f"Rank {rank}: {mat_name} (S-Pol)\nTorcwa Abs={rcwa_avg_abs:.3f} | Surr Abs={r['loss']:.4f}{dataset_str2}", fontsize=16)
         ax.set_ylim(-0.05, 1.05)
         ax.tick_params(axis='both', which='major', labelsize=12)
