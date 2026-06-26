@@ -1,4 +1,5 @@
 \chapter{Methods}
+This chapter some of the key methods and numerical details of the dataset generation, along with the network architectures of trained machine learning models.
 \label{sec:methods}
 %and any classical optimization approaches used for data generation or baseline comparisons.
 \section{Numerical implementation}
@@ -89,12 +90,50 @@ The hars edges come solely from the discretization along the z-direction. Since 
         
     return eps_low + (eps_high - eps_low) * eps
 \end{lstlisting}
+The machine learning target of this project is the absorptance in the film layer. As discussed previously, I found the dissipated power in the film layer by Poynting analysis. For the incident power, I ran a dummy simulation with just a free space input and output layer, with the same incident conditions of light. I kept track of the absorptance in both polarizations, which thanks to the $S$-matrix formulation of RCWA was obtained simultaneously. In COMSOL, a simulation for each polarization was made.
 The rest of the RCWA imlementation was about using TORCWA, and I will therefore just refer again to their article \cite{torcwa}.
-All of my own implementations are available on my github
+All of my own implementations are available on my github \url{https://github.com/Nymsan/Inverse-Design-of-Light-trapping-Layers/tree/main}
 
+\section{COMSOL implementation of a grating}
+\label{sec:comsol}
+A fourier patterned grating of a single oscillation with no phase shift and an amplitude of $50\text{nm}$ was implemented in COMSOL. Using COMSOL's built in material library, which refers to \url{https://refractiveindex.info/}, the geometry was split into multiple different domains.
+Figure \ref{fig:comsol} shows three images. Image (a) is an image of the geometry. The top domain, over the oscillation is silicon. Light propagates in the z direction, as shown by the small red arrow. The first domain under the oscillation is air. The boundary on the side are periodic, and the boundary at the bottom is not a perfect electric conductor, but an impedance boundary condition with refractive index $n = 0 + 100i$. This is done because RCWA doesnt have direct boundary conditions in the layer S-matrices. Or that is, as discussed in section \ref{sec:rcwa}, the standard boundary conditions of Maxwell's equations determine the S-matrices.
+As such, I have approximated a perfect electrical conductor (mirror) by an artificially high complex refractive index. This will have a small amount of phase change, but it is almost negligible. The bottom domain, the rectangle, is a perfectly matches layer - here reflected electrical fields disappear, so they dont scatter back and interfere.
+(b) shows the mesh, made according to the rule of thumb that there should be a minimum mesh size of at most $s_{mesh} = \frac{\lambda}{5n(\lambda)}$. To be sure that the simulation is high fidelity I used an even finer mesh size, closer to $s_{mesh} = \frac{\lambda}{60n(\lambda)}$ at the boundary between materials, and $s_{mesh} = \frac{\lambda}{10n(\lambda)}$ everywhere else. Figure (c) shows a close up of the fine triangular mesh.
+\begin{figure}[h!]
+    \centering
+    
+    % --- Left Image ---
+    \begin{subfigure}[b]{0.32\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/convergence/geometry and port.png}
+        \caption{An overview of the built fourier grated light trapping layer, here in pure silicon.}
+        \label{fig:geom}
+    \end{subfigure}
+    \hfill
+    % --- Center Image ---
+    \begin{subfigure}[b]{0.32\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/convergence/fine mesh.png}
+        \caption{the geometry with the mesh built on top}
+        \label{fig:mesh}
+    \end{subfigure}
+    \hfill
+    % --- Right Image ---
+    \begin{subfigure}[b]{0.32\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/convergence/very fine mesh.png}
+        \caption{A close up of the triangular meshing}
+        \label{fig:fine mesh}
+    \end{subfigure}
+    
+    \caption{Simple schematic of the COMSOL validation model}
+    \label{fig:comsol}
+\end{figure}
+To match the RCWA implementation, where the absorptance is split into absorptance of the different sublevels of $A_{film}$, $A_{grating}$ and $A_{reflector}$, I made a domain probe that integrated the dissipated heat everywhere in the film. COMSOL tracks the power of its own incident field, so dividing by the incident field was trivial.
 
 \section{Convergence tests}
-To ensure the numerical stability and accuracy of the RCWA solver, rigorous convergence testing is performed. 
+To ensure the numerical stability and accuracy of the RCWA solver, rigorous convergence testing is performed. All of the plots included here can be found for equivalent conditions except without the smoothing described in the last section in the appendix \ref{sec:nosubpix}. They can also be found for a grating of a height that is 10 times higher. The conclusions are much the same, but they are included for completeness sake.
 Convergence criteria largely depend on the number of Fourier orders $N$ retained and the number of layers in the staircase approximation of the fourier patterned grating.
 In both cases of figure \ref{fig:convergence_num_layers} and \ref{fig:convergence_order_N}, the error is compared relative to the absorptance curved obtained from the high fidelity comsol simulation of a single fourier patterned grating.
 The incident angle for these convergence simulations is $30\deg$, for no other reason than having some field components in all directions. Especially of note is it that the p-polarization has a field component in the propagation direction $z$.
@@ -112,6 +151,7 @@ Figure \ref{fig:convergence_num_layers} shows the convergence vs the obtained ab
 a Fourier patterned grating of the form of equation \ref{eq:grating} with only the first amplitude nonzero at $a_x=50$, meaning the grating has a total height of $100$ nm.
 A general rule of thumb for convergence tests is that the overall physics is captured, when the improvement of the parameter under question is linear in a log plot. It might be argued that this occurs already at 10 layers yielding $10 \text{nm}$ per layer for the grating staircase,  and a fourier truncation order of 10. This also suggests that the variable held constant is sufficient for each plot.
 For these values, the mean error is below 0.01, or since it is average absorptance, correspond to an error of $\pm 1\%$ of absorbed light power. The max error for these values is on the order of $0.1$ or $10\%$ absorptance error. Though this sounds substantial, it is most likely a poorly resolved resonance peak as discussed in section \ref{sec:fabry-perot}, and the finite small width makes the weight of the error negligible. The average error is more important.
+In addition to just the errors, the actual spectra are plotted for a selection of different number of layers in the appendix, section \ref{sec:comsolSpectra}.
 \begin{figure}[h!]
     \centering
     \includegraphics[width=0.85\textwidth]{figures/convergence/convergence_order_N_100nm.png}
@@ -119,15 +159,24 @@ For these values, the mean error is below 0.01, or since it is average absorptan
     Left: Mean error over the spectrum. Right: Max error over the spectrum.}
     \label{fig:convergence_order_N}
 \end{figure}
-With this COMSOL validation in place, 
+
+With this it has been shown that RCWA matches COMSOL for a high enough fourier truncation order and height per layer in the sinusoidal grating layer.
+As such, convergence tests can now be made against RCWA itself for a very high scattering order and number of layers. \cite{HOPE} argues that sinusoidal modulations scatter incoming electromagnetic fields to the order of the sine modulation of the material.
+To see what happens for a low truncation order, a convergence test against the sinc like grating plotted in figure \ref{fig:staircase}, with 10 oscillations of amplitude $10\text{nm}$ each has been made, and is shown in figure \ref{fig:convergence_combinations}. The right side plot has the same sinc like-structure, but with the oscillations in both the $x$- and $y$ directions.
+The truncated fourier order of the 3D test is the same for $x$ and $y$. This convergence test is especially interesting for 3D, and it is interesting to see whether the number of included harmonics in the grayscale Fourier patterened grating layer has to follow the Nyquist limit of twice as many diffracted RCWA orders. For the 2D combinations at the left, the RCWA order is taken all the way to $100$. The difference in time complexity of truncated order 100 in 2D and 3D is $10^6$, so the 3D order is capped at $12$.
+For the 2D combinations to the left in the figure, mean absolute error is close to $10^-3$ already for 10 truncated orders and $10$ staircase layers. Since the grayscale modulated grating contains 10 harmonics, this suggests that optical performance is not Nyquist limited by the truncated fourier order of RCWA.
+For the 3D combinations, very good performance at an error of less than $1\%$ already at 3 truncated orders is observed. As discussed in section \ref{sec:rcwa}, for 3D periodic gratings, there really exists $~N^2=9$ diffracted orders, which here corresponds to about an order of $10$, like the 2D results. 
+
 \begin{figure}[ht!]
     \centering
     \includegraphics[width=0.48\textwidth]{figures/convergence/sweep_combination_100nm.png}
     \includegraphics[width=0.48\textwidth]{figures/convergence/sweep_combination_3d_100nm.png}
     \caption{Convergence sweeps and combinations for the 100 nm grating structure. Left: 1D sweep combinations. Right: 3D convergence combinations.
-    Left: Combinations of order N and Number of layers for 2D grating. Right: Combinations of Order N and Number of layers for a 3D grating.}
+    Left: Combinations of order N and Number of layers for 2D grating. Right: Combinations of Order N and Number of layers for a 3D grating.
+    Both simulations are simulated at a wavelength of $\lambda = 700 \text{nm}$ and an incident angle of $\theta = 30 \deg$.}
     \label{fig:convergence_combinations}
 \end{figure}
+Because of these convergence tests, and to err on the side of caution, going forward, 2D datasets will be simulated with a height per layer of $5\text{nm}$ and a truncated order of $O_N = 20$. For 3D datasets, $O_{N,3D} = 8$ and a height per layer of $10 \text{nm}$ has been chosen. These results are summarized in table \ref{tab:sampled_parameters}
 
 \section{Machine Learning Surrogates}
 The training loss curves of the final training run for the 2D dataset with the most data is seen in figure \ref{fig:loss_curves}. I have included this figure in the methods section, and not the results section, because
