@@ -201,7 +201,7 @@ def main():
             n_restarts=args.restarts,
             n_dense_samples=args.dense_samples,
             steps=args.steps,
-            lr=0.005,
+            lr=0.001,
             allowed_materials=valid_mat_indices,
             top_k=args.top_k,
             show_progress=True,

@@ -25,8 +25,15 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from Utils.models import build_profile, MATERIAL_LIBRARY
 
 plt.rcParams.update({
-    "font.size": 11, "axes.titlesize": 13, "axes.labelsize": 12,
-    "figure.dpi": 150, "savefig.dpi": 150,
+    "font.size": 20,
+    "axes.titlesize": 20,
+    "axes.labelsize": 20,
+    "xtick.labelsize": 20,
+    "ytick.labelsize": 20,
+    "legend.fontsize": 20,
+    "figure.titlesize": 30,
+    "figure.dpi": 150,
+    "savefig.dpi": 150,
 })
 
 def parse_args():
@@ -230,7 +237,7 @@ def main():
     num_bins = max(1, int(np.round((grid_max - grid_min) / bin_width)))
     bin_edges = np.linspace(grid_min, grid_max, num_bins + 1)
     
-    fig_hist, ax_hist = plt.subplots(figsize=(8, 6))
+    fig_hist, ax_hist = plt.subplots(figsize=(9, 7))
     for mat_name, res in results.items():
         metric_vals = res["metric"]
         valid_idx = torch.where(metric_vals >= 0)[0]
@@ -240,7 +247,7 @@ def main():
         ax_hist.hist(valid_metric, bins=bin_edges, alpha=0.5, label=mat_name)
     ax_hist.set_xlabel(r"Short-Circuit Current $J_{sc}$ (mA/cm$^2$)" if args.optimize_jsc else "Average Absorptance")
     ax_hist.set_ylabel("Count")
-    ax_hist.set_yscale("log")
+    #ax_hist.set_yscale("log")
     
     title_parts = []
     if args.h_val is not None:
@@ -255,7 +262,7 @@ def main():
         title_parts.append("Matched Bands")
         
     title_str = " | ".join(title_parts) if title_parts else "All Geometries, All Angles"
-    ax_hist.set_title(f"Dataset Metric Distribution\n({title_str})", fontsize=11)
+    ax_hist.set_title(f"Dataset Metric Distribution\n({title_str})")
     ax_hist.legend()
     hist_path = out_dir / "dataset_metric_histogram.png"
     fig_hist.savefig(hist_path)
@@ -313,7 +320,7 @@ def main():
                     for bmin, bmax in bands:
                         ax_p.axvspan(bmin, bmax, color="gray", alpha=0.2)
                 mode_str = "Best" if plot_mode == "best" else "Worst"
-                ax_p.set_title(f"{mode_str} Rank {i+1} (Score: {score:.3f}) - P-Pol", fontsize=14)
+                ax_p.set_title(f"{mode_str} Rank {i+1} (Score: {score:.3f}) - P-Pol")
                 ax_p.set_ylabel("Absorptance")
                 
                 # Plot S-Pol
@@ -323,13 +330,13 @@ def main():
                 if bands:
                     for bmin, bmax in bands:
                         ax_s.axvspan(bmin, bmax, color="gray", alpha=0.2)
-                ax_s.set_title(f"{mode_str} Rank {i+1} (Score: {score:.3f}) - S-Pol", fontsize=14)
+                ax_s.set_title(f"{mode_str} Rank {i+1} (Score: {score:.3f}) - S-Pol")
                 
                 # Structure Cross Section
                 ax_xs = axes[i, 2]
                 ax_xs.plot(r_grid, prof, "k-", lw=2)
                 ax_xs.fill_between(r_grid, 0, prof, color="tab:blue", alpha=0.3)
-                ax_xs.set_title(f"Structure (Film Height={h_nm:.0f}nm, Inc Ang={inc_ang:.1f}°)", fontsize=14)
+                ax_xs.set_title(f"Structure (Film Height={h_nm:.0f}nm, Inc Ang={inc_ang:.1f}°)",)
                 ax_xs.set_ylim(0, max(120, grating_height * 1.2))
                 ax_xs.set_xlim(0, 1000)
                 ax_xs.set_ylabel("Thickness (nm)")
@@ -345,7 +352,7 @@ def main():
                 ax_p2.plot(x_pos, phases, 'o', color=cmap(0.9), markersize=8)
                 ax_p2.set_ylabel("Phase (rad)", color=cmap(0.9))
                 ax_p2.tick_params(axis='y', labelcolor=cmap(0.9))
-                ax_h.set_title("Harmonics Amplitudes & Phases", fontsize=14)
+                ax_h.set_title("Harmonics Amplitudes & Phases")
                 ax_h.set_xticks(x_pos)
                 
                 if i == k - 1:
@@ -354,7 +361,7 @@ def main():
                     ax_xs.set_xlabel("x (nm)")
                     ax_h.set_xlabel("Harmonic Index")
 
-            plt.suptitle(f"{mode_str} {k} Structure(s) in Dataset: {mat_name}", fontsize=18)
+            plt.suptitle(f"{mode_str} {k} Structure(s) in Dataset: {mat_name}")
             save_path = out_dir / f"dataset_baseline_{'worst_' if plot_mode == 'worst' else ''}{mat_name}.png"
             fig.savefig(save_path)
             plt.close()

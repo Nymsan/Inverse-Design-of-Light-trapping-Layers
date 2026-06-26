@@ -1,402 +1,424 @@
-import os
-import sys
+#!/usr/bin/env python
+"""
+Gradient-based naive optimization of grating parameters using RCWA + AdamW.
+
+Matches the LHS_Dataset_Si simulation settings (order_N=20, 7 harmonics,
+height_per_layer=5 nm, pec reflector) and uses differentiable parameter
+transforms to keep amplitudes in [0, 15] nm and phases in [0, 2π].
+
+Usage:
+    # Pinned height at 2000 nm
+    python Scripts/evaluate_naive_optimization.py --material Si --h_val 2000
+
+    # Bounded height 1000-3000 nm
+    python Scripts/evaluate_naive_optimization.py --material Si --h_val 1000 3000
+
+    # Multiple restarts, custom iterations
+    python Scripts/evaluate_naive_optimization.py --material TiO2 --h_val 2000 \\
+        --n_iters 500 --n_restarts 5 --objective jsc
+"""
+
 import argparse
+import sys
+import os
+import time
 import json
+from pathlib import Path
+
 import numpy as np
 import torch
-import matplotlib.pyplot as plt
-from pathlib import Path
 from tqdm import tqdm
-import scipy.optimize
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.append(str(PROJECT_ROOT))
+sys.path.insert(0, str(PROJECT_ROOT))
 
-from Utils.utils import RCWAConfig, get_absorptance_curve
-from Utils.models import build_profile, MATERIAL_LIBRARY
-
-
-def parse_bands(bands_args: list[float]) -> list[tuple[float, float]]:
-    if not bands_args:
-        return []
-    if len(bands_args) % 2 != 0:
-        raise ValueError("--bands must be pairs of floats")
-    bands = []
-    for i in range(0, len(bands_args), 2):
-        bands.append((bands_args[i], bands_args[i+1]))
-    return bands
-
-def get_target_curve(wavelengths: np.ndarray, bands: list[tuple[float, float]]) -> np.ndarray:
-    if not bands:
-        return np.ones(len(wavelengths) * 2)
-    curve = np.zeros(len(wavelengths))
-    for bmin, bmax in bands:
-        mask = (wavelengths >= bmin) & (wavelengths <= bmax)
-        curve[mask] = 1.0
-    return np.concatenate([curve, curve])
+from Utils.utils import (
+    RCWAConfig, get_absorptance_curve, sun_weights, get_jsc_scaling_factor
+)
 
 # ---------------------------------------------------------------------------
-# Objective Functions for SciPy
+# Simulation constants matching LHS_Dataset_Si
 # ---------------------------------------------------------------------------
-class TorcwaObjective:
-    def __init__(self, target_curve: torch.Tensor, eval_wavelengths: torch.Tensor, 
-                 mat_name: str, device: torch.device, bounds: list[tuple[float, float]]):
-        self.target_curve = target_curve.to(device)
-        self.eval_wavelengths = eval_wavelengths.to(device)
-        self.mat_name = mat_name
-        self.device = device
-        self.bounds = bounds
-        
-        # Extract config from first available dataset batch
-        rcwa_config_dict = {}
-        try:
-            mat_dir = Path(__file__).resolve().parent.parent / "Data" / f"LHS_Dataset_{mat_name}"
-            first_batch = next(mat_dir.glob("batch_*.pt"))
-            rcwa_config_dict = torch.load(first_batch, map_location="cpu", weights_only=False).get("metadata", {}).get("config", {})
-        except StopIteration:
-            pass
-            
-        self.base_config = RCWAConfig(**rcwa_config_dict)
-        if mat_name.endswith("_Ag"):
-            self.base_config.grating_material = mat_name[:-3]
-            self.base_config.reflector_type = 'Ag'
-        else:
-            self.base_config.grating_material = mat_name
-            self.base_config.reflector_type = 'pec'
+N_HARMONICS   = 7
+ORDER_N       = 20          # same as LHS_Dataset_Si
+NX            = 5000        # same as LHS_Dataset_Si
+N_LAYERS      = 10          # same as LHS_Dataset_Si
+HEIGHT_PER_LAYER = 5.0      # nm, same as LHS_Dataset_Si
+GRATING_PERIOD   = 1000.0   # nm
+REFLECTOR_TYPE   = 'pec'    # same as LHS_Dataset_Si
+AMP_MAX       = 15.0        # nm — amplitude bound per harmonic
+H_MIN, H_MAX  = 1000.0, 3000.0
 
-        self.eval_count = 0
-        self.best_loss = float('inf')
-        self.best_x = None
-        self.pbar = None
-        
-    def _vector_to_tensors(self, x: np.ndarray):
-        """Converts flat 15D array to (h, inc_ang, px) tensors."""
-        h = x[0]
-        inc_ang = 0.0 # Fixed to normal incidence
-        amps = x[1:8]
-        phases = x[8:15]
-        
-        px_data = [[amps[j], phases[j]] for j in range(7)]
-        px = torch.tensor(px_data, dtype=torch.float32, device=self.device)
-        return h, inc_ang, px
+WAVELENGTHS = torch.linspace(300, 1100, 161, dtype=torch.float32) + 1e-3  # stability offset
 
-    def evaluate(self, x: np.ndarray, requires_grad: bool = False):
-        """Evaluates MAE loss for a given parameter vector."""
-        
-        # Strictly clamp x to bounds. Scipy's finite-difference gradient approximator ('2-point')
-        # sometimes steps slightly outside bounds by epsilon, which can crash Torcwa or evaluate invalid physics.
-        for i, (b_min, b_max) in enumerate(self.bounds):
-            x[i] = np.clip(x[i], b_min, b_max)
-            
-        if requires_grad:
-            x_tensor = torch.tensor(x, dtype=torch.float32, device=self.device, requires_grad=True)
-            h = x_tensor[0]
-            inc_ang = 0.0
-            amps = x_tensor[1:8]
-            phases = x_tensor[8:15]
-            px = torch.stack([amps, phases], dim=1)
-        else:
-            h, inc_ang, px = self._vector_to_tensors(x)
-            
-        self.base_config.h = float(h)
-        self.base_config.inc_ang = (float(inc_ang) + 1e-3) * np.pi / 180.0
-        self.base_config.azi_ang = 1e-3 * np.pi / 180.0
-        
-        A_film, _ = get_absorptance_curve(
-            params_x=px,
-            params_y=None,
-            wavelengths=self.eval_wavelengths,
-            config=self.base_config,
-            show_progress=True,
-            requires_grad=requires_grad
-        )
-        
-        # Concat P and S polarization
-        sim_curve = torch.cat([A_film[:, 0], A_film[:, 1]], dim=0).to(self.device)
-        
-        if sim_curve.shape == self.target_curve.shape:
-            loss = torch.nn.functional.mse_loss(sim_curve, self.target_curve)
-        else:
-            loss = torch.tensor(0.0, device=self.device)
-        
-        return loss, sim_curve
+# Matplotlib styling
+plt.rcParams.update({
+    "font.size": 13,
+    "axes.titlesize": 14,
+    "axes.labelsize": 13,
+    "xtick.labelsize": 11,
+    "ytick.labelsize": 11,
+    "figure.dpi": 150,
+})
 
-    def objective_no_grad(self, x: np.ndarray) -> float:
-        """For Differential Evolution (no gradients)."""
-        try:
-            loss, _ = self.evaluate(x, requires_grad=False)
-            val = loss.item()
-        except Exception:
-            return float('inf')
-        
-        self.eval_count += 1
-        if val < self.best_loss:
-            self.best_loss = val
-            self.best_x = x.copy()
-            if self.pbar:
-                self.pbar.set_postfix({'best_mae': f"{val:.4f}"})
-        if self.pbar:
-            self.pbar.update(1)
-            
-        return val
+MATERIAL_COLORS = {
+    "Si":    "#1f77b4",
+    "TiO2":  "#ff7f0e",
+    "Si3N4": "#2ca02c",
+}
+
 
 # ---------------------------------------------------------------------------
-# We will use SciPy's L-BFGS-B with finite difference approximation (`jac='2-point'`) 
-# because RCWAConfig expects floats for `h` and `inc_ang`, making full 
-# autograd through all parameters tricky without modifying Torcwa's internals.
-# Finite difference is slower per step but guaranteed to be correct for all 12 params.
+# Parameter transforms
+# ---------------------------------------------------------------------------
+
+def transform_params(raw_params, raw_h=None, h_bounds=None):
+    """
+    Map unconstrained raw tensors to physical parameters.
+
+    Amplitudes:  AMP_MAX * sigmoid(raw[:, 0])       -> [0, AMP_MAX] nm
+    Phases:      2π      * sigmoid(raw[:, 1])        -> [0, 2π] rad
+    Height (if free): H_MIN + (H_MAX - H_MIN) * sigmoid(raw_h)
+                                                     -> [H_MIN, H_MAX] nm
+    """
+    amps   = AMP_MAX * torch.sigmoid(raw_params[:, 0])
+    phases = 2.0 * np.pi * torch.sigmoid(raw_params[:, 1])
+    params = torch.stack([amps, phases], dim=-1)
+
+    if raw_h is not None and h_bounds is not None:
+        lo, hi = h_bounds
+        h = lo + (hi - lo) * torch.sigmoid(raw_h)
+    else:
+        h = None
+
+    return params, h
+
+
+def make_config(material, h_float, inc_ang=0.0):
+    """Build an RCWAConfig with LHS_Dataset_Si settings."""
+    eps = 1e-3
+    return RCWAConfig(
+        grating_period=GRATING_PERIOD,
+        grating_period_y=None,          # 1D grating
+        h=h_float,
+        order_N=ORDER_N,
+        order_N_y=None,
+        nx=NX,
+        ny=1,
+        n_layers=N_LAYERS,
+        height_per_layer=HEIGHT_PER_LAYER,
+        subpixel=True,
+        add_reflector=True,
+        reflector_type=REFLECTOR_TYPE,
+        inc_ang=(inc_ang + eps) * (np.pi / 180.0),
+        azi_ang=eps * (np.pi / 180.0),
+        grating_material=material,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Objective
+# ---------------------------------------------------------------------------
+
+def compute_loss(raw_params, raw_h, h_pinned, h_bounds, material, objective, device):
+    """
+    Returns scalar loss (to minimise) and the physical A_film curve.
+    """
+    params, h_tensor = transform_params(raw_params, raw_h, h_bounds)
+
+    h_val = h_tensor.item() if h_tensor is not None else h_pinned
+    config = make_config(material, h_val)
+
+    wls = WAVELENGTHS.to(device)
+    A_film, _ = get_absorptance_curve(
+        params_x=params,
+        params_y=None,
+        wavelengths=wls,
+        config=config,
+        requires_grad=True,
+    )
+
+    if objective == 'jsc':
+        S = sun_weights(wls)                          # [W/m²/nm]
+        scale = get_jsc_scaling_factor(len(wls))
+        jsc = scale * torch.sum(A_film * S * wls)
+        loss = -jsc
+    else:  # mean absorptance
+        loss = -A_film.mean()
+
+    return loss, A_film.detach()
+
+
+# ---------------------------------------------------------------------------
+# Single optimisation run
+# ---------------------------------------------------------------------------
+
+def run_optimization(material, h_pinned, h_bounds, objective, n_iters, device, seed):
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+
+    # Initialise raw parameters near the middle of the bounded space
+    # sigmoid(0) = 0.5  ->  amp = 0.5*AMP_MAX, phase = π
+    raw_params = torch.zeros(N_HARMONICS, 2, dtype=torch.float32,
+                             device=device, requires_grad=True)
+
+    opt_vars = [raw_params]
+    raw_h = None
+    if h_bounds is not None:
+        raw_h = torch.zeros(1, dtype=torch.float32, device=device, requires_grad=True)
+        opt_vars.append(raw_h)
+
+    opt       = torch.optim.AdamW(opt_vars, lr=1e-1, weight_decay=1e-3)
+    scheduler = torch.optim.lr_scheduler.ExponentialLR(opt, gamma=0.99)
+
+    best_loss   = float('inf')
+    best_params = None
+    best_h      = h_pinned
+    loss_history = []
+
+    pbar = tqdm(range(n_iters), desc=f"[seed={seed}]", leave=False)
+    for it in pbar:
+        opt.zero_grad()
+        loss, A_film = compute_loss(raw_params, raw_h, h_pinned, h_bounds,
+                                    material, objective, device)
+        loss.backward()
+        opt.step()
+        scheduler.step()
+
+        loss_val = loss.item()
+        loss_history.append(loss_val)
+
+        if loss_val < best_loss:
+            best_loss   = loss_val
+            best_params = raw_params.detach().clone()
+            best_h      = raw_h.item() if raw_h is not None else h_pinned
+            best_A_film = A_film.cpu().numpy()
+
+        pbar.set_postfix({
+            "loss": f"{loss_val:.4f}",
+            "lr":   f"{scheduler.get_last_lr()[0]:.4f}",
+        })
+
+    # Decode best params for reporting
+    with torch.no_grad():
+        phys_params, _ = transform_params(best_params, None, None)
+
+    return {
+        "best_loss":    best_loss,
+        "best_h":       best_h,
+        "best_params":  phys_params.cpu().numpy(),   # [N_HARMONICS, 2] (amp, phase)
+        "best_A_film":  best_A_film,
+        "loss_history": loss_history,
+        "seed":         seed,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Plotting
+# ---------------------------------------------------------------------------
+
+def plot_results(results_list, material, h_pinned, h_bounds, objective,
+                 out_dir: Path, label: str):
+    color = MATERIAL_COLORS.get(material, "#1f77b4")
+    wls_np = WAVELENGTHS.numpy()
+
+    # Sort restarts by best loss
+    results_list = sorted(results_list, key=lambda r: r["best_loss"])
+    best = results_list[0]
+
+    mode_str = f"{int(h_bounds[0])}-{int(h_bounds[1])}nm" if h_bounds else f"{int(h_pinned)}nm"
+    h_display = f"{best['best_h']:.1f}" if h_bounds else f"{h_pinned:.0f}"
+
+    # ---- Figure 1: Convergence curves ----
+    fig_conv, ax = plt.subplots(figsize=(8, 5))
+    for r in results_list:
+        iters = range(len(r["loss_history"]))
+        ax.plot(iters, [-v for v in r["loss_history"]],
+                alpha=0.5, linewidth=1.2,
+                label=f"seed={r['seed']} (best={-r['best_loss']:.4f})")
+    ax.set_title(f"Optimisation Convergence\n({material}, h={mode_str}, obj={objective})")
+    ax.set_xlabel("Iteration")
+    ylabel = r"$J_{sc}$ (mA/cm$^2$)" if objective == 'jsc' else "Mean Absorptance"
+    ax.set_ylabel(ylabel)
+    ax.legend(fontsize=9, loc='lower right')
+    ax.grid(True, linestyle=':', alpha=0.6)
+    plt.tight_layout()
+    conv_path = out_dir / f"convergence_{label}.png"
+    plt.savefig(conv_path, dpi=200)
+    plt.close()
+    print(f"Saved convergence plot: {conv_path}")
+
+    # ---- Figure 2: Best absorptance spectrum ----
+    fig_abs, ax = plt.subplots(figsize=(8, 5))
+    ax.plot(wls_np, best["best_A_film"], color=color, linewidth=1.8, label="Best $A_{film}$")
+
+    # Shade Jsc integrand as background context
+    from Utils.utils import sun_weights
+    wls_t = torch.tensor(wls_np, dtype=torch.float32)
+    S = sun_weights(wls_t).numpy()
+    integrand = wls_np * S
+    ax2 = ax.twinx()
+    ax2.fill_between(wls_np, integrand / integrand.max(), alpha=0.08, color='goldenrod')
+    ax2.set_ylabel(r"Norm. $\lambda \cdot I_{\mathrm{AM1.5g}}$ (a.u.)", color='goldenrod', fontsize=10)
+    ax2.tick_params(axis='y', labelcolor='goldenrod')
+    ax2.set_ylim(0, 1)
+
+    scale = get_jsc_scaling_factor(len(wls_np))
+    jsc_val = scale * np.sum(best["best_A_film"] * S * wls_np)
+    title_val = f"$J_{{sc}}$ = {jsc_val:.3f} mA/cm$^2$" if objective == 'jsc' \
+                else f"Mean Abs = {best['best_A_film'].mean():.4f}"
+    ax.set_title(f"Best Absorptance Spectrum ({material}, h={h_display} nm)\n{title_val}")
+    ax.set_xlabel("Wavelength (nm)")
+    ax.set_ylabel(r"Absorptance $A_{film}(\lambda)$")
+    ax.set_xlim(300, 1100)
+    ax.set_ylim(-0.02, 1.02)
+    ax.legend(loc='upper left')
+    ax.grid(True, linestyle=':', alpha=0.5)
+    plt.tight_layout()
+    spec_path = out_dir / f"best_spectrum_{label}.png"
+    plt.savefig(spec_path, dpi=200)
+    plt.close()
+    print(f"Saved spectrum plot:     {spec_path}")
+
+    return conv_path, spec_path
+
+
+# ---------------------------------------------------------------------------
+# Argument parser
+# ---------------------------------------------------------------------------
+
+def parse_args():
+    p = argparse.ArgumentParser(
+        description="Naive gradient-based RCWA optimisation (AdamW) — LHS_Dataset_Si settings.")
+    p.add_argument("--material", type=str, default="Si",
+                   choices=["Si", "TiO2", "Si3N4"],
+                   help="Grating material.")
+    p.add_argument("--h_val", type=float, nargs='+', default=[2000.0],
+                   help="Film height. One value = pinned; two values = bounded range [lo, hi].")
+    p.add_argument("--objective", type=str, default="jsc", choices=["jsc", "mean_abs"],
+                   help="Optimisation objective: 'jsc' (default) or 'mean_abs'.")
+    p.add_argument("--n_iters", type=int, default=500,
+                   help="Number of AdamW iterations per restart.")
+    p.add_argument("--n_restarts", type=int, default=3,
+                   help="Number of independent random restarts.")
+    p.add_argument("--seed", type=int, default=42,
+                   help="Base random seed (each restart uses seed + restart_index).")
+    p.add_argument("--out_dir", type=str, default=None,
+                   help="Output directory. Defaults to Results/naive_opt/<material>.")
+    return p.parse_args()
+
+
+# ---------------------------------------------------------------------------
+# Main
 # ---------------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description="Naive Optimization Baseline (Direct Torcwa)")
-    parser.add_argument("--bands", nargs="+", type=float, help="Pairs of wavelength bands to optimize, e.g., --bands 500 750 800 900")
-    parser.add_argument('--method', type=str, choices=['de', 'lbfgs', 'de_lbfgs'], default='de_lbfgs', 
-                        help="Optimizer: Differential Evolution, L-BFGS-B, or DE followed by L-BFGS-B")
-    parser.add_argument('--max_evals', type=int, default=1000, help="Max Torcwa evaluations per material")
-    parser.add_argument('--popsize', type=int, default=5, help="Population size multiplier for scipy DE (Actual pop = popsize * N_params)")
-    parser.add_argument('--maxiter', type=int, default=1000, help="Max generations (steps) for DE")
-    parser.add_argument('--device', type=str, default="cuda" if torch.cuda.is_available() else "cpu")
-    parser.add_argument('--out_dir', type=str, default="Naive_Optimization")
-    parser.add_argument('--material', type=str, default=None, help="Specific material to optimize. If not set, runs all materials sequentially.")
-    parser.add_argument('--h_val', nargs='+', type=float, default=None, help="Target height in nm, or range (min max) (fixes/bounds height during evaluation)")
-    args = parser.parse_args()
+    args = parse_args()
 
-    device = torch.device(args.device)
-    out_dir = PROJECT_ROOT / "Results" / args.out_dir
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Device: {device}")
+
+    # Parse height mode
+    if len(args.h_val) == 1:
+        h_pinned = args.h_val[0]
+        h_bounds = None
+        mode_label = f"pinned_{int(h_pinned)}nm"
+    elif len(args.h_val) == 2:
+        h_pinned = None
+        h_bounds = (args.h_val[0], args.h_val[1])
+        mode_label = f"bounded_{int(h_bounds[0])}-{int(h_bounds[1])}nm"
+    else:
+        raise ValueError("--h_val takes 1 (pinned) or 2 (range lo hi) values.")
+
+    label = f"{args.material}_{mode_label}_{args.objective}"
+
+    # Output directory
+    if args.out_dir:
+        out_dir = Path(args.out_dir)
+    else:
+        out_dir = PROJECT_ROOT / "Results" / "naive_opt" / args.material
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    try:
-        bands = parse_bands(args.bands)
-    except ValueError as e:
-        print(f"Error: {e}")
-        return
+    print("=" * 70)
+    print(f"Naive RCWA Optimisation")
+    print(f"  Material:   {args.material}")
+    print(f"  Height:     {mode_label}")
+    print(f"  Objective:  {args.objective}")
+    print(f"  Harmonics:  {N_HARMONICS}  |  order_N: {ORDER_N}  |  nx: {NX}")
+    print(f"  Amp bound:  0 – {AMP_MAX} nm per harmonic")
+    print(f"  Restarts:   {args.n_restarts}  x  {args.n_iters} iterations")
+    print(f"  Output:     {out_dir}")
+    print("=" * 70)
 
-    bands_str = "_".join([f"{int(b[0])}-{int(b[1])}" for b in bands]) if bands else "broadband"
-    print(f"Target Bands: {bands if bands else 'Broadband (300-1100nm)'}")
-    print(f"Method: {args.method.upper()}")
+    t0 = time.time()
+    all_results = []
+    for i in range(args.n_restarts):
+        seed_i = args.seed + i
+        print(f"\n--- Restart {i+1}/{args.n_restarts}  (seed={seed_i}) ---")
+        res = run_optimization(
+            material=args.material,
+            h_pinned=h_pinned,
+            h_bounds=h_bounds,
+            objective=args.objective,
+            n_iters=args.n_iters,
+            device=device,
+            seed=seed_i,
+        )
+        all_results.append(res)
+        metric = -res["best_loss"]
+        metric_name = "Jsc" if args.objective == "jsc" else "Mean Abs"
+        print(f"  Best {metric_name}: {metric:.4f}  |  h = {res['best_h']:.1f} nm")
 
-    # Add 1e-3 offset to avoid perfect symmetry/singular matrices in Torcwa
-    # Reduced to 81 points (10nm resolution) to fit within 24h
-    WAVELENGTHS = np.linspace(300, 1100, 81) + 1e-3
-    
-    if bands:
-        mask = np.zeros(len(WAVELENGTHS), dtype=bool)
-        for bmin, bmax in bands:
-            mask |= (WAVELENGTHS >= bmin) & (WAVELENGTHS <= bmax)
-        eval_wavelengths = WAVELENGTHS[mask]
-    else:
-        eval_wavelengths = WAVELENGTHS
-        
-    target_curve_np = np.ones(len(eval_wavelengths) * 2) # Target is 1.0 inside the bands
-    target_curve = torch.tensor(target_curve_np, dtype=torch.float64, device=device)
+    elapsed = time.time() - t0
+    print(f"\nTotal time: {elapsed/60:.1f} min")
 
-    # Bounds for the 15 parameters
-    # x = [h, a1..a7, p1..p7]
-    
-    if args.h_val is not None:
-        if isinstance(args.h_val, list) and len(args.h_val) == 2:
-            h_bounds = (args.h_val[0], args.h_val[1])
-        else:
-            h_target = args.h_val[0] if isinstance(args.h_val, list) else args.h_val
-            h_bounds = (h_target, h_target)
-    else:
-        h_bounds = (1000.0, 3000.0)
-        
-    bounds = [
-        h_bounds,  # h (nm)
-    ]
-    bounds += [(0.0, 15.0)] * 7    # amps (nm)
-    bounds += [(0.0, 2*np.pi)] * 7 # phases (rad)
+    # Pick global best
+    best = min(all_results, key=lambda r: r["best_loss"])
+    print("\n--- Best across all restarts ---")
+    print(f"  Seed:    {best['seed']}")
+    print(f"  h:       {best['best_h']:.2f} nm")
+    metric_val = -best["best_loss"]
+    metric_name = "Jsc (mA/cm²)" if args.objective == "jsc" else "Mean Abs"
+    print(f"  {metric_name}: {metric_val:.4f}")
+    print(f"  Amplitudes (nm): {best['best_params'][:, 0].round(3)}")
+    print(f"  Phases (rad):    {best['best_params'][:, 1].round(3)}")
 
-    results_list = []
+    # Save plots
+    plot_results(all_results, args.material, h_pinned, h_bounds,
+                 args.objective, out_dir, label)
 
-    mats_to_run = [args.material] if args.material else list(MATERIAL_LIBRARY.keys())
-    
-    for mat_name in mats_to_run:
-        print(f"\n" + "="*50)
-        print(f"Optimizing {mat_name}...")
-        
-        obj = TorcwaObjective(target_curve, torch.tensor(eval_wavelengths, dtype=torch.float64), mat_name, device, bounds)
-        
-        best_x = None
-        best_loss = float('inf')
-        
-        # 1. Differential Evolution
-        if 'de' in args.method:
-            print("Running Differential Evolution...")
-            obj.pbar = tqdm(total=args.max_evals, desc="DE Evals")
-            
-            # SciPy DE callback to stop if max_evals is reached
-            def de_callback(xk, convergence):
-                if obj.eval_count >= args.max_evals:
-                    return True # Stop
-                    
-            # popsize=5 with 12 dims means 60 evals per generation
-            res_de = scipy.optimize.differential_evolution(
-                obj.objective_no_grad, 
-                bounds=bounds, 
-                maxiter=args.maxiter,
-                popsize=args.popsize, 
-                callback=de_callback,
-                seed=42
-            )
-            obj.pbar.close()
-            print(f"DE Finished. Best MAE: {res_de.fun:.4f} after {obj.eval_count} evals")
-            best_x = res_de.x
-            best_loss = res_de.fun
-            
-        # 2. L-BFGS-B
-        if 'lbfgs' in args.method:
-            print("Running L-BFGS-B (Finite Differences)...")
-            
-            # Initial guess: if DE ran, use its result, else use a random valid point for the 1 restart
-            if best_x is not None:
-                x0 = best_x
-            else:
-                x0 = np.array([np.random.uniform(b[0], b[1]) for b in bounds])
-            
-            evals_left = args.max_evals - obj.eval_count
-            if evals_left > 0:
-                obj.pbar = tqdm(total=evals_left, desc="L-BFGS Evals")
-                
-                res_lbfgs = scipy.optimize.minimize(
-                    obj.objective_no_grad,
-                    x0=x0,
-                    method='L-BFGS-B',
-                    bounds=bounds,
-                    jac='2-point', # Finite differences for gradients
-                    options={'maxfun': evals_left, 'ftol': 1e-3}
-                )
-                obj.pbar.close()
-                print(f"L-BFGS-B Finished. Best MAE: {res_lbfgs.fun:.4f}")
-                best_x = res_lbfgs.x
-                best_loss = res_lbfgs.fun
-            else:
-                print("Budget exhausted, skipping L-BFGS-B.")
+    # Save results JSON
+    results_summary = {
+        "material":    args.material,
+        "mode":        mode_label,
+        "objective":   args.objective,
+        "n_harmonics": N_HARMONICS,
+        "order_N":     ORDER_N,
+        "amp_max_nm":  AMP_MAX,
+        "n_iters":     args.n_iters,
+        "n_restarts":  args.n_restarts,
+        "elapsed_s":   elapsed,
+        "restarts": [
+            {
+                "seed":       r["seed"],
+                "best_loss":  r["best_loss"],
+                "best_h":     r["best_h"],
+                "best_amps":  r["best_params"][:, 0].tolist(),
+                "best_phases":r["best_params"][:, 1].tolist(),
+            }
+            for r in all_results
+        ],
+    }
+    json_path = out_dir / f"results_{label}.json"
+    with open(json_path, "w") as f:
+        json.dump(results_summary, f, indent=2)
+    print(f"Saved results JSON:      {json_path}")
+    print("=" * 70)
 
-        # Final evaluation on TRUE FULL wavelengths to get the complete curve for plotting and avoid comb-aliasing
-        TRUE_WAVELENGTHS = np.linspace(300, 1100, 161) + 1e-3
-        obj.eval_wavelengths = torch.tensor(TRUE_WAVELENGTHS, dtype=torch.float64, device=device)
-        _, sim_curve = obj.evaluate(best_x)
-        rcwa_p = sim_curve[:len(TRUE_WAVELENGTHS)].cpu().numpy()
-        rcwa_s = sim_curve[len(TRUE_WAVELENGTHS):].cpu().numpy()
-        
-        # Calculate in-band average absorptance
-        if bands:
-            mask = np.zeros(len(TRUE_WAVELENGTHS), dtype=bool)
-            for bmin, bmax in bands:
-                mask |= (TRUE_WAVELENGTHS >= bmin) & (TRUE_WAVELENGTHS <= bmax)
-        else:
-            mask = np.ones(len(TRUE_WAVELENGTHS), dtype=bool)
-            
-        rcwa_avg_abs = float((np.mean(rcwa_p[mask]) + np.mean(rcwa_s[mask])) / 2.0)
-        
-        # Save results
-        h_val, inc_ang_val, px = obj._vector_to_tensors(best_x)
-        geo_tensor = torch.cat([px.view(-1), torch.tensor([h_val, inc_ang_val], dtype=torch.float32, device=device)])
-        
-        results_list.append({
-            "material": mat_name,
-            "mae_loss": best_loss,
-            "rcwa_avg_abs": rcwa_avg_abs,
-            "h": float(h_val),
-            "inc_ang": float(inc_ang_val),
-            "geometry": geo_tensor.cpu().tolist(),
-            "curve_p": rcwa_p.tolist(),
-            "curve_s": rcwa_s.tolist()
-        })
-
-    # -----------------------------------------------------------------------
-    # Plotting (Dashboard identical to evaluate_surrogate_optimization)
-    # -----------------------------------------------------------------------
-    n_results = len(results_list)
-    fig, axes = plt.subplots(n_results, 4, figsize=(24, 6 * n_results), layout="constrained")
-    if n_results == 1:
-        axes = np.expand_dims(axes, axis=0)
-        
-    cmap = plt.cm.viridis
-    c_physics = cmap(0.8)
-    
-    for idx, r in enumerate(results_list):
-        ax_row = axes[idx]
-        mat_name = r["material"]
-        geo_t = torch.tensor(r["geometry"])
-        
-        # Plotting uses a padded array to visualize the target visually
-        plot_target = np.zeros(len(TRUE_WAVELENGTHS))
-        if bands:
-            for bmin, bmax in bands:
-                plot_target[(TRUE_WAVELENGTHS >= bmin) & (TRUE_WAVELENGTHS <= bmax)] = 1.0
-        else:
-            plot_target = np.ones(len(TRUE_WAVELENGTHS))
-            
-        # P-Pol
-        ax = ax_row[0]
-        ax.plot(TRUE_WAVELENGTHS, plot_target, "k-", lw=2, label="Target")
-        ax.plot(TRUE_WAVELENGTHS, r["curve_p"], linestyle="-", color=c_physics, lw=2, label="Torcwa")
-        if bands:
-            for bmin, bmax in bands:
-                ax.axvspan(bmin, bmax, color="gray", alpha=0.2)
-        ax.set_title(f"{mat_name} (P-Pol)\nTorcwa In-Band Abs={r['rcwa_avg_abs']:.3f} | MAE={r['mae_loss']:.4f}", fontsize=13)
-        ax.set_xlim(300, 1100)
-        ax.set_ylim(-0.05, 1.05)
-        ax.set_xlabel("Wavelength (nm) — P-Pol")
-        ax.set_ylabel("Absorptance")
-        if idx == 0: ax.legend(fontsize=9)
-        
-        # S-Pol
-        ax = ax_row[1]
-        ax.plot(TRUE_WAVELENGTHS, plot_target, "k-", lw=2, label="Target")
-        ax.plot(TRUE_WAVELENGTHS, r["curve_s"], linestyle="-", color=c_physics, lw=2, label="Torcwa")
-        if bands:
-            for bmin, bmax in bands:
-                ax.axvspan(bmin, bmax, color="gray", alpha=0.2)
-        ax.set_title(f"{mat_name} (S-Pol)\nTorcwa In-Band Abs={r['rcwa_avg_abs']:.3f} | MAE={r['mae_loss']:.4f}", fontsize=13)
-        ax.set_xlim(300, 1100)
-        ax.set_ylim(-0.05, 1.05)
-        ax.set_xlabel("Wavelength (nm) — S-Pol")
-        ax.set_ylabel("Absorptance")
-        
-        # Structure Profile
-        ax = ax_row[2]
-        prof_tensor, _, _ = build_profile(geo_t.unsqueeze(0), 7, nx=128)
-        profile_np = prof_tensor[0].numpy()
-        xs = np.linspace(0, 1000, 128)
-        ax.plot(xs, profile_np, "k-", lw=1.5)
-        ax.fill_between(xs, 0, profile_np, color=cmap(0.7), alpha=0.5)
-        ax.set_title(f"Structure Cross-Section\nHeight={r['h']:.0f}nm, Inc={r['inc_ang']:.1f}°", fontsize=13)
-        ax.set_xlabel("x (nm)")
-        ax.set_ylabel("Height (nm)")
-        
-        # Harmonics
-        ax_h = ax_row[3]
-        amps_geo = geo_t[:14:2].numpy() # Extract interleaved amps (even indices)
-        phases_geo = geo_t[1:14:2].numpy() # Extract interleaved phases (odd indices)
-        x_pos = np.arange(1, 8)
-        c_amp = cmap(0.3)
-        c_phase = cmap(0.9)
-        
-        ax_h.bar(x_pos, amps_geo, color=c_amp, edgecolor="black")
-        ax_h.set_ylabel("Amplitude (nm)", color=c_amp)
-        ax_h.tick_params(axis='y', labelcolor=c_amp)
-        ax_h.set_xlabel("Harmonic index")
-        
-        ax_p2 = ax_h.twinx()
-        ax_p2.plot(x_pos, phases_geo, 'o', color=c_phase, markersize=8)
-        ax_p2.set_ylabel("Phase (rad)", color=c_phase)
-        ax_p2.tick_params(axis='y', labelcolor=c_phase)
-        ax_p2.set_ylim(-0.5, 2 * np.pi + 0.5)
-        ax_h.set_title(f"Harmonics Amplitudes & Phases", fontsize=13)
-
-    suffix = f"_{args.material}" if args.material else ""
-    out_path = out_dir / f"naive_optimization_{args.method}_{bands_str}{suffix}.png"
-    plt.savefig(out_path)
-    plt.close()
-    print(f"\nSaved dashboard to {out_path}")
-    
-    metrics_path = out_dir / f"naive_optimization_{args.method}_{bands_str}{suffix}.json"
-    with open(metrics_path, "w") as f:
-        json.dump(results_list, f, indent=2)
 
 if __name__ == "__main__":
     main()
