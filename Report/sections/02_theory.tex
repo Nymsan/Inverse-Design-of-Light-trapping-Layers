@@ -354,7 +354,7 @@ The target is the absorptance curve, no matter the input space. If the design sp
 
 One of the upsides of RCWA is that its algorithmic time does not depend on the size of the optical system. The entire calculation takes place in fourier space.
 This also leads to one of its largest downsides. Poorly truncated fourier series, that cant resolve the periodic structure leads to ill-conditioning of the problem. If structures have harsh, sharp edges, Gibbs phenomenon will require many terms to properly resolve the edges in fourier space.
-According to the boundary conditions of Maxwell's equations, the normal component of the electrical field must be discontinuous at a permitivity shift. However, since RCWA is a fourier domain method, if a particular layer is not resolved well enough or exhibits gibbs artefacts, the normal component of the predicted fields might show disconuities even where there should be none.
+According to the boundary conditions of Maxwell's equations, the normal component of the electrical field must be discontinuous at a permitivity shift. However, since RCWA is a fourier domain method, if a particular layer is not resolved well enough or exhibits gibbs artefacts, the normal component of the predicted fields might show discontinuities even where there should be none.
 An example of this will be shown in the methods section later.
 
 \section{Finite Element Method}

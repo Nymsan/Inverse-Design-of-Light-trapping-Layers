@@ -54,7 +54,7 @@ def train_3d(
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode="min", factor=0.5, patience=scheduler_patience, min_lr=1e-8
     )
-    criterion = torch.nn.HuberLoss(delta=0.01, reduction="none")
+    criterion = torch.nn.MSELoss()
     best_val, patience_ctr = float("inf"), 0
     ema = _EMATracker(model, decay=ema_decay)
     history = {"train_loss": [], "val_loss": [], "val_mae": [], "val_max_err": []}
@@ -76,9 +76,8 @@ def train_3d(
 
             pred = model(px, py, h, wl)              # (B, 2)
 
-            # Weight loss by mean absorptance (reward high-performing structures)
-            weights = tgt.mean(dim=-1, keepdim=True).clamp(min=0.1)
-            loss = (criterion(pred, tgt) * weights).mean()
+
+            loss = criterion(pred, tgt)
 
             optimizer.zero_grad()
             loss.backward()
@@ -149,13 +148,13 @@ def get_args():
                    help="Which absorptance to predict: A_film_normal or A_grating_normal")
     p.add_argument("--batch_size", type=int,   default=256)
     p.add_argument("--epochs",     type=int,   default=500)
-    p.add_argument("--lr",         type=float, default=1e-3)
+    p.add_argument("--lr",         type=float, default=1e-4)
     p.add_argument("--patience",   type=int,   default=100)
     p.add_argument("--seed",       type=int,   default=42)
     p.add_argument("--device",     type=str,   default=None)
     p.add_argument("--num_workers",type=int,   default=4)
     # Architecture
-    p.add_argument("--nx",              type=int,   default=64)
+    p.add_argument("--nx",              type=int,   default=128)
     p.add_argument("--conv_channels",   type=int, nargs="+", default=[8, 16, 16, 8])
     p.add_argument("--kernel_size",     type=int,   default=5)
     p.add_argument("--fc_dims",          type=int, nargs="+", default=[128])
