@@ -16,7 +16,7 @@
 \contentsline {chapter}{\numberline {3}Methods}{15}{chapter.0.3}%
 \contentsline {section}{\numberline {3.1}Numerical implementation}{15}{section.0.3.1}%
 \contentsline {section}{\numberline {3.2}Convergence tests}{16}{section.0.3.2}%
-\contentsline {section}{\numberline {3.3}Machine Learning Surrogates}{18}{section.0.3.3}%
+\contentsline {section}{\numberline {3.3}Machine Learning Surrogates}{17}{section.0.3.3}%
 \contentsline {chapter}{\numberline {4}Results \& Discussion}{20}{chapter.0.4}%
 \contentsline {section}{\numberline {4.1}Generated Dataset}{20}{section.0.4.1}%
 \contentsline {section}{\numberline {4.2}Surrogate Model Training}{21}{section.0.4.2}%
