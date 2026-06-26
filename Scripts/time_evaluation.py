@@ -9,9 +9,10 @@ import json
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(PROJECT_ROOT))
 
-from Utils.models import build_profile, MATERIAL_LIBRARY
+from Utils.models import build_profile, MATERIAL_LIBRARY, GratingDataset
 from Utils.utils import RCWAConfig, get_absorptance_curve
 from Utils.checkpoint import load_forward_model
+import dataclasses
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -39,28 +40,37 @@ def main():
         else:
             print(f"Warning: Model {model_path} not found.")
 
-    # Load 10 random samples across all materials
-    dataset_path = PROJECT_ROOT / "Data" / "LHS_Dataset_Si" / "val_dataset.pt"
-    if not dataset_path.exists():
-        print(f"Dataset {dataset_path} not found.")
-        return
+    # Load 10 random samples across all materials using GratingDataset
+    prefix = stats.get("dataset_prefixes", ["LHS_Dataset"])[0]
+    val_files = {mat: [str(PROJECT_ROOT / "Data" / f"{prefix}_{mat}" / "val_dataset.pt")] for mat in stats["materials"]}
+    
+    val_set = GratingDataset(
+        val_files,
+        target_key=stats.get("target_key", "all_film"),
+        geo_min=stats.get("geo_min", None),
+        geo_max=stats.get("geo_max", None)
+    )
+    
+    # Load metadata config from the first val file to initialize RCWAConfig
+    first_val_file = None
+    for mat in stats["materials"]:
+        if val_files[mat]:
+            first_val_file = val_files[mat][0]
+            break
+            
+    if first_val_file is not None:
+        rcwa_config_dict = torch.load(first_val_file, map_location="cpu", weights_only=False).get("metadata", {}).get("config", {})
+    else:
+        rcwa_config_dict = {}
         
-    data = torch.load(dataset_path, map_location="cpu", weights_only=False)
-    
-    mat_name_for_config = stats["materials"][0]
-    first_batch_file = PROJECT_ROOT / "Data" / f"LHS_Dataset_{mat_name_for_config}" / "batch_0000.pt"
-    rcwa_config_dict = torch.load(first_batch_file, map_location="cpu", weights_only=False).get("metadata", {}).get("config", {})
-    
     num_samples = 10
+    indices = torch.randperm(len(val_set))[:num_samples]
     
-    val_h = data["val_geometry"][..., -2]
-    indices = torch.randperm(val_h.shape[0])[:num_samples]
-    
-    geo = data["val_geometry"][indices].to(device)
-    params_x = data["val_params_x"][indices].to(device)
-    h = geo[..., -2]
-    inc_ang = geo[..., -1]
-    mat_id_tensor = data["val_material"][indices].to(device)
+    geo = val_set.geometry[indices].to(device)
+    params_x = val_set.params_x[indices].to(device)
+    mat_id_tensor = val_set.material_id[indices].to(device)
+    h = geo[:, -2]
+    inc_ang = geo[:, -1]
 
     model_timings = {}
     for mn, model in models.items():
@@ -107,7 +117,9 @@ def main():
     
     
     # Torcwa Timing
-    torcwa_config = RCWAConfig(**rcwa_config_dict)
+    rcwa_fields = {f.name for f in dataclasses.fields(RCWAConfig)}
+    filtered_config = {k: v for k, v in rcwa_config_dict.items() if k in rcwa_fields}
+    torcwa_config = RCWAConfig(**filtered_config)
     wavelengths = torch.linspace(300, 1100, n_wavelengths//2, device=device, dtype=torch.float64)
     
     torcwa_time = 0.0
@@ -124,12 +136,13 @@ def main():
         m_idx = mat_id_tensor[i].item()
         m_name = list(MATERIAL_LIBRARY.keys())[list(MATERIAL_LIBRARY.values()).index(m_idx)]
         
+        torcwa_config.grating_material = m_name
         t0 = time.time()
         _ = get_absorptance_curve(
-            px,
-            m_name,
-            wavelengths,
-            torcwa_config
+            params_x=px,
+            params_y=None,
+            wavelengths=wavelengths,
+            config=torcwa_config
         )
         torch.cuda.synchronize() if torch.cuda.is_available() else None
         torcwa_time += (time.time() - t0)

@@ -560,5 +560,49 @@
     \field{month}{10}
     \field{year}{2019}
   \endentry
+
+  \entry{mckay1979comparison}{article}{}{}
+    \name{author}{3}{}{%
+      {{hash=MMD}{%
+         family={McKay},
+         familyi={M\bibinitperiod},
+         given={M.\bibnamedelima D.},
+         giveni={M\bibinitperiod\bibinitdelim D\bibinitperiod},
+      }}%
+      {{hash=BRJ}{%
+         family={Beckman},
+         familyi={B\bibinitperiod},
+         given={R.\bibnamedelima J.},
+         giveni={R\bibinitperiod\bibinitdelim J\bibinitperiod},
+      }}%
+      {{hash=CWJ}{%
+         family={Conover},
+         familyi={C\bibinitperiod},
+         given={W.\bibnamedelima J.},
+         giveni={W\bibinitperiod\bibinitdelim J\bibinitperiod},
+      }}%
+    }
+    \list{publisher}{1}{%
+      {Taylor \& Francis}%
+    }
+    \strng{namehash}{MMDBRJCWJ1}
+    \strng{fullhash}{MMDBRJCWJ1}
+    \field{labelnamesource}{author}
+    \field{labeltitlesource}{title}
+    \field{labelyear}{1979}
+    \field{labeldatesource}{}
+    \verb{doi}
+    \verb 10.1080/00401706.1979.10489755
+    \endverb
+    \field{number}{2}
+    \field{pages}{239\bibrangedash 245}
+    \field{title}{A Comparison of Three Methods for Selecting Values of Input Variables in the Analysis of Output from a Computer Code}
+    \verb{url}
+    \verb https://doi.org/10.1080/00401706.1979.10489755
+    \endverb
+    \field{volume}{21}
+    \field{journaltitle}{Technometrics}
+    \field{year}{1979}
+  \endentry
 \enddatalist
 \endinput

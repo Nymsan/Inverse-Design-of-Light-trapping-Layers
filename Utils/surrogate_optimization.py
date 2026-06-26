@@ -166,15 +166,10 @@ class BatchedSurrogateOptimizer:
             
             abs_vals = self._compute_metric(pred, mask, geo[:, -1], optimize_jsc)
             
-            # Boundary penalty: perfectly smooth and differentiable polynomial (N=10)
-            # This only actively punishes the outer 1-5% of the bounds, allowing the model
-            # to still reach the boundaries (like h=3000) if the physical performance gain outweighs it!
             range_geo = self.geo_max - self.geo_min
             active_mask = (range_geo > 1e-5).float()
-            p_norm = (geo - self.geo_min) / (range_geo + 1e-9)
-            boundary_penalty = 0.0 * torch.sum(active_mask * torch.pow((p_norm - 0.5) * 2.0, 10), dim=-1)
             
-            loss = -abs_vals + boundary_penalty
+            loss = -abs_vals
             loss_sum = loss.mean()
             loss_sum.backward()
             optimizer.step()
@@ -186,9 +181,7 @@ class BatchedSurrogateOptimizer:
                 
                 range_geo = self.geo_max - self.geo_min
                 active_mask = (range_geo > 1e-5).float()
-                p_norm = (geo - self.geo_min) / (range_geo + 1e-9)
-                boundary_penalty = 0.0 * torch.sum(active_mask * torch.pow((p_norm - 0.5) * 2.0, 10), dim=-1)
-                penalized_abs = avg_abs - boundary_penalty
+                penalized_abs = avg_abs
                 
                 penalized_reshaped = penalized_abs.view(n_allowed, n_restarts)
                 max_indices = penalized_reshaped.argmax(dim=1)
@@ -211,8 +204,7 @@ class BatchedSurrogateOptimizer:
             range_geo = self.geo_max - self.geo_min
             active_mask = (range_geo > 1e-5).float()
             p_norm = (geo - self.geo_min) / (range_geo + 1e-9)
-            boundary_penalty = 0.0 * torch.sum(active_mask * torch.pow((p_norm - 0.5) * 2.0, 10), dim=-1)
-            final_abs = pure_abs - boundary_penalty
+            final_abs = pure_abs
             
         final_abs_reshaped = final_abs.view(n_allowed, n_restarts)
         top_vals, top_indices_local = final_abs_reshaped.topk(top_k, dim=1, largest=True)
@@ -375,9 +367,7 @@ class BatchedSurrogateOptimizer:
             range_geo = self.geo_max - self.geo_min
             active_mask = (range_geo > 1e-5).float()
             
-            p_norm = (pop - self.geo_min) / (range_geo + 1e-9)
-            boundary_penalty = 0.05 * torch.sum(active_mask * torch.pow((p_norm - 0.5) * 2.0, 10), dim=-1)
-            fitness = fitness - boundary_penalty
+            fitness = fitness
             
         history = torch.zeros((generations, n_allowed), device=self.device)
         

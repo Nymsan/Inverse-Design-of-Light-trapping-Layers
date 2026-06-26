@@ -13,14 +13,28 @@ import torch
 from tqdm import tqdm
 torch.set_float32_matmul_precision("high")
 
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
+from Utils.utils import sun_weights, get_jsc_scaling_factor
 
 from Utils.models import N_MATERIALS, build_profile, MATERIAL_LIBRARY, SIREN
 from Scripts.evaluate_dataset_baseline import get_dataset_baseline
 from Utils.surrogate_optimization import BatchedSurrogateOptimizer, recover_geometry_from_profile
 from Utils.utils import RCWAConfig, get_absorptance_curve
 from Utils.checkpoint import load_forward_model, get_best_forward_model
+
+# Styling
+plt.rcParams.update({
+    "font.size": 18,
+    "axes.titlesize": 16,
+    "axes.labelsize": 16,
+    "xtick.labelsize": 16,
+    "ytick.labelsize": 16,
+    "legend.fontsize": 16,
+    "figure.dpi": 150,
+    "savefig.dpi": 150,
+})
 
 def parse_args():
     p = argparse.ArgumentParser(description="Evaluate Batched Surrogate Optimizer")
@@ -201,7 +215,7 @@ def main():
             n_restarts=args.restarts,
             n_dense_samples=args.dense_samples,
             steps=args.steps,
-            lr=0.001,
+            lr=0.075,
             allowed_materials=valid_mat_indices,
             top_k=args.top_k,
             show_progress=True,
@@ -285,12 +299,11 @@ def main():
     print(f"\nRunning Torcwa simulations for {n_results} top structures...")
     for idx, r in enumerate(tqdm(res["top_results"], desc="Verifying with Torcwa")):
         mat_name = list(MATERIAL_LIBRARY.keys())[r["material_idx"]]
-        if True: # Kept for indentation compatibility
-            geo = r["geometry"]
-            prof_tensor, h_tensor, inc_tensor = build_profile(geo.unsqueeze(0), n_harmonics_opt, nx=128)
-            profile_np = prof_tensor[0].numpy()
-            h_val = geo[-2].item()
-            inc_ang = geo[-1].item()
+        geo = r["geometry"]
+        prof_tensor, h_tensor, inc_tensor = build_profile(geo.unsqueeze(0), n_harmonics_opt, nx=128)
+        profile_np = prof_tensor[0].numpy()
+        h_val = geo[-2].item()
+        inc_ang = geo[-1].item()
         
         n_fourier = len(geo) - 2
         px = geo[:n_fourier].view(-1, 2).cpu()
@@ -336,16 +349,37 @@ def main():
         avg_abs_p = np.mean(rcwa_p[mask])
         avg_abs_s = np.mean(rcwa_s[mask])
         rcwa_avg_abs = float((avg_abs_p + avg_abs_s) / 2.0)
+
+        if getattr(args, "optimize_jsc", False):
+            
+            # Replicate the surrogate's Jsc math for the Torcwa arrays
+            wls_t = torch.from_numpy(WAVELENGTHS).float()
+            flux = sun_weights(wls_t) * wls_t
+            mask_t = torch.from_numpy(mask).float()
+            
+            rcwa_avg_t = torch.from_numpy((rcwa_p + rcwa_s) / 2.0).float()
+            jsc_val = (rcwa_avg_t * mask_t * flux).sum() * get_jsc_scaling_factor(len(WAVELENGTHS))
+            
+            # Cosine correction for incident angle
+            cos_theta = np.cos(inc_ang * np.pi / 180.0)
+            rcwa_val = float(jsc_val * cos_theta)
+            
+            metric_name = "Jsc"
+            unit = " mA/cm²"
+        else:
+            rcwa_val = rcwa_avg_abs
+            metric_name = "Abs"
+            unit = ""
         
         rank = (idx % args.top_k) + 1
         metrics = {
             "rank": rank,
             "surrogate_model": fwd_name,
             "surrogate_loss": r["loss"],
-            "rcwa_mae": rcwa_mae,
+            "rcwa_mae": rcwa_mae,   
             "rcwa_avg_abs": rcwa_avg_abs,
+            "rcwa_jsc": rcwa_val if getattr(args, "optimize_jsc", False) else None,
             "material": mat_name,
-
             "h": h_val,
             "inc_ang": inc_ang,
             "geometry": geo.tolist()
@@ -355,7 +389,7 @@ def main():
         cmap = plt.cm.viridis
         
         rank = (idx % args.top_k) + 1
-        print(f"  -> Rank {rank} [{mat_name}]: Torcwa Avg Abs = {rcwa_avg_abs:.4f} (Surrogate Predicted Abs = {r['loss']:.4f})")
+        print(f"  -> Rank {rank} [{mat_name}]: Torcwa {metric_name} = {rcwa_val:.4f}{unit} (Surr {metric_name} = {r['loss']:.4f})")
         
         ax_row = axes[idx]
         
@@ -389,11 +423,11 @@ def main():
             ax.plot(WAVELENGTHS, bdt_p, color=c_dataset, linestyle=":", lw=2, label="Best Dataset")
         ax.plot(WAVELENGTHS, r["curve"][:len(WAVELENGTHS)].numpy(), linestyle="-", color=c_surr, lw=3, label="Surrogate")
         ax.plot(WAVELENGTHS, rcwa_p, linestyle="-", color=c_physics, lw=2.5, label="Torcwa Physics")
-        dataset_str = f" | Dataset Abs={best_abs_for_mat:.3f}" if bdt_p is not None else ""
-        ax.set_title(f"Rank {rank}: {mat_name} (P-Pol)\nTorcwa Abs={rcwa_avg_abs:.3f} | Surr Abs={r['loss']:.4f}{dataset_str}", fontsize=16)
+        dataset_str = f" | Dataset {metric_name}={best_abs_for_mat:.3f}" if bdt_p is not None else ""
+        ax.set_title(f"{mat_name} (P-Pol)\nTorcwa {metric_name}={rcwa_val:.2f}{unit} | Surr {metric_name}={r['loss']:.4f}{dataset_str}")
         ax.set_ylim(-0.05, 1.05)
-        if idx == 0: ax.legend(fontsize=12)
-        ax.tick_params(axis='both', which='major', labelsize=12)
+        if idx == 0: ax.legend()
+        ax.tick_params(axis='both', which='major', labelsize=16)
         
         # S-pol
         ax = ax_row[1]
@@ -405,10 +439,10 @@ def main():
             ax.plot(WAVELENGTHS, bdt_s, color=c_dataset, linestyle=":", lw=2, label="Best Dataset")
         ax.plot(WAVELENGTHS, r["curve"][len(WAVELENGTHS):].numpy(), linestyle="-", color=c_surr, lw=3, label="Surrogate")
         ax.plot(WAVELENGTHS, rcwa_s, linestyle="-", color=c_physics, lw=2.5, label="Torcwa Physics")
-        dataset_str2 = f" | Dataset Abs={best_abs_for_mat:.3f}" if bdt_s is not None else ""
-        ax.set_title(f"Rank {rank}: {mat_name} (S-Pol)\nTorcwa Abs={rcwa_avg_abs:.3f} | Surr Abs={r['loss']:.4f}{dataset_str2}", fontsize=16)
+        dataset_str2 = f" | Dataset {metric_name}={best_abs_for_mat:.3f}" if bdt_s is not None else ""
+        ax.set_title(f"{mat_name} (S-Pol)\nTorcwa {metric_name}={rcwa_val:.2f}{unit} | Surr {metric_name}={r['loss']:.4f}{dataset_str2}")
         ax.set_ylim(-0.05, 1.05)
-        ax.tick_params(axis='both', which='major', labelsize=12)
+        ax.tick_params(axis='both', which='major', labelsize=16)
         
         # Structure cross-section
         ax = ax_row[2]
@@ -419,10 +453,10 @@ def main():
             n_harm_recovered = (len(geo) - 2) // 2
             rec_prof, _, _ = build_profile(geo.unsqueeze(0).cpu(), n_harm_recovered, nx=128)
             ax.plot(xs, rec_prof[0].numpy(), color=cmap(0.9), linestyle="--", lw=2, label="FFT Recovered")
-            if idx == 0: ax.legend(fontsize=12)
-        ax.set_title(f"Structure Cross-Section\nFilm Height={h_val:.0f}nm, Inc Ang={inc_ang:.1f}°", fontsize=16)
-        ax.set_xlabel("x (nm)", fontsize=14)
-        ax.set_ylabel("Height (nm)", fontsize=14)
+            if idx == 0: ax.legend()
+        ax.set_title(f"Structure Cross-Section\nFilm Height={h_val:.0f}nm, Inc Ang={inc_ang:.1f}°",)
+        ax.set_xlabel("x (nm)")
+        ax.set_ylabel("Height (nm)")
         ax.tick_params(axis='both', which='major', labelsize=12)
 
         # Harmonics amplitudes & phases
@@ -433,14 +467,14 @@ def main():
         phases_geo = px_np[:, 1]
         x_pos = np.arange(1, n_harm + 1)
         ax_h.bar(x_pos, amps_geo, color=c_amp, edgecolor="black")
-        ax_h.set_ylabel("Amplitude (nm)", color=c_amp, fontsize=14)
+        ax_h.set_ylabel("Amplitude (nm)", color=c_amp)
         ax_h.tick_params(axis='y', labelcolor=c_amp, labelsize=12)
         ax_h.tick_params(axis='x', labelsize=12)
-        ax_h.set_xlabel("Harmonic index", fontsize=14)
-        ax_h.set_title("Harmonic Composition (Optimized)", fontsize=16)
+        ax_h.set_xlabel("Harmonic index")
+        ax_h.set_title("Harmonic Composition (Optimized)")
         ax_p2 = ax_h.twinx()
         ax_p2.plot(x_pos, phases_geo, 'o', color=c_phase, markersize=10, markeredgecolor="black")
-        ax_p2.set_ylabel("Phase (rad)", color=c_phase, fontsize=14)
+        ax_p2.set_ylabel("Phase (rad)", color=c_phase)
         ax_p2.tick_params(axis='y', labelcolor=c_phase, labelsize=12)
         ax_p2.set_ylim(-0.5, 2 * np.pi + 0.5)
         
@@ -456,22 +490,22 @@ def main():
             
             x_pos_data = np.arange(1, n_harm_data + 1)
             ax_h2.bar(x_pos_data, amps_data, color=c_amp, edgecolor="black")
-            ax_h2.set_ylabel("Amplitude (nm)", color=c_amp, fontsize=14)
-            ax_h2.tick_params(axis='y', labelcolor=c_amp, labelsize=12)
+            ax_h2.set_ylabel("Amplitude (nm)", color=c_amp)
+            ax_h2.tick_params(axis='y', labelcolor=c_amp)
             ax_h2.tick_params(axis='x', labelsize=12)
-            ax_h2.set_xlabel("Harmonic index", fontsize=14)
-            ax_h2.set_title(f"Dataset Best\n(Film Height={h_data:.0f}nm, Inc Ang={inc_data:.0f}°)", fontsize=16)
+            ax_h2.set_xlabel("Harmonic index")
+            ax_h2.set_title(f"Dataset Best\n(Film Height={h_data:.0f}nm, Inc Ang={inc_data:.0f}°)")
             
             ax_p3 = ax_h2.twinx()
             ax_p3.plot(x_pos_data, phases_data, 'o', color=c_phase, markersize=10, markeredgecolor="black")
-            ax_p3.set_ylabel("Phase (rad)", color=c_phase, fontsize=14)
+            ax_p3.set_ylabel("Phase (rad)", color=c_phase)
             ax_p3.tick_params(axis='y', labelcolor=c_phase, labelsize=12)
             ax_p3.set_ylim(-0.5, 2 * np.pi + 0.5)
         else:
             ax_h2.axis('off')
     
     plt.tight_layout()
-    fig.suptitle(f"Surrogate Optimization: {args.mode.capitalize()}{title_suffix}", fontsize=20, y=1.02)
+    fig.suptitle(f"Surrogate Optimization: {args.mode.capitalize()}{title_suffix}", y=1.02)
         
     fig.tight_layout()
     
