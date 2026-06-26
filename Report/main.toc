@@ -3,14 +3,14 @@
 \contentsline {chapter}{Abstract}{iii}{chapter*.1}%
 \contentsline {section}{Acknowledgements}{iv}{section*.2}%
 \contentsline {chapter}{\numberline {1}Introduction}{1}{chapter.0.1}%
-\contentsline {section}{\numberline {1.1}Thin-film solar cells and light-trapping layers}{1}{section.0.1.1}%
+\contentsline {section}{\numberline {1.1}Thin-Film solar cells and light-trapping layers}{1}{section.0.1.1}%
 \contentsline {section}{\numberline {1.2}Fourier patterned light-trapping layers}{1}{section.0.1.2}%
 \contentsline {section}{\numberline {1.3}Topology optimization, inverse design and machine learning}{2}{section.0.1.3}%
 \contentsline {chapter}{\numberline {2}Theory}{4}{chapter.0.2}%
 \contentsline {section}{\numberline {2.1}Thin-Film Solar Cells}{4}{section.0.2.1}%
 \contentsline {section}{\numberline {2.2}Fabry-Perot Interferometers}{6}{section.0.2.2}%
 \contentsline {section}{\numberline {2.3}Rigorous Coupled Wave Analysis}{8}{section.0.2.3}%
-\contentsline {section}{\numberline {2.4}Finite Element Method}{12}{section.0.2.4}%
+\contentsline {section}{\numberline {2.4}Finite Element Method}{13}{section.0.2.4}%
 \contentsline {section}{\numberline {2.5}The Adjoint Method}{13}{section.0.2.5}%
 \contentsline {section}{\numberline {2.6}Machine learning models for predicting absorptance curves.}{14}{section.0.2.6}%
 \contentsline {chapter}{\numberline {3}Methods}{15}{chapter.0.3}%
@@ -19,20 +19,20 @@
 \contentsline {section}{\numberline {3.3}Convergence tests}{17}{section.0.3.3}%
 \contentsline {section}{\numberline {3.4}Machine Learning Surrogates}{19}{section.0.3.4}%
 \contentsline {section}{\numberline {3.5}Overview of surrogate model architectures}{21}{section.0.3.5}%
-\contentsline {chapter}{\numberline {4}Results \& Discussion}{22}{chapter.0.4}%
-\contentsline {section}{\numberline {4.1}Generated Dataset}{22}{section.0.4.1}%
-\contentsline {section}{\numberline {4.2}Surrogate Model Training}{23}{section.0.4.2}%
-\contentsline {section}{\numberline {4.3}Surrogate model performance}{25}{section.0.4.3}%
-\contentsline {section}{\numberline {4.4}Surrogate Model Optimization}{28}{section.0.4.4}%
-\contentsline {section}{\numberline {4.5}Why not just do Topology Optimization?}{30}{section.0.4.5}%
-\contentsline {chapter}{\numberline {5}Outlook}{33}{chapter.0.5}%
-\contentsline {chapter}{\numberline {6}Conclusion}{34}{chapter.0.6}%
-\contentsline {chapter}{Bibliography}{35}{chapter*.26}%
-\contentsline {chapter}{\numberline {A}Appendix}{37}{appendix.A}%
-\contentsline {section}{\numberline {A.1}Additional Convergence Tests}{37}{section.A.1}%
-\contentsline {subsection}{\numberline {A.1.1}Convergence Tests for 1000 nm Grating}{37}{subsection.A.1.1}%
-\contentsline {subsection}{\numberline {A.1.2}Convergence Tests without Subpixel Smoothing}{40}{subsection.A.1.2}%
-\contentsline {subsection}{\numberline {A.1.3}Field correspondence of RCWA and COMSOL}{43}{subsection.A.1.3}%
-\contentsline {section}{\numberline {A.2}Dataset Scatter Plots}{43}{section.A.2}%
-\contentsline {section}{\numberline {A.3}Spectrums of 2D forward models.}{43}{section.A.3}%
-\contentsline {section}{\numberline {A.4}Surrogate optimization}{43}{section.A.4}%
+\contentsline {chapter}{\numberline {4}Results \& Discussion}{23}{chapter.0.4}%
+\contentsline {section}{\numberline {4.1}Generated Dataset}{23}{section.0.4.1}%
+\contentsline {section}{\numberline {4.2}Surrogate Model Training}{24}{section.0.4.2}%
+\contentsline {section}{\numberline {4.3}Surrogate model performance}{26}{section.0.4.3}%
+\contentsline {section}{\numberline {4.4}Surrogate Model Optimization}{29}{section.0.4.4}%
+\contentsline {section}{\numberline {4.5}Why not just do Topology Optimization?}{31}{section.0.4.5}%
+\contentsline {chapter}{\numberline {5}Outlook}{34}{chapter.0.5}%
+\contentsline {chapter}{\numberline {6}Conclusion}{35}{chapter.0.6}%
+\contentsline {chapter}{Bibliography}{37}{chapter*.26}%
+\contentsline {chapter}{\numberline {A}Appendix}{39}{appendix.A}%
+\contentsline {section}{\numberline {A.1}Additional Convergence Tests}{39}{section.A.1}%
+\contentsline {subsection}{\numberline {A.1.1}Convergence Tests for 1000 nm Grating}{39}{subsection.A.1.1}%
+\contentsline {subsection}{\numberline {A.1.2}Convergence Tests without Subpixel Smoothing}{42}{subsection.A.1.2}%
+\contentsline {subsection}{\numberline {A.1.3}Field correspondence of RCWA and COMSOL}{45}{subsection.A.1.3}%
+\contentsline {section}{\numberline {A.2}Dataset Scatter Plots}{45}{section.A.2}%
+\contentsline {section}{\numberline {A.3}Spectrums of 2D forward models.}{45}{section.A.3}%
+\contentsline {section}{\numberline {A.4}Surrogate optimization}{45}{section.A.4}%

@@ -561,6 +561,49 @@
     \field{year}{2019}
   \endentry
 
+  \entry{he2016deep}{inproceedings}{}{}
+    \name{author}{4}{}{%
+      {{hash=HK}{%
+         family={He},
+         familyi={H\bibinitperiod},
+         given={Kaiming},
+         giveni={K\bibinitperiod},
+      }}%
+      {{hash=ZX}{%
+         family={Zhang},
+         familyi={Z\bibinitperiod},
+         given={Xiangyu},
+         giveni={X\bibinitperiod},
+      }}%
+      {{hash=RS}{%
+         family={Ren},
+         familyi={R\bibinitperiod},
+         given={Shaoqing},
+         giveni={S\bibinitperiod},
+      }}%
+      {{hash=SJ}{%
+         family={Sun},
+         familyi={S\bibinitperiod},
+         given={Jian},
+         giveni={J\bibinitperiod},
+      }}%
+    }
+    \strng{namehash}{HK+1}
+    \strng{fullhash}{HKZXRSSJ1}
+    \field{labelnamesource}{author}
+    \field{labeltitlesource}{title}
+    \field{labelyear}{2016}
+    \field{labeldatesource}{}
+    \field{booktitle}{Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR)}
+    \field{pages}{770\bibrangedash 778}
+    \field{title}{Deep Residual Learning for Image Recognition}
+    \verb{url}
+    \verb https://openaccess.thecvf.com/content_cvpr_2016/papers/He_Deep_Residu
+    \verb al_Learning_CVPR_2016_paper.pdf
+    \endverb
+    \field{year}{2016}
+  \endentry
+
   \entry{mckay1979comparison}{article}{}{}
     \name{author}{3}{}{%
       {{hash=MMD}{%
@@ -603,6 +646,44 @@
     \field{volume}{21}
     \field{journaltitle}{Technometrics}
     \field{year}{1979}
+  \endentry
+
+  \entry{jonAfan}{article}{}{}
+    \name{author}{2}{}{%
+      {{hash=MC}{%
+         family={Mao},
+         familyi={M\bibinitperiod},
+         given={Chenkai},
+         giveni={C\bibinitperiod},
+      }}%
+      {{hash=FJA}{%
+         family={Fan},
+         familyi={F\bibinitperiod},
+         given={Jonathan\bibnamedelima A.},
+         giveni={J\bibinitperiod\bibinitdelim A\bibinitperiod},
+      }}%
+    }
+    \strng{namehash}{MCFJA1}
+    \strng{fullhash}{MCFJA1}
+    \field{labelnamesource}{author}
+    \field{labeltitlesource}{title}
+    \field{labelyear}{2026}
+    \field{labeldatesource}{}
+    \verb{doi}
+    \verb 10.1073/pnas.2530330123
+    \endverb
+    \verb{eprint}
+    \verb https://www.pnas.org/doi/pdf/10.1073/pnas.2530330123
+    \endverb
+    \field{number}{18}
+    \field{pages}{e2530330123}
+    \field{title}{Accurate and scalable deep Maxwell solvers}
+    \verb{url}
+    \verb https://www.pnas.org/doi/abs/10.1073/pnas.2530330123
+    \endverb
+    \field{volume}{123}
+    \field{journaltitle}{Proceedings of the National Academy of Sciences}
+    \field{year}{2026}
   \endentry
 \enddatalist
 \endinput
