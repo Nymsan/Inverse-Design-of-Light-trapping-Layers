@@ -1,9 +1,9 @@
 \chapter{Methods}
-This chapter some of the key methods and numerical details of the dataset generation, along with the network architectures of trained machine learning models.
+This chapter details some of the key methods and numerical details of the dataset generation, along with the network architectures of trained machine learning models.
 \label{sec:methods}
 %and any classical optimization approaches used for data generation or baseline comparisons.
 \section{Numerical implementation}
-Even though the Fourier patterened data seems intuitive to use with a fourier domain methods, it should be noted that Grayscale structures are not isotropic layerwise in the z-direction.
+Even though the Fourier patterened data seems intuitive to use with a Fourier domain methods, it should be noted that Grayscale structures are not isotropic layerwise in the z-direction.
 The grating pattern is a smoothly varying curve in 3D space, meaning that to use RCWA, the continuous sine curve must be split into multiple staircase step approximations. How this looks for varying step heights is shown in figure \ref{fig:staircase}
 
 \begin{figure}[h!]
@@ -62,7 +62,7 @@ The grating pattern is a smoothly varying curve in 3D space, meaning that to use
     \label{fig:staircase}
 \end{figure}
 In the figure, 10 harmonics are included in the x-direction, all with amplitude $10 \text{nm}$. This yields a total grating height of $200 \text{nm}$. The staircase is binarized by thresholding - if the sine wave in the given $z$ value is as high, it gets to be grating material, otherwise it is air. The curve is drawn on a x,y resolution, far above the Nyquist limit of the highest grating profile order (here $n_x$ = 5000 corresponding to a frequency of $5\frac{\text{pixels}}{nm}$, while the highest grating order is has a frequency of $0.01\frac{\text{oscillations}}{nm}$).
-The hars edges come solely from the discretization along the z-direction. Since every layer is fourier transformed, step-functions edges require more fourier orders to resolve. This is a fundamental theorem for the convergence of Fourier series on discontinuous functions. Also, note the third layer in figure \ref{fig:staircase}  (a). Here, the grating is parameterized as a gradient index material of constant height, but oscillating refractive index. Though both of these cases are simplifications and have numerical artifacts, the convergence tests below show that the smoothing improves convergence. The smoothing is done by simply dividing the height of the grating oscillation that is within the given layer height. The code snippet is shown below.
+The harsh edges come solely from the discretization along the z-direction. Since every layer is Fourier transformed, step-functions edges require more Fourier orders to resolve. This is a fundamental theorem for the convergence of Fourier series on discontinuous functions. Also, note the third layer in figure \ref{fig:staircase}  (a). Here, the grating is parameterized as a gradient index material of constant height, but oscillating refractive index. Though both of these cases are simplifications and have numerical artifacts, the convergence tests below show that the smoothing improves convergence. The smoothing is done by simply dividing the height of the grating oscillation that is within the given layer height. The code snippet is shown below.
 \begin{lstlisting}
     def get_staircase_sine_eps(x, params_x, grating_period, num_layers, eps_high, eps_low=1., subpixel=True, y=None, params_y=None, grating_period_y=None):
     """Generate sine grating in staircase approximation. Supports 1D and 2D gratings."""
@@ -96,7 +96,7 @@ All of my own implementations are available on my github \footnote{\url{https://
 
 \section{COMSOL implementation of a grating}
 \label{sec:comsol}
-A fourier patterned grating of a single oscillation with no phase shift and an amplitude of $50\text{nm}$ was implemented in COMSOL. Using COMSOL's built in material library, which refers to \url{https://refractiveindex.info/}, the geometry was split into multiple different domains.
+A Fourier patterned grating of a single oscillation with no phase shift and an amplitude of $50\text{nm}$ was implemented in COMSOL. Using COMSOL's built in material library, which refers to \url{https://refractiveindex.info/}, the geometry was split into multiple different domains.
 Figure \ref{fig:comsol} shows three images. Image (a) is an image of the geometry. The top domain, over the oscillation is silicon. Light propagates in the z direction, as shown by the small red arrow. The first domain under the oscillation is air. The boundary on the side are periodic, and the boundary at the bottom is not a perfect electric conductor, but an impedance boundary condition with refractive index $n = 0 + 100i$. This is done because RCWA doesnt have direct boundary conditions in the layer S-matrices. Or that is, as discussed in section \ref{sec:rcwa}, the standard boundary conditions of Maxwell's equations determine the S-matrices.
 As such, I have approximated a perfect electrical conductor (mirror) by an artificially high complex refractive index. This will have a small amount of phase change, but it is almost negligible. The bottom domain, the rectangle, is a perfectly matches layer - here reflected electrical fields disappear, so they dont scatter back and interfere.
 (b) shows the mesh, made according to the rule of thumb that there should be a minimum mesh size of at most $s_{mesh} = \frac{\lambda}{5n(\lambda)}$. To be sure that the simulation is high fidelity I used an even finer mesh size, closer to $s_{mesh} = \frac{\lambda}{60n(\lambda)}$ at the boundary between materials, and $s_{mesh} = \frac{\lambda}{10n(\lambda)}$ everywhere else. Figure (c) shows a close up of the fine triangular mesh.
@@ -134,22 +134,22 @@ To match the RCWA implementation, where the absorptance is split into absorptanc
 
 \section{Convergence tests}
 To ensure the numerical stability and accuracy of the RCWA solver, rigorous convergence testing is performed. All of the plots included here can be found for equivalent conditions except without the smoothing described in the last section in the appendix \ref{sec:nosubpix}. They can also be found for a grating of a height that is 10 times higher. The conclusions are much the same, but they are included for completeness sake.
-Convergence criteria largely depend on the number of Fourier orders $N$ retained and the number of layers in the staircase approximation of the fourier patterned grating.
-In both cases of figure \ref{fig:convergence_num_layers} and \ref{fig:convergence_order_N}, the error is compared relative to the absorptance curved obtained from the high fidelity comsol simulation of a single fourier patterned grating.
+Convergence criteria largely depend on the number of Fourier orders $N$ retained and the number of layers in the staircase approximation of the Fourier patterned grating.
+In both cases of figure \ref{fig:convergence_num_layers} and \ref{fig:convergence_order_N}, the error is compared relative to the absorptance curved obtained from the high fidelity comsol simulation of a single Fourier patterned grating.
 The incident angle for these convergence simulations is $30\deg$, for no other reason than having some field components in all directions. Especially of note is it that the p-polarization has a field component in the propagation direction $z$.
 as already discussed in section \ref{sec:rcwa}, discontinuities at boundary conditions, especially for the propagation direction. This theoretical expectation fits with the observed behavior of the convergence tests for RCWA vs increased number of layers and increased order of Fourier truncation. The sudden stop in improvement for figure \ref{fig:convergence_order_N} at 10 Fourier orders for s-polarization only suggest that here, the staircase approximation is fully resolved in diffraction orders.
 
 \begin{figure}[h!]
     \centering
     \includegraphics[width=0.85\textwidth]{figures/convergence/convergence_num_layers_100nm.png}
-    \caption{Convergence of the RCWA implementation as a function of the number of staircase layers for a grating of height 100 nm. The convergence test is run with 20 retained fourier orders.
+    \caption{Convergence of the RCWA implementation as a function of the number of staircase layers for a grating of height 100 nm. The convergence test is run with 20 retained Fourier orders.
     Left: Mean error over the spectrum. Right: Max error over the spectrum.}
     \label{fig:convergence_num_layers}
 \end{figure}
 
 Figure \ref{fig:convergence_num_layers} shows the convergence vs the obtained absorptance curve from COMSOl as a function of the number of layers at a constant Fourier truncation order. Figure \ref{fig:convergence_order_N} shows convergence vs truncated Fourier order at a constant number of layers. Both figures simulates the same grayscale structure,
 a Fourier patterned grating of the form of equation \ref{eq:grating} with only the first amplitude nonzero at $a_x=50$, meaning the grating has a total height of $100$ nm.
-A general rule of thumb for convergence tests is that the overall physics is captured, when the improvement of the parameter under question is linear in a log plot. It might be argued that this occurs already at 10 layers yielding $10 \text{nm}$ per layer for the grating staircase,  and a fourier truncation order of 10. This also suggests that the variable held constant is sufficient for each plot.
+A general rule of thumb for convergence tests is that the overall physics is captured, when the improvement of the parameter under question is linear in a log plot. It might be argued that this occurs already at 10 layers yielding $10 \text{nm}$ per layer for the grating staircase,  and a Fourier truncation order of 10. This also suggests that the variable held constant is sufficient for each plot.
 For these values, the mean error is below 0.01, or since it is average absorptance, correspond to an error of $\pm 1\%$ of absorbed light power. The max error for these values is on the order of $0.1$ or $10\%$ absorptance error. Though this sounds substantial, it is most likely a poorly resolved resonance peak as discussed in section \ref{sec:fabry-perot}, and the finite small width makes the weight of the error negligible. The average error is more important.
 In addition to just the errors, the actual spectra are plotted for a selection of different number of layers in the appendix, section \ref{sec:comsolSpectra}.
 \begin{figure}[h!]
@@ -160,11 +160,11 @@ In addition to just the errors, the actual spectra are plotted for a selection o
     \label{fig:convergence_order_N}
 \end{figure}
 
-With this it has been shown that RCWA matches COMSOL for a high enough fourier truncation order and height per layer in the sinusoidal grating layer.
+With this it has been shown that RCWA matches COMSOL for a high enough Fourier truncation order and height per layer in the sinusoidal grating layer.
 As such, convergence tests can now be made against RCWA itself for a very high scattering order and number of layers. \cite{HOPE} argues that sinusoidal modulations scatter incoming electromagnetic fields to the order of the sine modulation of the material.
-To see what happens for a low truncation order, a convergence test against the sinc like grating plotted in figure \ref{fig:staircase}, with 10 oscillations of amplitude $10\text{nm}$ each has been made, and is shown in figure \ref{fig:convergence_combinations}. The right side plot has the same sinc like-structure, but with the oscillations in both the $x$- and $y$ directions.
-The truncated fourier order of the 3D test is the same for $x$ and $y$. This convergence test is especially interesting for 3D, and it is interesting to see whether the number of included harmonics in the grayscale Fourier patterened grating layer has to follow the Nyquist limit of twice as many diffracted RCWA orders. For the 2D combinations at the left, the RCWA order is taken all the way to $100$. The difference in time complexity of truncated order 100 in 2D and 3D is $10^6$, so the 3D order is capped at $12$.
-For the 2D combinations to the left in the figure, mean absolute error is close to $10^-3$ already for 10 truncated orders and $10$ staircase layers. Since the grayscale modulated grating contains 10 harmonics, this suggests that optical performance is not Nyquist limited by the truncated fourier order of RCWA.
+To see what happens for a low truncation order, a convergence test against the sinc-like grating plotted in figure \ref{fig:staircase}, with 10 oscillations of amplitude $10\text{nm}$ each has been made, and is shown in figure \ref{fig:convergence_combinations}. The right side plot has the same sinc-like-structure, but with the oscillations in both the $x$- and $y$ directions.
+The truncated Fourier order of the 3D test is the same for $x$ and $y$. This convergence test is especially interesting for 3D, and it is interesting to see whether the number of included harmonics in the grayscale Fourier patterned grating layer has to follow the Nyquist limit of twice as many diffracted RCWA orders. For the 2D combinations at the left, the RCWA order is taken all the way to $100$. The difference in time complexity of truncated order 100 in 2D and 3D is $10^6$, so the 3D order is capped at $12$.
+For the 2D combinations to the left in the figure, mean absolute error is close to $10^{-3}$ already for 10 truncated orders and $10$ staircase layers. Since the grayscale modulated grating contains 10 harmonics, this suggests that optical performance is not Nyquist limited by the truncated Fourier order of RCWA.
 For the 3D combinations, very good performance at an error of less than $1\%$ already at 3 truncated orders is observed. As discussed in section \ref{sec:rcwa}, for 3D periodic gratings, there really exists $~N^2=9$ diffracted orders, which here corresponds to about an order of $10$, like the 2D results. 
 
 \begin{figure}[ht!]
@@ -180,8 +180,8 @@ Because of these convergence tests, and to err on the side of caution, going for
 
 \section{Machine Learning Surrogates}
 The training loss curves of the final training run for the 2D dataset with the most data is seen in figure \ref{fig:loss_curves}. I have included this figure in the methods section, and not the results section, because I want to discuss how the weights of the trained model are stored. I have implemented a custom exponential moving average tracker, to handle the noisy validation scores seen in the \texttt{skip\_cnn} and \texttt{SIREN} models.
-Both of these models have a convolution based encoder, which can be sensitive to edges and small changes in the weights. As such, both the train data and validation data is more noisy than the forward mlp.
-The forward mlp is seen to slightly overfit to the train data, yet with much worse performance than the two other models. I've included the loss curves both for the models trained on $10\%$ of the total train set and on the entire train dataset.
+Both of these models have a convolution based encoder, which can be sensitive to edges and small changes in the weights. As such, both the train data and validation data is more noisy than the \texttt{forward\_mlp}.
+The \texttt{forward\_mlp} is seen to slightly overfit to the train data, yet with much worse performance than the two other models. I've included the loss curves both for the models trained on $10\%$ of the total train set and on the entire train dataset.
 \begin{figure}[htbp]
     \centering
     
@@ -228,5 +228,62 @@ After every single batch, the weights of the tracker are updated smoothly by exp
 \end{lstlisting}
 
 \section{Overview of surrogate model architectures}
+In this project, I have designed and trained three different surrogate model architectures. I refer to the source code on my github for full details\footnote{\url{https://github.com/Nymsan/Inverse-Design-of-Light-trapping-Layers/tree/main}}.
+Common to all the models is the input space of continuous $[a_1,\phi_1,a_2,phi_2,...],h$ and $\theta$ and one material ID, which is a number for the different grating material. The networks learn an embedding for that material ID, so they can learn the different optical properties.
+All the models use a \texttt{build\_profile}, which looks like so, and is identical to equation \ref{eq:grating}
+\begin{lstlisting}
+    def build_profile(geometry, n_harmonics, nx=128, grating_period=1000.0, r_grid=None, harmonic_idx=None):
+    n_fourier = n_harmonics * 2
+    params_x = geometry[:, :n_fourier].view(-1, n_harmonics, 2)
+    amps = params_x[:, :, 0]
+    phases = params_x[:, :, 1]
+    grating_height = 2.0 * amps.sum(dim=1, keepdim=True) + 1e-9
 
+    device = geometry.device
+    if r_grid is None:
+        r_grid = torch.linspace(0, grating_period, nx + 1, device=device)[:-1]
+    if harmonic_idx is None:
+        harmonic_idx = torch.arange(1, n_harmonics + 1, dtype=torch.float32, device=device)
 
+    n = harmonic_idx[None, :, None]
+    r = r_grid[None, None, :]
+    arg = 2.0 * math.pi * n * r / grating_period - phases[:, :, None]
+    cosines = amps[:, :, None] * torch.cos(arg)
+    profile = grating_height[:, :, None] / 2.0 + cosines.sum(dim=1, keepdim=True)
+    
+    h = geometry[:, n_fourier:n_fourier+1]
+    inc_ang = geometry[:, n_fourier+1:n_fourier+2]
+
+    return profile.squeeze(1), h, inc_ang
+\end{lstlisting}
+
+The idea is that the model builds its' own visualization of how the grating looks, as this likely has more information than the raw parameters. While this was originally intended for the convolutional layers of 
+\texttt{skip\_cnn} and \texttt{siren}, it turned out to work well for the mlp too.
+
+The last things the models have in common is their train loss. I have opted to use a combination of three loss terms
+
+\begin{equation}
+\mathcal{L}oss = \left(L_\delta(\hat{Abs} - Abs_{data}) + L_\delta(|\mathcal{F}{\hat{Abs}}| - |\mathcal{F}{Abs_{data}}|)\right)\cdot \left<Abs_{data}\right>,
+\end{equation}
+where $\left<A\right>$ denotes the average, $\hat{Abs}$ denotes the prediction of the absorptance curve by the neural network, $Abs_{data}$ denotes the actual absorptance curve that is the target, $\mathcal{F}$ denotes the Fast Fourier Transform (FFT) operator and
+$$
+L_\delta(a) = \begin{cases} 
+\frac{1}{2}a^2 & \text{for } |a| \le \delta, \\ 
+\delta \cdot (|a| - \frac{1}{2}\delta), & \text{otherwise.} 
+\end{cases}
+$$
+Is the so called Huber Loss, a loss used in robust regression that is less prone to outliers. I used $\delta=0.01$. This loss term was obtained entirely empirically, but each term has an inspiration.
+Because of the strong resonances and sharp peaks of the Fabry-Perot like cavities, I didnt think outliers should be punished too harshly. However, if the outliers are entirely ignored, the resonant spikes behaviour tended to completely disappear, producing just an average regression curve.
+Because I wanted to contain spectral information of the curves, I wanted to include either a derivative loss or a Fourier loss. Because the numerical derivatives are unstable for rapid oscillations, I opted for the Fourier loss.
+The idea of matching the absolute value of the FFT of the prediction to the absolute value of the FFT of the target is that if the peaks are present, but translated, I dont want the loss term to punish this behavior.
+The FFT of a translated curve is the same as the untranslated curve but with a phase shift. By removing the phase shift, I encourage the predictions to also predict the shape of the peaks. The final term, multiplying by the mean absorptance of the was included to put more emphasis on better light trapping layers.
+The histogram at figure \ref{fig:meanabshist} shows that this value is well behaved, and because the absorptance is a dimensionless constant between 0 and 1, this had no real downsides.
+
+Other than that, the network architectures are pretty basic. The first is a multilayer peceptron called \texttt{forward\_mlp}, also called fully connected network, but with skip connections and $GeLU$ activation functions. The skip connections
+help keep gradients stable at deeper layers, as discussed by \cite{he2016deep}. The total parameter count was about $1.3$ million.
+
+The next is a 1D convolutional neural network, also with skip connections. I call it \texttt{skip\_cnn}. It uses average pooling to downsample the learned deep layers, before connecting to a smaller MLP head.  The network totals about $1.2$ million parameters.
+
+The final trained surrogate model is a conditioned implicit model, that uses learnable sine frequency layers to fit high frequency data. It compresses the information of the grating using a smaller version of the \texttt{skip\_cnn} to a latent, before combining this latent and a continuous wavelength to predict absorptance at that exact wavelength. 
+This means that this is the only of the three models that can predict absorptance outside of the grid of wavelengths from $300$ nm to $1100$ nm with $5$ nm resolution. Although it has not ended up becoming the main focus of this project, this is another strength of neural networks for optics problems. 
+They can supersample the optical properties to higher fidelities, without the expensive computations. The network has about $1.1$ million parameters.

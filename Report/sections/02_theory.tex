@@ -23,8 +23,8 @@ the employed methods would also work with other active materials.
 
 To query the performance of gratings of multiple different materials, I have chosen to include in my study three high-refractive index materials.
 First, as a baseline, the gratings are explored in the material of crystalline silicon. Having a high refractive index in much of the solar spectrum might allow trapping light better.
-I then explore the two, low loss and medium high refractive index materials of TiO$_2$ and Si$_3$N$_4$. More materials could be included without changing the employed methods.
-As previosly mentioned, high refractive index methods are preferred because of the so called Yablonovitch limit, that says that the optical path length of an active material can be increased by a factor $~4n^2$, where n is the refractive inddex.
+I then explore the two low loss and medium high refractive index materials of TiO$_2$ and Si$_3$N$_4$. More materials could be included without changing the employed methods.
+As previosly mentioned, high refractive index methods are preferred because of the Yablonovitch limit, that says that the optical path length of an active material can be increased by a factor $~4n^2$.
 Having low extinction coefficient $k$, i.e. the imaginary part of the refractive index, also reduces parasitic loss of energy in the grating layer itself. Figure \ref{fig:refractive_indices} shows the refractive index and exctinction coefficients of the chosen materials.
 
 The optical performance of light trapping layers differs based on the polarization of light. Sunlight is essentially unpolarized. The total incoming field is given by
@@ -65,9 +65,9 @@ A(\lambda) = \frac{P_{abs}(\lambda)}{P_{in}} = \frac{1-R(\lambda)-T(\lambda)}{P_
 the absorptance is a dimensionless quantity. For solar tracker farms, the solar cells are angled to always aim the incoming sunlight to hit the solar cells at normal incidence. As such, for
 solar tracker farms, the maximum absorptance at normal incidence is desired.
 For stationary solar cells, such as solar cells installed on the roofes of houses, the best absorptance over a range of incidence angles is desired.
-I've chosen to focus primarily on normal incidence, though the dataset I've generated includes randomly sampled incidence angles for all structures, as well as normal incidence.
+I Have chosen to focus primarily on normal incidence, though the dataset I have generated includes randomly sampled incidence angles for all structures, as well as normal incidence.
 
-The Short circuit current is easily obtained after the fact, so going forward, I will be focusing on calculating the dimensionless $A(\lambda)$ in the film layer.
+The Short circuit current is easily obtained after first obtaining the absorptance curve, so going forward, I will be focusing on calculating the dimensionless $A(\lambda)$ in the film layer.
 Figure \ref{fig:jsc_integrand} shows which wavelengths are the weighted the highest for Solar cell short ciruit current.
 
 Figure~\ref{fig:jsc_integrand} shows the integrand $\lambda \cdot I_{\mathrm{AM1.5g}}(\lambda)$ alongside the raw irradiance spectrum $I_{\mathrm{AM1.5g}}(\lambda)$. The integrand peaks near $\lambda \approx 700$~nm, meaning absorptance in the red and near-infrared region contributes most strongly to $J_{sc}$. Short-wavelength photons carry more energy per photon but are fewer in number, while long-wavelength photons are plentiful but each contributes less. Optimising the absorptance in the 600--900~nm window therefore has the greatest impact on solar cell performance.
@@ -88,7 +88,7 @@ are not exactly Fabry-Perot Interferometers, they do share many similarities. A 
     \centering
     \includegraphics[width=0.95\textwidth]{figures/fabry_perot_grid.pdf}
     \caption{Interferometer effects in a bare flat film (top) versus a patterned grating structure (bottom). The left column presents the xz-plane structure profile (TiO$_2$ grating on Si film with an Ag backreflector). The middle column shows the polarization-averaged absorptance spectrum at $\theta = 30^\circ$. The right column displays the polarization-averaged electric field magnitude $|E|$ at $\lambda = 495$ nm.
-    Notice that the smooth part of the curve lasts for longs and more small resonance peaks appear at the fourier grating. However, the overall shape remains much the same. }
+    Notice that the smooth part of the curve lasts for longs and more small resonance peaks appear at the Fourier grating. However, the overall shape remains much the same. }
     \label{fig:fabry_perot}
 \end{figure}
 Without going too much into detail, a key result of fabry-perot interferometers in wavelength space is that
@@ -101,10 +101,10 @@ adjacent transmission (Absorptance) peaks is given by
 where $\lambda_0$ is the wavelength of the nearest peak and $n_g$ is the refractive index of the crystalline silicon film. Noteably, the lower the wavelength, the more densely spaced the absorptance peaks will be. Note also that the valleys are generally wider than the peaks, as is the case for most Airy distributions, though it depends on the so-called coefficient of finesse.\footnote{\url{https://en.wikipedia.org/wiki/Free_spectral_range}}
 For a film height of 3000 nm, the peaks at the lower wavelengths of $\lambda_0\approx 400 \text{nm}$, the spacing between peaks is $\Delta\lambda \approx5.49 \text{nm}$. This implicitly sets a limit on how rough the wavelength sampling can be in the dataset generation.
 
-figure \ref{fig:fabry_perot} show the structure profile, absorptance curve from $300 \text{nm}$ to $1100$ nm and average field at a wavelength of $495$ nm of a Fabry-Perot like resonator, and the bottom row shows almost the same structure, but it has a fourier patterned grating of TiO$_2$.
-One thing to note is that the location of the absorptance peaks approximately overlap. Non of them are meaningfully widened, but for about $800$ nm, the spectrum starts to exhibit smaller peak oscillations. If the wavelength resolution were even higher, perhaps these peaks would have noticeable heights.
+Figure \ref{fig:fabry_perot} shows the structure profile, absorptance curve from $300 \text{nm}$ to $1100$ nm and average field at a wavelength of $495$ nm of a Fabry-Perot like resonator, and the bottom row shows almost the same structure, but it has a Fourier patterned grating of TiO$_2$.
+One thing to note is that the location of the absorptance peaks approximately overlap. None of them are meaningfully widened, but for about $800$ nm, the spectrum starts to exhibit smaller peak oscillations. If the wavelength resolution were even higher, perhaps these peaks would have noticeable heights.
 the interpretation is of course that the grating can kick the momentum of the incoming light into a nearby resonance. Another thing to note is that the region without oscillations is significantly widened. In this region, for the pure Fabry-Perot cavity either light is reflected from the surface, or the light is not trapped within the cavity.
-The light is either absorbed before standing waves occur, with their high frequency oscillations, or the light is absorbed exactly because the momentum is kicked into a trapped mode. For light of about 400 nm, the absorptance is for the given grating higher than $80\%$, indicating that the graing works well as an anti-reflective coating (ARC) here. This is what functions as the largest hint of what an optimal Fourier patterned surface does.
+The light is either absorbed before standing waves occur, with their high frequency oscillations, or the light is absorbed exactly because the momentum is kicked into a trapped mode. For light of about 400 nm, the absorptance for the given grating is higher than $80\%$, indicating that the grating works well as an anti-reflective coating (ARC) here. This is what functions as the largest hint of what an optimal Fourier patterned surface does.
 Where the refractive index is high enough, it kicks light into a trapped and resonant mode. For 300nm, the absorptance is actually worse for the Fourier patterned structure. This  would seem to indicate that either more of the light is reflected, or the light is accidentally less trapped.   
 
 \section{Rigorous Coupled Wave Analysis}
@@ -123,7 +123,7 @@ and
 \mu(x,y,z)_N = \mu(x + m \cdot \Lambda_x, y + n \cdot \Lambda_y)_N, m,n \in \mathbb{Z},
 \end{equation}
 where $m$ and $n$ are integers and the subscript $N$ denotes the $N$'th layer of the structure. For the entirety of this project, the designed
-fourier patterned light trapping layers will be designed using crystalline silicon ($Si$), Titanium Dioxide ($TiO_2$) and Silicon Nitride ($Si_3N_4$), which
+Fourier patterned light trapping layers will be designed using crystalline silicon ($Si$), Titanium Dioxide ($TiO_2$) and Silicon Nitride ($Si_3N_4$), which
 are all nonmagnetic, so the relative permeability $\mu = 1$. In general, $\epsilon$ and $\mu$ will be $3 \times 3$ tensors, but for isotropic and linear materials these are scalars.
 The equations solved for are of course the Maxwell equations, namely Faraday's law
 \begin{equation}
@@ -182,39 +182,39 @@ an algebraic factor of $-i\omega t$, meaning that the equations appear in their 
 
 
 Owing to the periodicity of the system, see equations \ref{eq:permittivity_periodicity} and  \ref{eq:permeability_periodicity}, both the electromagnetic fields and the permitivity and permeability may
-be written as their truncated fourier series in the x- and y-directions as below. Truncating the electromagnetic fields to order $M,N$ in $x,y$ makes RCWA a semi-analytical method
-precise only to this fourier order. The final fields are reconstructed as an inverse Fast Fourier Transform, so including enough fourier orders is an important convergence criterion.
+be written as their truncated Fourier series in the x- and y-directions as below. Truncating the electromagnetic fields to order $M,N$ in $x,y$ makes RCWA a semi-analytical method
+precise only to this Fourier order. The final fields are reconstructed as an inverse Fast Fourier Transform, so including enough Fourier orders is an important convergence criterion.
 \begin{equation}
-\label{eq:fourierPermitivity}
+\label{eq:FourierPermitivity}
 \epsilon(x,y) = \sum_{m=-2M}^{2M}\sum_{n=-2N}^{2N}\epsilon_{m,n}\exp{i(mL_xx+nL_yy)},
 \end{equation}
 \begin{equation}
-\label{eq:fourierPermeability}
+\label{eq:FourierPermeability}
 \mu(x,y) = \sum_{m=-2M}^{2M}\sum_{n=-2N}^{2N}\mu_{m,n}\exp{i(mL_xx+nL_yy)},
 \end{equation}
 \begin{equation}
-\label{eq:fourierFaraday}
+\label{eq:FourierFaraday}
 \mathbf{E} = \exp{i\mathbf{k}\cdot\mathbf{r}}\sum_{m=-M}^{M}\sum_{n=-N}^{N}\mathbf{E}_{m,n}\exp{i(mL_xx+nL_yy)},
 \end{equation}
 \begin{equation}
-\label{eq:fourierAmpere}
+\label{eq:FourierAmpere}
 \mathbf{H} = \exp{i\mathbf{k}\cdot\mathbf{r}}\sum_{m=-M}^{M}\sum_{n=-N}^{N}\mathbf{H}_{m,n}\exp{i(mL_xx+nL_yy)},
 \end{equation}
 where $L_x = \frac{2\pi}{\Lambda_x}$ and $L_y = \frac{2\pi}{\Lambda_y}$, 
-and the parameters $\epsilon_{m,n}, \mu_{m,n}, \mathbf{E}_{m,n} = (E_{x,m,n},E_{y,m,n},E_{z,m,n})$ and $\mathbf{H}_{m,n} = i\sqrt{\frac{\epsilon_0}{\mu_0}} (H_{x,m,n},H_{y,m,n},H_{z,m,n})$ are the fourier amplitudes of the $m,n$'th diffraction order, and where the factor $i\sqrt{\frac{\epsilon_0}{\mu_0}}$ has been written out for convenience.
-These are the Bloch eigenmodes of a single block of the fourier modal method.
-It is worth mentioning, that since the momentum of light is always conserved, $k_z$ implicitly depends on the expansion orders $m,n$, and writing out the k-vector in full, including the fourier components, yields
+and the parameters $\epsilon_{m,n}, \mu_{m,n}, \mathbf{E}_{m,n} = (E_{x,m,n},E_{y,m,n},E_{z,m,n})$ and $\mathbf{H}_{m,n} = i\sqrt{\frac{\epsilon_0}{\mu_0}} (H_{x,m,n},H_{y,m,n},H_{z,m,n})$ are the Fourier amplitudes of the $m,n$'th diffraction order, and where the factor $i\sqrt{\frac{\epsilon_0}{\mu_0}}$ has been written out for convenience.
+These are the Bloch eigenmodes of a single block of the Fourier modal method.
+It is worth mentioning, that since the momentum of light is always conserved, $k_z$ implicitly depends on the expansion orders $m,n$, and writing out the k-vector in full, including the Fourier components, yields
 \begin{align}
 \label{eq:kmn}
 \mathbf{k}_{m,n} &= (k_x+mL_x,k_y+nL_y,k_z(m,n)) = (k_{x,m},k_{y,n},k_{z,m,n}) \\ &= \left(k_x+mL_x,k_y+nL_y,\sqrt{k_0^2-(k_x+mL_x)^2-(k_y+nL_y)^2}\right),
 \end{align}
-where equation \ref{eq:dispersionk} has been used. The physical interpretation of the fourier series of the electromagnetic fields is then made obvious;
+where equation \ref{eq:dispersionk} has been used. The physical interpretation of the Fourier series of the electromagnetic fields is then made obvious;
 the different terms are different diffraction orders, each with part of the initial z-component momentum kicked into either the x- or y-direction. It is also noted, that for high enough orders of $m,n$, the term inside the square root becomes negative.
 At this point, the diffracted order turns to an evanscent mode, that decays with propagation in the z direction.
 It is noted how the permitivity and permeability is expanded to twice the order of the electromagnetic fields $E$ and $H$. This arises
 from the fact that the algebraic components of equations \ref{eq:faraday} and \ref{eq:ampere} include products of Fourier series, so to reach order $M,N$ in the electromagnetic fields,
 the permitivity and permeability must be truncated at twice the order. For more details, I refer to \cite{fmm} section 3.
-By inserting equations \ref{eq:fourierFaraday} and \ref{eq:fourierAmpere} into the curl equations \ref{eq:faraday} and \ref{eq:ampere} yields a mess of a matrix equation, but an algebraic expression for the fourier amplitudes nonetheless. I will show the first of them, the rest look about the same, and I will show the matrix eigenvalue problem
+By inserting equations \ref{eq:FourierFaraday} and \ref{eq:FourierAmpere} into the curl equations \ref{eq:faraday} and \ref{eq:ampere} yields a mess of a matrix equation, but an algebraic expression for the Fourier amplitudes nonetheless. I will show the first of them, the rest look about the same, and I will show the matrix eigenvalue problem
 \begin{align}
 \label{eq:hell}
 k_0 \sum_{s}\sum_{t} \mu_{m-s,n-t}H_{x,s,t} = ik_zE_{y,m,n}-ik_{y,m,n}E_{z,m,n}
@@ -223,7 +223,7 @@ k_0 \sum_{s}\sum_{t} \mu_{m-s,n-t}H_{x,s,t} = ik_zE_{y,m,n}-ik_{y,m,n}E_{z,m,n}
 \end{align}
 The fields  may be written as vectors of dimension $G=(2M+1)(2N+1)$, and solved as eigenvalue equations. I refer to \cite{fmm} eq. 3.14.
 An important point here is that the expansion of $\mu$ and $\epsilon$ couples different diffraction orders together.
-After many manipulations, one can arrive at the two simplified $2(2M+1)(2N+1)$ matrix equations. The details are not important for the point here
+After many manipulations, one can arrive at the two simplified $2(2M+1)(2N+1)$ matrix equations.
 
 \begin{equation}
 \mathbf{P} \left(\begin{matrix}
@@ -273,11 +273,11 @@ $jk_z = -a \pm jb$ as the positive eigenvalues. This suggests an ordering where 
     \mathbf{H}^{(g)}_x, \mathbf{H}^{(g)}_y, \mathbf{H}^{(g)}_z
 \end{matrix}\right) \\
  &= \exp{ik_z^{(g)}z}\sum_{-M}^{M}\sum_{-N}^{N}\left(\begin{matrix}
-    E_{x,m,m}^{(g)}, E_{y,m,m}^{(g)}, E_{z,m,m}^{(g)} \\
-    H_{x,m,m}^{(g)}, H_{y,m,m}^{(g)}, H_{z,m,m}^{(g)} .
+    E_{x,m,n}^{(g)}, E_{y,m,n}^{(g)}, E_{z,m,n}^{(g)} \\
+    H_{x,m,n}^{(g)}, H_{y,m,n}^{(g)}, H_{z,m,n}^{(g)} .
 \end{matrix}\right)\exp{j\left(k_{x,m}x+k_{y,m}y\right)},
 \end{align}
-Where it should be noted that there are $M^+=2G=2(2M+1)(2N+1)$ positive modes and $M^-=2G=2(2M+1)(2N+1)$ negative modes. With this, all the fourier expanded coefficents can be solved for uniquely, which means that inside a structure with the $z$-independent $x$- and $y$-periodic material, the field
+Where it should be noted that there are $M^+=2G=2(2M+1)(2N+1)$ positive modes and $M^-=2G=2(2M+1)(2N+1)$ negative modes. With this, all the Fourier expanded coefficents can be solved for uniquely, which means that inside a structure with the $z$-independent $x$- and $y$-periodic material, the field
 can be uniquely recovered (up to a phase factor) by inverse Fourier transformation. But most of the dynamics comes from the coupling with neighbouring layers, described by the S-matrix.
 We now perceive the forward and backward modes as a new basis,
 
@@ -303,14 +303,14 @@ We now perceive the forward and backward modes as a new basis,
 
 The objective of the S-matrix is to find the coupling orders between forward and backward propagating modes in each block interface. Figure \ref{fig:s-matrix}, shows the the coupling between equation \ref{eq:blochbasis} 
 and the incident incoming light from $z=z_-$, and the light that reflects to the left and transmits to the right, and vice versa for the bottom of the figure, but mirrored. Importantly, $C_{a,g}^+$ is the coupling coefficients, where subscript $a$ denotes coupling coefficients for the forward, left to right problem, $b$ denotes for the backward, and superscript $\pm$ denotes positive and negative modes.
-Intuitively, this means that an incident plane wave from left to right (with its own fourier transfer decomposition), couples into eacc eigenmode of the system according to $C^+_{a,g}$.
+Intuitively, this means that an incident plane wave from left to right (with its own Fourier transfer decomposition), couples into eacc eigenmode of the system according to $C^+_{a,g}$.
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=1\textwidth]{figures/Bidirectional.png}
     \caption{Figure is borrowed from \cite{fmm}: (a) shows left to right directional characterization and (b) shows right to left}
     \label{fig:s-matrix}
 \end{figure}
-By carefully mapping the forward and backward, incident, transmitted and reflected fields fourier amplitudes to the Bloch modes equation \ref{eq:blochbasis}, and applying the boundary conditions of Maxwells equations
+By carefully mapping the forward and backward, incident, transmitted and reflected fields Fourier amplitudes to the Bloch modes equation \ref{eq:blochbasis}, and applying the boundary conditions of Maxwells equations
 a new algebraic system appears. In essence it boils down to a scattering matrix
 \begin{equation}
 \label{S-matrix}
@@ -322,7 +322,7 @@ a new algebraic system appears. In essence it boils down to a scattering matrix
     R_a, T_b
 \end{matrix}\right),
 \end{equation}
-which couples forward and backward modes of each fourier order to each other. The scattering matrix of the overall, N-block system compounds through a product operation called the Redheffer star product\footnote{\url{https://en.wikipedia.org/wiki/Redheffer_star_product}}.
+which couples forward and backward modes of each Fourier order to each other. The scattering matrix of the overall, N-block system compounds through a product operation called the Redheffer star product\footnote{\url{https://en.wikipedia.org/wiki/Redheffer_star_product}}.
 The effective of the N'th layer is given as
 $$
 \mathbf{S}^{total} = \mathbf{S}^{in}\star\mathbf{S}^0\star \mathbf{S}^1\star...\star \mathbf{S}^N \star \mathbf{S}^{out} = \left(\begin{matrix}
@@ -331,12 +331,12 @@ $$
 \end{matrix}\right),
 $$.
 where the $in$ and $out$ layer are the final half infinite homogeneous layers.
-The total transmittance and reflectance of interaction with the entire system can be found directly from the final $S$ matrix, as all the order couplings are contained here. This also means that for lossy systems, the total absorptance can be found directly from the $S-matrix$, by Utilizing
+The total transmittance and reflectance of interaction with the entire system can be found directly from the final $S$ matrix, as all the order couplings are contained here. This also means that for lossy systems, the total absorptance can be found directly from the $S$-matrix, by utilizing
 $$
 A = 1 - R - T.
 $$
-Sadly, for the fourier patterned gratings the metric I am interested in the se absorptance only in the film layer, not in the grating nor the backreflector. As such, I have to evaluate the fields to calculate the absorptance from the power in the fields.
-Doing this naively by fourier transforming the fields back in the entire space, and integrating over the film region is not the most efficient way to do this. Luckily, the open source python and pytorch implementation of RCWA called TORCWA \cite{torcwa} has a function to obtain the fields only at a single z-coordinate.
+Sadly, for the Fourier patterned gratings the metric I am interested in the se absorptance only in the film layer, not in the grating nor the backreflector. As such, I have to evaluate the fields to calculate the absorptance from the power in the fields.
+Doing this naively by Fourier transforming the fields back in the entire space, and integrating over the film region is not the most efficient way to do this. Luckily, the open source python and pytorch implementation of RCWA called TORCWA \cite{torcwa} has a function to obtain the fields only at a single z-coordinate.
 By having the fields, we can find the power incident on a layer by taking the z-component of the poynting vector given by
 $$
 \label{poynting}
@@ -347,22 +347,22 @@ $$
 \mathbf{S} = \frac{1}{\mu_0}\left(\mathbf{E} \times \mathbf{B} \right).
 $$
 The poynting vector has units of energy per unit area per unit time. By energy conservation, the absorbed power in a volume must be equal to the power entering it subtracted by the power exiting it. As all planes in RCWA are clearly defined by their height, I can easily isolate the volume of the crystalline silicon film and use poynting analysis to obtain the 
-Since RCWA is inherently a periodic analytical method, and all the fields are constited from their fourier amplitudes and Bloch eigenmodes, the same is true for the poynting vector. This means we now have to integrate the poynting vector over the surface. This is easily solved by numerically integrating the sampled field points.
-Compared to the heavy $O([2(2M+1)(2N+1)]^3) \approx O(N^6)$ order linear solves performed when calculating the S-matrices, this takes virtually no extra time. For this order, I have assumed that $M=N$, meaning the same fourier order is used in the x-direction as the y-direction.
+Since RCWA is inherently a periodic analytical method, and all the fields are constited from their Fourier amplitudes and Bloch eigenmodes, the same is true for the poynting vector. This means we now have to integrate the poynting vector over the surface. This is easily solved by numerically integrating the sampled field points.
+Compared to the heavy $O([2(2M+1)(2N+1)]^3) \approx O(N^6)$ order linear solves performed when calculating the S-matrices, this takes virtually no extra time. For this order, I have assumed that $M=N$, meaning the same Fourier order is used in the x-direction as the y-direction.
 Calling the number of layers $N_L$ and the number of wavelengths $N_w$, the total algorithmic time of RCWA is $N_L \cdot N_w \cdot O(N^6)$, which scales extremely poorly for 3 dimensions. If the grating height increases, this scales the number of layers, and linearly scales the computational complexity of RCWA. For a neural netork based surrogate solver, none of the weigths change, and the inference time stays constant.
 This means that after training, inference for the entire data space is constant time.
 
-One of the upsides of RCWA is that its algorithmic time does not depend on the size of the optical system. The entire calculation takes place in fourier space.
-This also leads to one of its largest downsides. Poorly truncated fourier series, that cant resolve the periodic structure leads to ill-conditioning of the problem. If structures have harsh, sharp edges, Gibbs phenomenon will require many terms to properly resolve the edges in fourier space.
-According to the boundary conditions of Maxwell's equations, the normal component of the electrical field must be discontinuous at a permitivity shift. However, since RCWA is a fourier domain method, if a particular layer is not resolved well enough or exhibits gibbs artefacts, the normal component of the predicted fields might show discontinuities even where there should be none, especially in the propagation direction $z$, as this is where the boundary conditions are enforced.
+One of the upsides of RCWA is that its algorithmic time does not depend on the size of the optical system. The entire calculation takes place in Fourier space.
+This also leads to one of its largest downsides. Poorly truncated Fourier series, that cant resolve the periodic structure leads to ill-conditioning of the problem. If structures have harsh, sharp edges, Gibbs phenomenon will require many terms to properly resolve the edges in Fourier space.
+According to the boundary conditions of Maxwell's equations, the normal component of the electrical field must be discontinuous at a permitivity shift. However, since RCWA is a Fourier domain method, if a particular layer is not resolved well enough or exhibits gibbs artefacts, the normal component of the predicted fields might show discontinuities even where there should be none, especially in the propagation direction $z$, as this is where the boundary conditions are enforced.
 An example of this will be shown in the section \ref{sec:methods}. TORCWA, uses pytorches \texttt{linalg.inv} module, which is known to be prone to throw errors for close to singular matrices.
 Both solving the fields themselves and propagating the $S$ Matrices uses a linalg.inv. In fact one of the terms in the Redheffer star product includes $(I - R_a R_b)^-1$. If light ever hits a highly resonant condition, such as a so called Rayleigh anomaly, where the $k_z$ vector is kicked close to zero from the structures periodicity, the forward and backward mode reflection matrices' product may approach the identity, the total $S$ matrix ill-conditioned. This has not been a big problem for my data generation, as I will present, but it has turned out to be a problem for the baseline, classical topology optimization I perfomed.
 
 
 \section{Finite Element Method}
 In this project, I have used the commercial finite-element method optics solver COMSOL Multiphysics to perform convergence tests of RCWA. COMSOL allows gradient calculations by the adjoint method, and is widely used in topology optimization.
-In general, it is a slower solver than RCWA however. complexity of the solved matrices scales with number of mesh elements in the simulatiion, which again scales with size of the physical domain, quadratically for 2D simulations and by the power of three in 3D simulations.
-more often than not, the finite element method divides a problem into triangular meshed subdomains, and fits linear interpolation terms between all mesh points. These interpolation term are given by some basis, often polynomial, and a general differential operator can be turned into
+In general, it is a slower solver than RCWA however. The complexity of the solved matrices scales with number of mesh elements in the simulation, which again scales with size of the physical domain, quadratically for 2D simulations and by the power of three in 3D simulations.
+more often than not, the finite element method divides a problem into triangular meshed subdomains, and fits linear interpolation terms between all mesh points. These interpolation terms are given by some basis, often polynomial, and a general differential operator can be turned into
 a residual algebraic minimization problem. The advantages of a flexible meshing such as this is the ability to accurately represent complex geometries such as curves. The Fouirer patterned gratings of this project benefit from this, and as such doesnt suffer as much from discretization as RCWA does.  
 The disadvantages are most of all the time complexity of the solutions. It scales worse than RCWA both in memory and time. For more details of finite element method, I refer to \cite{numerical_photonics}.
 
@@ -411,14 +411,14 @@ From here, the adjoint field can be simulated backwards by realizing that solvin
 $\lambda^T\frac{\partial f}{\partial x} =\frac{\partial f}{\partial x}^T\lambda = -\frac{\partial \mathcal{L} }{\partial x},$ where the intuition is that $f$, that are essentially Maxwell's equations derived with respect to the electromagnetic fields are a the differential operator of Maxwell's  equations, so 
 $\lambda$ must be analog to the electromagnetic field in a transverse problem, and the figure of merit derivative $-\frac{\partial \mathcal{L}}{\partial x}$ must be equal to a virtual source. 
 Mathematically, this is very close to how gradients flow backwards in reverse-mode auto differentiation software such as Pytorch, and 
-by extension TORCWA, \cite{torcwa}. Instead of numerically differentiating the figure of merit by every design variable, the system can be simulated forward, and by trackcing the chain rule, once obtaining the figure of merit, can be efficiently tracked backward.
+by extension TORCWA, \cite{torcwa}. Instead of numerically differentiating the figure of merit by every design variable, the system can be simulated forward and by trackcing the chain rule, once obtaining the figure of merit, the system can be efficiently tracked backward.
 For an example of the physics, see \cite{Hughes2018}, for more discussion on the adjoint method, see \cite{Hughes2019} and for an example of the reverse mode auto differentiation of for example pytorch, see \cite{torcwa}.
 
 Though this method is powerful, and allows for numerical exact gradients of optical fields with respect to a large number of variables, the optimization problem is still a local optimization problem in a vast design space.
-Optimization still requires solving large scale forward problems for every single optimization step. As discussed in the introduction, the combination of the vast parameter space and poorly scaling large physics simulations, the development of a surrogate method using machine learning is a promising path.
+Optimization still requires solving large scale forward problems for every single optimization step. As discussed in the introduction, the combination of the vast parameter space and poorly scaling large physics simulations, makes the development of a surrogate method using machine learning a promising path.
 The next section will describe the theory of the machine learning methods utilized in this project.
 
 \section{Machine learning models for predicting absorptance curves.}
 Neural networks have many compelling advantages, over classical field solvers. Being universal function approximators, It is a natural thought to ask whether we can simply learn the underlying mapping from input design parameters to output absorptance curves directly, skipping completely the electromagnetic field construction.
-Neural networks implemented in modern, auto differentiable software such as pytorch are massively scalable, batches input space parameters on the GPU, and provides potential massive speedups. The challenge will be to see whether the machine learning surrogates can generalize beyond the dataset maxima. Even if they can not, there might still be useful advantages to the surrogate models, such as using them as a scout for informed starting points for classical topology optimization, or
+Neural networks implemented in modern, auto differentiation software such as pytorch are massively scalable, batches input space parameters on the GPU, and provides potential massive speedups. The challenge will be to see whether the machine learning surrogates can generalize beyond the dataset maxima. Even if they can not, there might still be useful advantages to the surrogate models, such as using them as a scout for informed starting points for classical topology optimization, or
 interpolation to higher spatial resolution from low wavelength resolution data.

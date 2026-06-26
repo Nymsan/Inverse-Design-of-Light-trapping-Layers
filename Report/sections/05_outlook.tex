@@ -1,4 +1,12 @@
 \chapter{Outlook}
 \label{sec:outlook}
+There are two immediate logical next steps for this project. First, to simulate a larger 3D dataset, and simulate it for entire curves per parameter configuration.
+This is time consuming, but the results of this project have proved it to atleast be an interesting avenue to explore.
+Second, the results of previous chapter seemed to indicate that the sampled data space was perhaps too small in scope. By just extending the bounds of the data space, there is reason to expect the surrogate models can become
+better interpolators, and therefore better global optimizers. Both of these next steps require more data generation.
 
-Discuss future work.
+This project explored skipping the step of Electromagnetic field solving entirely, and instead mapping the input space to the output space. Another route to go for nanophotonic inverse design is to instead embrace the electromagnetic fields,
+and use machine learning to accelerate the solution. It is much easier to check whether a solution is a real solution than it is to find it in the first place. Numerical methods allow arbitrary precision by minimization of residual errors. In a recent article by \cite{jonAfan},
+neural networks were combined with iterative algorithms to accurately solve problems of different scales, resolutions, and boundary conditions.
+
+In this vein, it would be interesting to see if neural networks could perhaps directly encode the S-matrices in RCWA. This would preserve the rigor of the physics, but get rid of the $O(N^6)$ curse of dimensionality for large scale electromagnetic problems.

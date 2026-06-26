@@ -1194,7 +1194,6 @@ def train_forward_model(
             target_f32 = target.float()
             
             # Scale loss by the average absorptance of the true target (giving more weight to high-performing structures)
-            # Add a small epsilon 0.1 so that terrible structures aren't completely ignored
             weights = target_f32.mean(dim=-1, keepdim=True)
             
             base_loss = (criterion(pred_f32, target_f32) * weights).mean()

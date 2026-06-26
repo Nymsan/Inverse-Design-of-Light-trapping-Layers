@@ -7,7 +7,7 @@ I will discuss the results as I present them, as I believe this fits the spirit 
 Here the generated dataset is presented, both for 2D and 3D data.The data has been samled using Latin Hypercube Sampling (LHS), to try to explore the 16 dimensional as well as possible. LHS is a random sampling method that takes into account the placement of earlier datapoints, as described by \cite{mckay1979comparison}, to ensure all portions of a high dimensional vector space is sampled.
 Table \ref{tab:sampled_parameters} shows the stat overview of the sampled dataset for both the generated 2D and 3D dataset. The choice of film height was inspired by the discussion in section \ref{sec:fabry-perot}, since a much higher film would make the resonance peaks have inter peak distances shorter than the wavelength sampling rate.
 While this might prove to not be catastrophic, I'd rather stay above or close to the Nyquist-limit to properly capture the peaks, especially as the main loss target for the surrogate models was an fft inspired loss.
-Since sampling a varied range of the possible dataspace is essentially a monte-carlo optimization technique, this dataset sampling will act as a powerful baseline comparison for the trained surrogate models. The height per layer in the staircase approximation and the fourier truncation order for the 2D dataset exceed what was deemed acceptable in section \ref{sec:methods}, and is close to the acceptable limit for the 3D dataset.
+Since sampling a varied range of the possible dataspace is essentially a monte-carlo optimization technique, this dataset sampling will act as a powerful baseline comparison for the trained surrogate models. The height per layer in the staircase approximation and the Fourier truncation order for the 2D dataset exceed what was deemed acceptable in section \ref{sec:methods}, and is close to the acceptable limit for the 3D dataset.
 \begin{table}[htbp]
 \centering
 \caption{Overview of sampled parameters for the 2D and 3D datasets. Note that half the samples of the 2D dataset was at normal incidence, while the rest where in the noted range. For the 3D dataset, note that half the samples was at $495$ nm, and the rest were sampled between $300$ nm and $1100$ nm.}
@@ -21,7 +21,7 @@ Since sampling a varied range of the possible dataspace is essentially a monte-c
 Number of Samples & $N$ & \multicolumn{2}{c}{$119775^*$} & \multicolumn{2}{c}{$14999^*$} \\
 Number of Harmonics & $N_h$ & \multicolumn{2}{c}{$7$} & \multicolumn{2}{c}{$5\times 2$} \\
 Grating Period & $\Lambda_x, \Lambda_y$ & \multicolumn{2}{c}{$1000 \text{nm}, 0 \text{nm}$} & \multicolumn{2}{c}{$1000 \text{nm}, 1000\text{nm}$} \\
-Film Hei    ght (nm) & $h$ & $1000 \text{nm} $& $3000 \text{nm}$ & $1000 \text{nm}$ & $3000 \text{nm}$ \\
+Film Height (nm) & $h$ & $1000 \text{nm} $& $3000 \text{nm}$ & $1000 \text{nm}$ & $3000 \text{nm}$ \\
 Incidence Angle ($^\circ$) & $\theta$ & $0$ & $45$ & $0$ & $0$ \\
 Amplitudes & $A$ & $0 \text{nm}$ & $15 \text{nm} $& 0 $\text{nm}$& $15 \text{nm}$ \\
 Phases & $\phi$ & $0$ & $2\pi$ & $0$ & $2\pi$ \\
@@ -33,9 +33,9 @@ Height per Layer (nm) & $h_{layer}$ & \multicolumn{2}{c}{$5\text{nm}$} & \multic
 \end{table}
 
 
-The 3D dataset was generated using an a fourier order $M=N=8$. Refering to section \ref{sec:rcwa}, the algorithmic time complexity of RCWA even with a truncation order
+The 3D dataset was generated using an a Fourier order $M=N=8$. Refering to section \ref{sec:rcwa}, the algorithmic time complexity of RCWA even with a truncation order
 of 8 compared to twenty, is still about 32 times higher. To mitigate this, fewer samples were sampled, and only two wavelengths were sampled; one random, in the given range, and one at $495$ nm, which is the maximum of the AM1.5g solar spectrum.  
-Select visualizations of the generated dataset are included here, and more in the appendix for both the 2D and 3D datasets \ref{sec:datasetScatterPlots}. Figure \ref{fig:ds2d_si_scatter} shows the distribution of absorptance values vs wavelength, colored by wavelength to the left, and the distribution of $J_{sc}$ vs film height, colored by total grating height for Silicon as the grating layer material.
+Select visualizations of the generated dataset are included here, and more in the appendix for both the 2D and 3D datasets \ref{sec:datasetScatterPlots}. Figure \ref{fig:scatter_si} shows the distribution of absorptance values vs wavelength, colored by wavelength to the left, and the distribution of $J_{sc}$ vs film height, colored by total grating height for Silicon as the grating layer material.
 The same plots for the two other grating materials are in the appendix. The short circuit current plots shows something interesting. In general, a higher film height yields a higher short circuit current, which is not surprising. Judging by the color of the scatter plot, the higher the grating, the better the short circuit current. This surprises me a bit, I would have expected highest parasitic losses for the pure silicon grating. For the other two materials, TiO$_2$ and Si$_3$N$_4$, as seen in appendix \ref{sec:datasetScatterPlots}, the converse is True - there seems to be an  optimum that is lower than the highest possible grating height.
 This suggests that for 7 harmonics, the sampled data set has ample amplitude height to learn optimal short circuit current structures for TiO$_2$ and Si$_3$N$_4$, but for a future dataset, the silicon amplitudes should be allowed higher.
 
@@ -56,8 +56,8 @@ This suggests that for 7 harmonics, the sampled data set has ample amplitude hei
     \label{fig:scatter_si}
 \end{figure}
 
-Figure \ref{fig:2dDatasetHists} shows a histogram over the 2D dataset distribution, both the short circuit current and average absorptance. Matchin these curves will be the target of the surrogte models, as this will signify that they have sufficiently learned the data space.
-It is interesting to note that while Si$_3$N$_4$ has the generally highest average absorptance, the short cirtuit current of TiO$_2$ about matches Si$_3$N$_4$. This might signify that TiO$_2$ is better at trapping light where more photons are present. We can compare directly by looking at the scatter plots in the appendix, section \ref{sec:datasetScatterPlots}.
+Figure \ref{fig:2dDatasetHists} shows a histogram over the 2D dataset distribution, both the short circuit current and average absorptance. Matchin these curves will be the target of the surrogate models, as this will signify that they have sufficiently learned the data space.
+It is interesting to note that while Si$_3$N$_4$ has the generally highest average absorptance, the short cirtcuit current of TiO$_2$ about matches Si$_3$N$_4$. This might signify that TiO$_2$ is better at trapping light where more photons are present. We can compare directly by looking at the scatter plots in the appendix, section \ref{sec:datasetScatterPlots}.
 The reason that the number of samples for the 2D dataset is not a clean 120000, is that one of the batches exceeded the data generation scripts wall time on the HPC, losing 200 datapoints. Also, of all the other batches, 25 single curves had absorptance values exceeding 1, most likely owing to numerical instabilities in the RCWA algorithm, that occur when a scattered order is close to half the spatial period, as discussed earlier.
 Only 1 datapoint from the 3D dataset  has absorptance larger than $1$. This seems to indicate that 3D datapoints are more robust against ill-conditioned linear systems, since there are more diffracted orders, and the matrices are less likely to become singular. 
 
@@ -115,8 +115,8 @@ I think not having the full spectrums, and therefore losing the ability to train
 \begin{figure}
     \centering
     \includegraphics[width=1\textwidth]{../Checkpoints/Si_TiO2_Si3N4/evaluation/forward/all_data/forward_spectrum_samples_skip_cnn.png}
-    \label{fig:skip_cnn}
     \caption{Predicted spectra for the 3 geometries shown to the right. The first two rows are the spectre for p- and s-pol respectively, the next two are the errors.}
+    \label{fig:skip_cnn}
 \end{figure}
 
 
@@ -244,7 +244,7 @@ Si$_3$N$_4$ & Topology Optimization & 0.493 & 2415  \\
 \bottomrule
 \end{tabular}
 \end{table}
-The surrogate optimization using the \texttt{forward\_mlp} found, after valdation with torcwa, the highest average absorptance across the test spectrum . Depending on the seed, the forward model used, the wavelength bands queried and so on, sometimes the surrogate optimization does not outperform the LHS dataset, as discussed in last section. But this suggests that LHS sampling a dataset of fourier patterned light trapping gratings is actually quite a robust monte carlo global maximization procedure.
+The surrogate optimization using the \texttt{forward\_mlp} found, after valdation with torcwa, the highest average absorptance across the test spectrum . Depending on the seed, the forward model used, the wavelength bands queried and so on, sometimes the surrogate optimization does not outperform the LHS dataset, as discussed in last section. But this suggests that LHS sampling a dataset of Fourier patterned light trapping gratings is actually quite a robust monte carlo global maximization procedure.
 Note the extreme timing differences of table \ref{tab:timing_comparison}. The specific times is stochastic for TORCWA, as it depends on the params. For the surrogate models the times will also vary, but much less, as their algorithmic complexity remains constant no matter the inputs.
 The stochastic nature has to do with syncing clock cycles on the CPU and GPU, Of course, the batched speedup time was for an example batch size of 10! This might scale even better with a higher batch size, up until the point that the data transfer is again CPU limited.
 \begin{table}[h!]
@@ -254,14 +254,15 @@ The stochastic nature has to do with syncing clock cycles on the CPU and GPU, Of
         \toprule
         \textbf{Model} & \textbf{Sequential Total (s)} & \textbf{Batched Total (s)} & \textbf{Speedup (Sequential)} & \textbf{Speedup (Batched)} \\
         \midrule
-        TORCWA & 1629.7 & -- & 1$\times$ & -- \\
-        Skip CNN & 0.0351 & 0.0011 & 46,427$\times$ & 1,433,628$\times$ \\
-        SIREN & 0.0213 & 0.0029 & 76,555$\times$ & 553,664$\times$ \\
-        Forward MLP & 0.0041 & 0.0024 & 399,039$\times$ & 680,356$\times$ \\
+        TORCWA & 580.3 & -- & 1$\times$ & -- \\
+        Skip CNN & 0.049 & 0.004 & 11,882$\times$ & 154,312$\times$ \\
+        SIREN & 0.036 & 0.005 & 16,234$\times$ & 109,933$\times$ \\
+        Forward MLP & 0.008 & 0.0009 & 72,344$\times$ & 591,593$\times$ \\
         \bottomrule
     \end{tabular}%
     }
-    \caption{Computational timing comparison between TORCWA and surrogate models for evaluating 10 sample structures. Surrogate models show massive acceleration, especially when batched. For reference, Silicon is in general the slowest material for RCWA to solve, which this was. The time for the surrogate solver is constant with material.}
+    \caption{Computational timing comparison between TORCWA and surrogate models for evaluating 10 sample structures. Surrogate models show massive acceleration, especially when batched. For reference, Silicon is in general the slowest material for RCWA to solve, which this was. The time for the surrogate solver is constant with material.
+    As always with tables such as these, it is important to remember that the surrogate models only work if they have data to train on, and the time it took to generate that data is not included here.}
     \label{tab:timing_comparison}
 \end{table}
 It is interesting to study the actual absorptance curves of the L-BFGS topology optimized curves. figure \ref{fig:lbfgs_Si} shows that the absorptance at three different wavelengths exceed 1, which is of course unphysical. As previously discussed RCWA can be unstaable for highly resonant modes. A way to optimize a topology naively is to exploit these instabilities, that lead to higher than physical absorptance.

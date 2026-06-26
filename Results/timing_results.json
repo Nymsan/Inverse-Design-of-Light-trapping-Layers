@@ -1,0 +1,31 @@
+{
+    "torcwa_sequential_total_s": 580.2673141956329,
+    "torcwa_sequential_per_sample_s": 58.02673141956329,
+    "num_samples": 10,
+    "models": {
+        "skip_cnn.pt": {
+            "surrogate_sequential_total_s": 0.048833608627319336,
+            "surrogate_sequential_per_sample_s": 0.004883360862731933,
+            "surrogate_batched_total_s": 0.0037603378295898438,
+            "surrogate_batched_per_sample_s": 0.0003760337829589844,
+            "speedup_sequential": 11882.540129770583,
+            "speedup_batched_surrogate": 154312.5486304844
+        },
+        "siren.pt": {
+            "surrogate_sequential_total_s": 0.03574252128601074,
+            "surrogate_sequential_per_sample_s": 0.0035742521286010742,
+            "surrogate_batched_total_s": 0.005278348922729492,
+            "surrogate_batched_per_sample_s": 0.0005278348922729492,
+            "speedup_sequential": 16234.64974819064,
+            "speedup_batched_surrogate": 109933.48918198654
+        },
+        "forward_mlp.pt": {
+            "surrogate_sequential_total_s": 0.008020877838134766,
+            "surrogate_sequential_per_sample_s": 0.0008020877838134765,
+            "surrogate_batched_total_s": 0.0009808540344238281,
+            "surrogate_batched_per_sample_s": 9.808540344238281e-05,
+            "speedup_sequential": 72344.61438083349,
+            "speedup_batched_surrogate": 591593.9516285853
+        }
+    }
+}

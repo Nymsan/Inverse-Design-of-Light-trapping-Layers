@@ -7,28 +7,29 @@ This chapter describes background on the topic, and motivates the use of surroga
 
 %Introduce the problem of adjoint optimization of broadband light-trapping layers here.
 %introduce classical topology optical
-\section{Thin-film solar cells and light-trapping layers}
+\section{Thin-Film solar cells and light-trapping layers}
 \label{sec:thinfilmintro}
 Where conventional solar cells typically are rigid cells made of $~200\mathrm{\mu m}$ thick crystalline silicon or other highly absorbing materials in the visible light range, 
 thin-film crystalline silicon solar cells are typically much thinner, in the range of 2 micrometres according to \cite{machin2024advancements}. One of the main reasons to prefer thin-film solar cells 
 is the cheaper material costs and smaller ecological impact according to \cite{Pearce2002}.
 Crystalline silicon is a material of interest due to having
-ideal semiconductor properties for converting sunlight into electricity. Its material bandgap overlaps with a broad range of the solar spectrum, maximizing potential energy conversion efficiency, see \cite{solar_cells_green}. But the absorbtion of light scales with
-the light's optical path length in the solar cell. As such, thinner photovoltaic cells require ways to tap light in the cell for longer, to match the performance of thicker cells.
+ideal semiconductor properties for converting sunlight into electricity. Its material bandgap overlaps with a broad range of the solar spectrum, maximizing potential energy conversion efficiency, see \cite{solar_cells_green}. The absorption of light scales with
+the light's optical path length in the solar cell. As such, thinner photovoltaic cells require ways to trap light in the cell for longer, to match the performance of thicker cells.
 According to an article by \cite{amalathas2019nanostructures}, more than 90\% of the global photovoltaic solar cell market is dominated by crystalline silicon based solar cells.
 The article also discusses how reductions in production cost and conversion efficiency improvements can be improved by light trapping approaches.
+
 Nanophotonic light trapping layers are structures on the scale of the wavelength of the light, that simultaneously seek to minimize reflections from and transmission through the solar cell.
 If the light can enter the material, but stay trapped within the active layer by total internal reflections or guided modes, the optical path length of the solar cell increases, and for the purpose
 of absorbing light, becomes thicker than it really is. A classical limit for light-trapping arises from ray optics analysis,
-where it can be shown that the maximum achievable absorption enchancement in a solar cell is the so called Yablonovitch limit $4n^2$, where n is the refractive index of the active absorbing material.
+where it can be shown that the maximum achievable absorption enhancement in a solar cell is the so called Yablonovitch limit $4n^2$, where n is the refractive index of the active absorbing material.
 According to \cite{high-index-nanostructures}, for nanoscale photonic structures, the conventional ray optics models break down, potentially leading to even higher performance limits. The promise of a good nanophotonic light-trapping layer is high performing solar cells
 at a fraction of the cost of conventional solar cells.
 The same article also notes that brute-force, full-field electromagnetic simulations are too computationally expensive to search the entire design space for optimal performance light trapping layers due to the vast design space. 
-Nonetheless topology optimization remains a widely used method for finding optimal light trapping layers. Some of the strengths and limitations will be discussed in the introduction, but first I will introduce the idea of fourier patterned light-trapping layers.
+Nonetheless topology optimization remains a widely used method for finding optimal light trapping layers. Some of the strengths and limitations will be discussed in the introduction, but first I will introduce the idea of Fourier patterned light-trapping layers.
 
 \section{Fourier patterned light-trapping layers}
-\label{sec:fourier}
-Inspired by \cite{HOPE}, a grating coupler consisting of a thin film layer of crystalline silicon, a back substrate layer that is highly reflective, and a top sine-wave modulated grating layer is considered
+\label{sec:Fourier}
+Inspired by \cite{HOPE}, a grating coupler consisting of a thin film layer of crystalline silicon, a substrate layer that is highly reflective, and a sine-wave modulated top grating layer is considered
 as the starting point of the light trapping layer design space of this project. In his article, Hope found that a grating layer with an amplitude much lower than the incoming wavelength of light strongly coupled light incident at certain angles into the film layer.
 As the absorptance in a lossy medium is directly proportional to the intensity of the field in that medium, $A \propto |E|^2$, the idea of coupling incoming sunlight strongly by sine modulations is interesting.
 A logical extension might be to consider geometries with a sum of different sine modulations in the grating material. I have chosen to parameterize my light trapping layers as a grating with the profile
@@ -36,13 +37,13 @@ A logical extension might be to consider geometries with a sum of different sine
 \label{eq:grating}
 g(x,y) = g_0 + \sum_{n=1}^{N}a_{n} \cos{\left(\frac{2\pi n x}{\Lambda_x}-\phi_n\right)}+ \sum_{m=1}^{M}b_{m} \cos{\left(\frac{2\pi m y}{\Lambda_y}-\phi_y\right)},
 \end{equation}
-the $g(x,y)$ is the height of the grating at coordinates $x$ and $y$, $a_n,b_m$ are amplitudes in $x,y$ oscillations, $\phi_n,\phi_m$ are the phases delays of the oscillations, $\Lambda_x,\Lambda_y$ are the spatial periods in x and y and $g_0=\sum_{n=1}^{N} a_n + \sum_{m=1}^{M} a_m$ is half of the total grating height. Keeping the constant offset term of the Fourier series equal to the sum of all amplitudes, means that when all the oscillatory terms
-are exactly in phase, the grating will at one point go to exactly, zero, and at one point go to exactly $2g_0$. The upsides will be clear when i discuss the numerical implementation later, but for now, this is just thought of as a generalized version of the grating by \cite{HOPE}.
-One upside of formulating a periodic grating in this formalism is, that this mathematically is just the amplitude-phase form of the fourier series\footnote{\url{https://en.wikipedia.org/wiki/Fourier_series}} meaning that for infinite terms, any function that is periodic with period $\Lambda_x$ in the x-direction and period $\Lambda_y$ in the y-direction.
+the $g(x,y)$ is the height of the grating at coordinates $x$ and $y$, $a_n,b_m$ are amplitudes in $x,y$ oscillations, $\phi_n,\phi_m$ are the phases delays of the oscillations, $\Lambda_x,\Lambda_y$ are the spatial periods in x and y and $g_0=\sum_{n=1}^{N} a_n + \sum_{m=1}^{M} a_m$ is half of the total grating height. Keeping the constant offset term of the Fourier series equal to the sum of all amplitudes, means that only when all the oscillatory terms
+are exactly in phase, the grating will oscillate between $0$ $2g_0$. The upsides will be clear when i discuss the numerical implementation later, but for now, this is just thought of as a generalized version of the grating by \cite{HOPE}.
+One upside of formulating a periodic grating in this formalism is, that this mathematically is just the amplitude-phase form of the Fourier series\footnote{\url{https://en.wikipedia.org/wiki/Fourier_series}} meaning that for infinite terms, any function that is periodic with period $\Lambda_x$ in the x-direction and period $\Lambda_y$ in the y-direction
 may be approximated by this expression.
 
 For practical considerations, light-trapping layers should be able to be manufactured. \Cite{Erbas2024} have in a recent Nature article shown incredible manufacturing capability of grayscale structured nanosurfaces using so called thermal scanning probe lithography, able to etch lateral features at a resolution less than 10 nm, and a vertical resolution of less than 1 nm. Grayscale structures are also called 2.5D structures, since they appear at scales that are classically 2D materials, but exhibit full 3 dimensional properties.
-In short, the method works by spin-coating a thin dielectric with heat-sensitive resist, and thereafter by programming an atomic force microscope (AFM) cantilever and a heated nanotip to modulate with a given frequency while moving over a layer of resist. After the resist melts away, the resist can be etched away, transfering the grayscale nanopattern onto the dielectric. If the dielectric has a higher etch rate than the resist, the pattern is amplified. A figure from the article can be seen in the appendix, figure \ref{fig:erbas2024}.
+In short, the method works by spin-coating a thin dielectric with heat-sensitive resist, and thereafter by programming an atomic force microscope (AFM) cantilever and a heated nanotip to modulate with a given frequency while moving over a layer of resist. After the resist melts away, an etching process can transfer the grayscale nanopattern onto the dielectric. If the dielectric has a higher etch rate than the resist, the pattern is amplified. A figure from the article can be seen in the appendix, figure \ref{fig:erbas2024}.
 An example of using this technique to create a negative mask-stamp, that can be used to transfer such periodic patterns to dielectrics is seen in the appendix figure \ref{fig:erbas2024_2}.
 Another figure of the possible 3D structures that can be made using this technique is seen in figure \ref{fig:erbas2024_3}. It is noted, that the generalized grating shape of equation \ref{eq:grating} follows this same kind of pattern.
 This inspired the use of such grayscale nanopatterns for use as light-trapping layers in thin-film solar cells. In this project, I will explore the capabilites of such a parameterization of nanostructures for light-trapping layers.
@@ -61,7 +62,7 @@ This may favor non-convex and complex objective functions, but such methods also
 The second common approach is the gradient-based approach, where the problem can iteratively improve in the direction of most change. The adjoint method, which will be discussed in section \ref{sec:adjoint},
 allows obtaining the gradients of any number of input parameters, with just two solution passes of the required fields. But as the number of dimensions increases, taking local small steps in a vast parameter space is more likely
 to find local minima and be trapped there, than they are to find the global solutions. One potential solution is just to optimize many different random restarts, but the time complexity quickly scales to overwhelming amounts.
-There is the inherent issue of aliasing. The common way to optimize broadband applications is by solving the optical problems for each desired frequency in some resolution. This scales the complexity linearly with the frequency resolution.
+The common way to optimize broadband applications is by solving the optical problems for each desired frequency in some resolution. This scales the complexity linearly with the frequency resolution.
 As nanophotonic devices are often highly resonant, ensuring performance outside of the sampled frequencies tends to be difficult. A structure that might seem promising during optimization, might fail upon seeing real world, continuous spectra, exhibiting infinitesimally narrow performance
 peaks near the sampleld frequencies.
 
@@ -72,4 +73,4 @@ than classical field solvers. Both traditional gradient based and evolution base
 However, many such approaches are data hungry. This means that classical solvers must still be used to design a large training data set, that accurately maps out the design space.
 much of this data generation can be made embarassingly parallel, since dataset generation itself does not need to seek optimal optical performance of devices.
 
-I explore the use of neural networks to learn the optical performance of fourier patterned light-trapping layers. The following sections will explain some of the key theory and design choices in both the surrogate models, dataset generation pipeline and optimization process.
+I explore the use of neural networks to learn the optical performance of Fourier patterned light-trapping layers. The following sections will explain some of the key theory and design choices in both the surrogate models, dataset generation pipeline and optimization process.
