@@ -7,6 +7,8 @@ keys_to_check = ["A_film_normal", "A_film_oblique"]
 WAVELENGTHS = np.linspace(300, 1100, 161)
 
 exploded_details = []
+num_invalid = 0
+num_valid = 0
 
 for mat in ["Si", "TiO2", "Si3N4"]:
     folder = data_dir / f"LHS_Dataset_{mat}"
@@ -20,6 +22,7 @@ for mat in ["Si", "TiO2", "Si3N4"]:
                 if key in data:
                     curve = data[key][i]
                     if (curve > 1).any():
+                        num_invalid += 1
                         bad_indices = torch.where(curve > 1)
                         # In the batch dict, the curve shape is (161, 3) or (161, 2)
                         # bad_indices[0] corresponds to the wavelength dimension
@@ -35,6 +38,8 @@ for mat in ["Si", "TiO2", "Si3N4"]:
                             "inc_ang": data.get("inc_ang", torch.zeros_like(data["h"]))[i].item(),
                             "params_x": data["params_x"][i].tolist()
                         })
+                    else:
+                        num_valid += 1
 
 exploded_details.sort(key=lambda x: x["max_absorptance"], reverse=True)
 for d in exploded_details:
@@ -43,3 +48,5 @@ for d in exploded_details:
     print(f"  h: {d['h']:.2f} nm, inc_ang: {d['inc_ang']:.4f} deg")
     print(f"  params_x: {d['params_x']}")
     print(f"  Exploded Wavelengths (nm): {wls}\n")
+    print(f"  Filtered datapoints {num_invalid}")
+    print(f"  Valid datapoints {num_valid}")

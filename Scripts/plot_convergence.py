@@ -295,7 +295,7 @@ def plot_combinations(h_nm: int, pattern_base: str):
     ax.set_xlabel('Fourier Order N')
     ax.set_ylabel('Mean Absolute Error vs Finest Eval')
     
-    title_prefix = "3D Grating" if "3d" in pattern_base else "1D Grating"
+    title_prefix = "3D Grating" if "3d" in pattern_base else "2D Grating"
     ax.set_title(f'{title_prefix} Combinations Error (h={h_nm} nm)')
     ax.legend()
     ax.grid(True, which="both", ls="-", alpha=0.5)

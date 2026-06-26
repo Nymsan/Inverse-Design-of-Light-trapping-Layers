@@ -11,6 +11,29 @@
 \usepackage{amsmath, amssymb, amsfonts}        % For aligning equations among other
 \usepackage{siunitx}        % SI units
 \usepackage{listings}       % Package for inserting code, (before cleveref)
+\lstdefinestyle{pythonstyle}{
+    language=Python,
+    basicstyle=\ttfamily\footnotesize,
+    keywordstyle=\bfseries\color[HTML]{0055AA},
+    commentstyle=\itshape\color[HTML]{777777},
+    stringstyle=\color[HTML]{AA3311},
+    numberstyle=\tiny\color{gray},
+    numbers=left,
+    stepnumber=1,
+    numbersep=6pt,
+    showstringspaces=false,
+    breaklines=true,
+    breakatwhitespace=true,
+    frame=single,
+    framesep=4pt,
+    xleftmargin=1.5em,
+    xrightmargin=0.5em,
+    tabsize=4,
+    captionpos=b,
+    morekeywords={self,True,False,None},
+}
+\lstset{style=pythonstyle}
+
 \PassOptionsToPackage{hyphens}{url} % Ability to line break urls at hyphens
 \usepackage{hyperref}       % Package for cross referencing (also loads url package)
 \usepackage{cleveref}       % improved cross referencing

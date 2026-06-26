@@ -442,6 +442,28 @@
     \field{year}{2012}
   \endentry
 
+  \entry{numerical_photonics}{book}{}{}
+    \name{author}{1}{}{%
+      {{hash=LAea}{%
+         family={Lavrinenko\bibnamedelima A.V.},
+         familyi={L\bibinitperiod\bibinitdelim A\bibinitperiod},
+         given={et.\bibnamedelima al.},
+         giveni={e\bibinitperiod\bibinitdelim a\bibinitperiod},
+      }}%
+    }
+    \list{publisher}{1}{%
+      {CRC Press}%
+    }
+    \strng{namehash}{LAea1}
+    \strng{fullhash}{LAea1}
+    \field{labelnamesource}{author}
+    \field{labeltitlesource}{title}
+    \field{labelyear}{2015}
+    \field{labeldatesource}{}
+    \field{title}{Numerical Methods in Photonics (1st ed.)}
+    \field{year}{2015}
+  \endentry
+
   \entry{Hughes2018}{article}{}{}
     \name{author}{4}{}{%
       {{hash=HTW}{%
