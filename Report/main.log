@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026/Arch Linux) (preloaded format=pdflatex 2026.6.19)  26 JUN 2026 12:30
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026/Arch Linux) (preloaded format=pdflatex 2026.6.19)  26 JUN 2026 12:57
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -1169,12 +1169,12 @@ Underfull \hbox (badness 10000) in paragraph at lines 13--19
 
  []
 
-<Pictures/Logos/white_cmyk.pdf, id=119, 597.50829pt x 845.0471pt>
+<Pictures/Logos/white_cmyk.pdf, id=123, 597.50829pt x 845.0471pt>
 File: Pictures/Logos/white_cmyk.pdf Graphic file (type pdf)
 <use Pictures/Logos/white_cmyk.pdf>
 Package pdftex.def Info: Pictures/Logos/white_cmyk.pdf  used on input line 41.
 (pdftex.def)             Requested size: 41.9678pt x 59.35275pt.
-<Pictures/DTU_stock_photo.jpg, id=120, 669.09975pt x 602.25pt>
+<Pictures/DTU_stock_photo.jpg, id=124, 669.09975pt x 602.25pt>
 File: Pictures/DTU_stock_photo.jpg Graphic file (type jpg)
 <use Pictures/DTU_stock_photo.jpg>
 Package pdftex.def Info: Pictures/DTU_stock_photo.jpg  used on input line 50.
@@ -1258,7 +1258,7 @@ Chapter 1.
 
 ] [2]) (./sections/02_theory.tex [3]
 Chapter 2.
-<figures/refractive_indices.pdf, id=288, 578.16pt x 361.35pt>
+<figures/refractive_indices.pdf, id=294, 578.16pt x 361.35pt>
 File: figures/refractive_indices.pdf Graphic file (type pdf)
 <use figures/refractive_indices.pdf>
 Package pdftex.def Info: figures/refractive_indices.pdf  used on input line 18.
@@ -1266,12 +1266,12 @@ Package pdftex.def Info: figures/refractive_indices.pdf  used on input line 18.
 [4
 
  <./figures/refractive_indices.pdf>] [5]
-<figures/jsc_integrand_am15g.pdf, id=361, 612.31488pt x 309.25198pt>
+<figures/jsc_integrand_am15g.pdf, id=368, 612.31488pt x 309.25198pt>
 File: figures/jsc_integrand_am15g.pdf Graphic file (type pdf)
 <use figures/jsc_integrand_am15g.pdf>
 Package pdftex.def Info: figures/jsc_integrand_am15g.pdf  used on input line 77.
 (pdftex.def)             Requested size: 362.77525pt x 183.21681pt.
-<figures/fabry_perot_grid.pdf, id=362, 1156.32pt x 650.43pt>
+<figures/fabry_perot_grid.pdf, id=369, 1156.32pt x 650.43pt>
 File: figures/fabry_perot_grid.pdf Graphic file (type pdf)
 <use figures/fabry_perot_grid.pdf>
 Package pdftex.def Info: figures/fabry_perot_grid.pdf  used on input line 89.
@@ -1280,39 +1280,39 @@ Package pdftex.def Info: figures/fabry_perot_grid.pdf  used on input line 89.
 Underfull \vbox (badness 10000) has occurred while \output is active []
 
  [7 <./figures/fabry_perot_grid.pdf>] [8] [9]
-<figures/Bidirectional.png, id=539, 919.18407pt x 421.575pt>
+<figures/Bidirectional.png, id=545, 919.18407pt x 421.575pt>
 File: figures/Bidirectional.png Graphic file (type png)
 <use figures/Bidirectional.png>
 Package pdftex.def Info: figures/Bidirectional.png  used on input line 309.
 (pdftex.def)             Requested size: 426.79135pt x 195.7473pt.
  [10] [11 <./figures/Bidirectional.png>] [12] [13]) (./sections/03_methods.tex [14]
 Chapter 3.
-<figures/convergence/staircase_approx_5.png, id=603, 529.0164pt x 281.853pt>
+<figures/convergence/staircase_approx_5.png, id=609, 529.0164pt x 281.853pt>
 File: figures/convergence/staircase_approx_5.png Graphic file (type png)
 <use figures/convergence/staircase_approx_5.png>
 Package pdftex.def Info: figures/convergence/staircase_approx_5.png  used on input line 15.
 (pdftex.def)             Requested size: 204.85802pt x 109.14809pt.
-<figures/convergence/staircase_approx_no_smoothing_5.png, id=604, 529.0164pt x 281.853pt>
+<figures/convergence/staircase_approx_no_smoothing_5.png, id=610, 529.0164pt x 281.853pt>
 File: figures/convergence/staircase_approx_no_smoothing_5.png Graphic file (type png)
 <use figures/convergence/staircase_approx_no_smoothing_5.png>
 Package pdftex.def Info: figures/convergence/staircase_approx_no_smoothing_5.png  used on input line 22.
 (pdftex.def)             Requested size: 204.85802pt x 109.14809pt.
-<figures/convergence/staircase_approx_20.png, id=605, 529.0164pt x 281.853pt>
+<figures/convergence/staircase_approx_20.png, id=611, 529.0164pt x 281.853pt>
 File: figures/convergence/staircase_approx_20.png Graphic file (type png)
 <use figures/convergence/staircase_approx_20.png>
 Package pdftex.def Info: figures/convergence/staircase_approx_20.png  used on input line 32.
 (pdftex.def)             Requested size: 204.85802pt x 109.14809pt.
-<figures/convergence/staircase_approx_no_smoothing_20.png, id=606, 529.0164pt x 281.853pt>
+<figures/convergence/staircase_approx_no_smoothing_20.png, id=612, 529.0164pt x 281.853pt>
 File: figures/convergence/staircase_approx_no_smoothing_20.png Graphic file (type png)
 <use figures/convergence/staircase_approx_no_smoothing_20.png>
 Package pdftex.def Info: figures/convergence/staircase_approx_no_smoothing_20.png  used on input line 39.
 (pdftex.def)             Requested size: 204.85802pt x 109.14809pt.
-<figures/convergence/staircase_approx_100.png, id=607, 529.0164pt x 281.853pt>
+<figures/convergence/staircase_approx_100.png, id=613, 529.0164pt x 281.853pt>
 File: figures/convergence/staircase_approx_100.png Graphic file (type png)
 <use figures/convergence/staircase_approx_100.png>
 Package pdftex.def Info: figures/convergence/staircase_approx_100.png  used on input line 49.
 (pdftex.def)             Requested size: 204.85802pt x 109.14809pt.
-<figures/convergence/staircase_approx_no_smoothing_100.png, id=608, 529.0164pt x 281.853pt>
+<figures/convergence/staircase_approx_no_smoothing_100.png, id=614, 529.0164pt x 281.853pt>
 File: figures/convergence/staircase_approx_no_smoothing_100.png Graphic file (type png)
 <use figures/convergence/staircase_approx_no_smoothing_100.png>
 Package pdftex.def Info: figures/convergence/staircase_approx_no_smoothing_100.png  used on input line 56.
@@ -1320,88 +1320,74 @@ Package pdftex.def Info: figures/convergence/staircase_approx_no_smoothing_100.p
 [15
 
  <./figures/convergence/staircase_approx_5.png> <./figures/convergence/staircase_approx_no_smoothing_5.png> <./figures/convergence/staircase_approx_20.png> <./figures/convergence/staircase_approx_no_smoothing_20.png> <./figures/convergence/staircase_approx_100.png> <./figures/convergence/staircase_approx_no_smoothing_100.png>]
-<figures/convergence/geometry and port.png, id=626, 1315.91624pt x 1008.76875pt>
+<figures/convergence/geometry and port.png, id=632, 1315.91624pt x 1008.76875pt>
 File: figures/convergence/geometry and port.png Graphic file (type png)
 <use figures/convergence/geometry and port.png>
 Package pdftex.def Info: figures/convergence/geometry and port.png  used on input line 109.
 (pdftex.def)             Requested size: 136.57635pt x 104.68474pt.
-
-Underfull \hbox (badness 1325) in paragraph at lines 110--110
-[]\OT1/cmss/m/n/10 (a) |An overview of the built
- []
-
-
-Underfull \hbox (badness 6348) in paragraph at lines 110--110
-\OT1/cmss/m/n/10 fourier grated light trap-ping
- []
-
-<figures/convergence/fine mesh.png, id=627, 1315.91624pt x 1008.76875pt>
+<figures/convergence/fine mesh.png, id=633, 1315.91624pt x 1008.76875pt>
 File: figures/convergence/fine mesh.png Graphic file (type png)
 <use figures/convergence/fine mesh.png>
 Package pdftex.def Info: figures/convergence/fine mesh.png  used on input line 117.
 (pdftex.def)             Requested size: 136.57635pt x 104.68474pt.
-<figures/convergence/very fine mesh.png, id=628, 1315.91624pt x 1008.76875pt>
+<figures/convergence/very fine mesh.png, id=634, 1315.91624pt x 1008.76875pt>
 File: figures/convergence/very fine mesh.png Graphic file (type png)
 <use figures/convergence/very fine mesh.png>
 Package pdftex.def Info: figures/convergence/very fine mesh.png  used on input line 125.
 (pdftex.def)             Requested size: 136.57635pt x 104.68474pt.
-[16] [17 <./figures/convergence/geometry and port.png (PNG copy)> <./figures/convergence/fine mesh.png (PNG copy)> <./figures/convergence/very fine mesh.png (PNG copy)>]
-<figures/convergence/convergence_num_layers_100nm.png, id=675, 1156.32pt x 433.62pt>
+ [16] [17 <./figures/convergence/geometry and port.png (PNG copy)> <./figures/convergence/fine mesh.png (PNG copy)> <./figures/convergence/very fine mesh.png (PNG copy)>]
+<figures/convergence/convergence_num_layers_100nm.png, id=681, 1156.32pt x 433.62pt>
 File: figures/convergence/convergence_num_layers_100nm.png Graphic file (type png)
 <use figures/convergence/convergence_num_layers_100nm.png>
 Package pdftex.def Info: figures/convergence/convergence_num_layers_100nm.png  used on input line 144.
 (pdftex.def)             Requested size: 362.77525pt x 136.03523pt.
-<figures/convergence/convergence_order_N_100nm.png, id=681, 1156.32pt x 433.62pt>
+<figures/convergence/convergence_order_N_100nm.png, id=687, 1156.32pt x 433.62pt>
 File: figures/convergence/convergence_order_N_100nm.png Graphic file (type png)
 <use figures/convergence/convergence_order_N_100nm.png>
 Package pdftex.def Info: figures/convergence/convergence_order_N_100nm.png  used on input line 157.
 (pdftex.def)             Requested size: 362.77525pt x 136.03523pt.
-
-
-LaTeX Warning: `!h' float specifier changed to `!ht'.
-
-[18 <./figures/convergence/convergence_num_layers_100nm.png>]
-<figures/convergence/sweep_combination_100nm.png, id=693, 722.7pt x 578.16pt>
+ [18 <./figures/convergence/convergence_num_layers_100nm.png> <./figures/convergence/convergence_order_N_100nm.png>]
+<figures/convergence/sweep_combination_100nm.png, id=699, 722.7pt x 578.16pt>
 File: figures/convergence/sweep_combination_100nm.png Graphic file (type png)
 <use figures/convergence/sweep_combination_100nm.png>
 Package pdftex.def Info: figures/convergence/sweep_combination_100nm.png  used on input line 172.
 (pdftex.def)             Requested size: 204.85802pt x 163.88629pt.
-<figures/convergence/sweep_combination_3d_100nm.png, id=694, 722.7pt x 578.16pt>
+<figures/convergence/sweep_combination_3d_100nm.png, id=700, 722.7pt x 578.16pt>
 File: figures/convergence/sweep_combination_3d_100nm.png Graphic file (type png)
 <use figures/convergence/sweep_combination_3d_100nm.png>
 Package pdftex.def Info: figures/convergence/sweep_combination_3d_100nm.png  used on input line 173.
 (pdftex.def)             Requested size: 204.85802pt x 163.88629pt.
-<figures/loss_curves/forward_loss_curves_Si_TiO2_Si3N4.png, id=697, 1300.86pt x 433.62pt>
+<figures/loss_curves/forward_loss_curves_Si_TiO2_Si3N4.png, id=703, 1300.86pt x 433.62pt>
 File: figures/loss_curves/forward_loss_curves_Si_TiO2_Si3N4.png Graphic file (type png)
 <use figures/loss_curves/forward_loss_curves_Si_TiO2_Si3N4.png>
-Package pdftex.def Info: figures/loss_curves/forward_loss_curves_Si_TiO2_Si3N4.png  used on input line 188.
+Package pdftex.def Info: figures/loss_curves/forward_loss_curves_Si_TiO2_Si3N4.png  used on input line 187.
 (pdftex.def)             Requested size: 384.1096pt x 128.03589pt.
- [19 <./figures/convergence/convergence_order_N_100nm.png> <./figures/convergence/sweep_combination_100nm.png> <./figures/convergence/sweep_combination_3d_100nm.png>]) (./sections/04_results.tex [20 <./figures/loss_curves/forward_loss_curves_Si_TiO2_Si3N4.png>]
+ [19 <./figures/convergence/sweep_combination_100nm.png> <./figures/convergence/sweep_combination_3d_100nm.png>]) (./sections/04_results.tex [20 <./figures/loss_curves/forward_loss_curves_Si_TiO2_Si3N4.png>]
 Chapter 4.
 [21
 
 ]
-<../Data/LHS_Dataset_Si/evaluation/all_data/dataset_baseline_2d_A_film_both_all_data_scatter.png, id=741, 578.16pt x 433.62pt>
+<../Data/LHS_Dataset_Si/evaluation/all_data/dataset_baseline_2d_A_film_both_all_data_scatter.png, id=747, 578.16pt x 433.62pt>
 File: ../Data/LHS_Dataset_Si/evaluation/all_data/dataset_baseline_2d_A_film_both_all_data_scatter.png Graphic file (type png)
 <use ../Data/LHS_Dataset_Si/evaluation/all_data/dataset_baseline_2d_A_film_both_all_data_scatter.png>
 Package pdftex.def Info: ../Data/LHS_Dataset_Si/evaluation/all_data/dataset_baseline_2d_A_film_both_all_data_scatter.png  used on input line 46.
 (pdftex.def)             Requested size: 204.85802pt x 153.64174pt.
-<../Data/LHS_Dataset_Si/evaluation/all_data/dataset_baseline_2d_jsc_A_film_both_all_data_scatter.png, id=742, 578.16pt x 433.62pt>
+<../Data/LHS_Dataset_Si/evaluation/all_data/dataset_baseline_2d_jsc_A_film_both_all_data_scatter.png, id=748, 578.16pt x 433.62pt>
 File: ../Data/LHS_Dataset_Si/evaluation/all_data/dataset_baseline_2d_jsc_A_film_both_all_data_scatter.png Graphic file (type png)
 <use ../Data/LHS_Dataset_Si/evaluation/all_data/dataset_baseline_2d_jsc_A_film_both_all_data_scatter.png>
 Package pdftex.def Info: ../Data/LHS_Dataset_Si/evaluation/all_data/dataset_baseline_2d_jsc_A_film_both_all_data_scatter.png  used on input line 52.
 (pdftex.def)             Requested size: 204.85802pt x 153.64174pt.
-<../Checkpoints/Si_TiO2_Si3N4/evaluation/dataset_baseline/jsc/dataset_metric_histogram.png, id=745, 650.43pt x 505.89pt>
+<../Checkpoints/Si_TiO2_Si3N4/evaluation/dataset_baseline/jsc/dataset_metric_histogram.png, id=751, 650.43pt x 505.89pt>
 File: ../Checkpoints/Si_TiO2_Si3N4/evaluation/dataset_baseline/jsc/dataset_metric_histogram.png Graphic file (type png)
 <use ../Checkpoints/Si_TiO2_Si3N4/evaluation/dataset_baseline/jsc/dataset_metric_histogram.png>
 Package pdftex.def Info: ../Checkpoints/Si_TiO2_Si3N4/evaluation/dataset_baseline/jsc/dataset_metric_histogram.png  used on input line 70.
 (pdftex.def)             Requested size: 204.85802pt x 159.33302pt.
-<../Checkpoints/Si_TiO2_Si3N4/evaluation/dataset_baseline/all_data/dataset_metric_histogram.png, id=746, 650.43pt x 505.89pt>
+<../Checkpoints/Si_TiO2_Si3N4/evaluation/dataset_baseline/all_data/dataset_metric_histogram.png, id=752, 650.43pt x 505.89pt>
 File: ../Checkpoints/Si_TiO2_Si3N4/evaluation/dataset_baseline/all_data/dataset_metric_histogram.png Graphic file (type png)
 <use ../Checkpoints/Si_TiO2_Si3N4/evaluation/dataset_baseline/all_data/dataset_metric_histogram.png>
 Package pdftex.def Info: ../Checkpoints/Si_TiO2_Si3N4/evaluation/dataset_baseline/all_data/dataset_metric_histogram.png  used on input line 78.
 (pdftex.def)             Requested size: 204.85802pt x 159.33302pt.
- (./tables/frac_models_stats.tex) [22 <../Data/LHS_Dataset_Si/evaluation/all_data/dataset_baseline_2d_A_film_both_all_data_scatter.png> <../Data/LHS_Dataset_Si/evaluation/all_data/dataset_baseline_2d_jsc_A_film_both_all_data_scatter.png>] (./tables/timing_stats.tex)) (./sections/05_outlook.tex [23 <../Checkpoints/Si_TiO2_Si3N4/evaluation/dataset_baseline/jsc/dataset_metric_histogram.png> <../Checkpoints/Si_TiO2_Si3N4/evaluation/dataset_baseline/all_data/dataset_metric_histogram.png>] [24]
+ [22 <../Data/LHS_Dataset_Si/evaluation/all_data/dataset_baseline_2d_A_film_both_all_data_scatter.png> <../Data/LHS_Dataset_Si/evaluation/all_data/dataset_baseline_2d_jsc_A_film_both_all_data_scatter.png>] (./tables/frac_models_stats.tex) (./tables/timing_stats.tex [23 <../Checkpoints/Si_TiO2_Si3N4/evaluation/dataset_baseline/jsc/dataset_metric_histogram.png> <../Checkpoints/Si_TiO2_Si3N4/evaluation/dataset_baseline/all_data/dataset_metric_histogram.png>])) (./sections/05_outlook.tex [24]
 Chapter 5.
 ) (./sections/06_conclusion.tex [25
 
@@ -1434,37 +1420,37 @@ Overfull \hbox (1.67307pt too wide) in paragraph at lines 37--37
 
 ] (./Backmatter/Appendix.tex
 Appendix A.
-<figures/Erbas2024.png, id=816, 1185.67969pt x 633.11531pt>
+<figures/Erbas2024.png, id=822, 1185.67969pt x 633.11531pt>
 File: figures/Erbas2024.png Graphic file (type png)
 <use figures/Erbas2024.png>
 Package pdftex.def Info: figures/Erbas2024.png  used on input line 5.
 (pdftex.def)             Requested size: 426.79135pt x 227.89235pt.
-<figures/Erbas2024_2.png, id=819, 1073.51062pt x 423.08063pt>
+<figures/Erbas2024_2.png, id=825, 1073.51062pt x 423.08063pt>
 File: figures/Erbas2024_2.png Graphic file (type png)
 <use figures/Erbas2024_2.png>
 Package pdftex.def Info: figures/Erbas2024_2.png  used on input line 12.
 (pdftex.def)             Requested size: 426.79135pt x 168.20279pt.
-<figures/Erbas2024_3.png, id=824, 1085.55562pt x 633.11531pt>
+<figures/Erbas2024_3.png, id=830, 1085.55562pt x 633.11531pt>
 File: figures/Erbas2024_3.png Graphic file (type png)
 <use figures/Erbas2024_3.png>
 Package pdftex.def Info: figures/Erbas2024_3.png  used on input line 19.
 (pdftex.def)             Requested size: 426.79135pt x 248.9137pt.
-<figures/convergence/convergence_num_layers_1000nm.png, id=831, 1156.32pt x 433.62pt>
+<figures/convergence/convergence_num_layers_1000nm.png, id=837, 1156.32pt x 433.62pt>
 File: figures/convergence/convergence_num_layers_1000nm.png Graphic file (type png)
 <use figures/convergence/convergence_num_layers_1000nm.png>
 Package pdftex.def Info: figures/convergence/convergence_num_layers_1000nm.png  used on input line 33.
 (pdftex.def)             Requested size: 362.77525pt x 136.03523pt.
-<figures/convergence/convergence_order_N_1000nm.png, id=832, 1156.32pt x 433.62pt>
+<figures/convergence/convergence_order_N_1000nm.png, id=838, 1156.32pt x 433.62pt>
 File: figures/convergence/convergence_order_N_1000nm.png Graphic file (type png)
 <use figures/convergence/convergence_order_N_1000nm.png>
 Package pdftex.def Info: figures/convergence/convergence_order_N_1000nm.png  used on input line 40.
 (pdftex.def)             Requested size: 362.77525pt x 136.03523pt.
-<figures/convergence/sweep_combination_1000nm.png, id=833, 722.7pt x 578.16pt>
+<figures/convergence/sweep_combination_1000nm.png, id=839, 722.7pt x 578.16pt>
 File: figures/convergence/sweep_combination_1000nm.png Graphic file (type png)
 <use figures/convergence/sweep_combination_1000nm.png>
 Package pdftex.def Info: figures/convergence/sweep_combination_1000nm.png  used on input line 47.
 (pdftex.def)             Requested size: 204.85802pt x 163.88629pt.
-<figures/convergence/sweep_combination_3d_1000nm.png, id=834, 722.7pt x 578.16pt>
+<figures/convergence/sweep_combination_3d_1000nm.png, id=840, 722.7pt x 578.16pt>
 File: figures/convergence/sweep_combination_3d_1000nm.png Graphic file (type png)
 <use figures/convergence/sweep_combination_3d_1000nm.png>
 Package pdftex.def Info: figures/convergence/sweep_combination_3d_1000nm.png  used on input line 48.
@@ -1472,32 +1458,32 @@ Package pdftex.def Info: figures/convergence/sweep_combination_3d_1000nm.png  us
 [29
 
  <./figures/Erbas2024.png> <./figures/Erbas2024_2.png>] [30 <./figures/Erbas2024_3.png> <./figures/convergence/convergence_num_layers_1000nm.png> <./figures/convergence/convergence_order_N_1000nm.png>] [31 <./figures/convergence/sweep_combination_1000nm.png> <./figures/convergence/sweep_combination_3d_1000nm.png>]
-<figures/convergence/convergence_num_layers_no_subpixel_100nm.png, id=861, 1156.32pt x 433.62pt>
+<figures/convergence/convergence_num_layers_no_subpixel_100nm.png, id=867, 1156.32pt x 433.62pt>
 File: figures/convergence/convergence_num_layers_no_subpixel_100nm.png Graphic file (type png)
 <use figures/convergence/convergence_num_layers_no_subpixel_100nm.png>
 Package pdftex.def Info: figures/convergence/convergence_num_layers_no_subpixel_100nm.png  used on input line 60.
 (pdftex.def)             Requested size: 362.77525pt x 136.03523pt.
-<figures/convergence/convergence_order_N_no_subpixel_100nm.png, id=862, 1156.32pt x 433.62pt>
+<figures/convergence/convergence_order_N_no_subpixel_100nm.png, id=868, 1156.32pt x 433.62pt>
 File: figures/convergence/convergence_order_N_no_subpixel_100nm.png Graphic file (type png)
 <use figures/convergence/convergence_order_N_no_subpixel_100nm.png>
 Package pdftex.def Info: figures/convergence/convergence_order_N_no_subpixel_100nm.png  used on input line 67.
 (pdftex.def)             Requested size: 362.77525pt x 136.03523pt.
-<figures/convergence/sweep_combination_no_subpixel_100nm.png, id=863, 722.7pt x 578.16pt>
+<figures/convergence/sweep_combination_no_subpixel_100nm.png, id=869, 722.7pt x 578.16pt>
 File: figures/convergence/sweep_combination_no_subpixel_100nm.png Graphic file (type png)
 <use figures/convergence/sweep_combination_no_subpixel_100nm.png>
 Package pdftex.def Info: figures/convergence/sweep_combination_no_subpixel_100nm.png  used on input line 74.
 (pdftex.def)             Requested size: 204.85802pt x 163.88629pt.
-<figures/convergence/convergence_num_layers_no_subpixel_1000nm.png, id=864, 1156.32pt x 433.62pt>
+<figures/convergence/convergence_num_layers_no_subpixel_1000nm.png, id=870, 1156.32pt x 433.62pt>
 File: figures/convergence/convergence_num_layers_no_subpixel_1000nm.png Graphic file (type png)
 <use figures/convergence/convergence_num_layers_no_subpixel_1000nm.png>
 Package pdftex.def Info: figures/convergence/convergence_num_layers_no_subpixel_1000nm.png  used on input line 81.
 (pdftex.def)             Requested size: 362.77525pt x 136.03523pt.
-<figures/convergence/convergence_order_N_no_subpixel_1000nm.png, id=865, 1156.32pt x 433.62pt>
+<figures/convergence/convergence_order_N_no_subpixel_1000nm.png, id=871, 1156.32pt x 433.62pt>
 File: figures/convergence/convergence_order_N_no_subpixel_1000nm.png Graphic file (type png)
 <use figures/convergence/convergence_order_N_no_subpixel_1000nm.png>
 Package pdftex.def Info: figures/convergence/convergence_order_N_no_subpixel_1000nm.png  used on input line 88.
 (pdftex.def)             Requested size: 362.77525pt x 136.03523pt.
-<figures/convergence/sweep_combination_no_subpixel_1000nm.png, id=866, 722.7pt x 578.16pt>
+<figures/convergence/sweep_combination_no_subpixel_1000nm.png, id=872, 722.7pt x 578.16pt>
 File: figures/convergence/sweep_combination_no_subpixel_1000nm.png Graphic file (type png)
 <use figures/convergence/sweep_combination_no_subpixel_1000nm.png>
 Package pdftex.def Info: figures/convergence/sweep_combination_no_subpixel_1000nm.png  used on input line 95.
@@ -1505,57 +1491,57 @@ Package pdftex.def Info: figures/convergence/sweep_combination_no_subpixel_1000n
  [32
 
  <./figures/convergence/convergence_num_layers_no_subpixel_100nm.png> <./figures/convergence/convergence_order_N_no_subpixel_100nm.png>] [33 <./figures/convergence/sweep_combination_no_subpixel_100nm.png> <./figures/convergence/convergence_num_layers_no_subpixel_1000nm.png> <./figures/convergence/convergence_order_N_no_subpixel_1000nm.png>] [34 <./figures/convergence/sweep_combination_no_subpixel_1000nm.png>]
-<figures/convergence/spectra_num_layers_100nm_L1.png, id=890, 722.7pt x 722.7pt>
+<figures/convergence/spectra_num_layers_100nm_L1.png, id=896, 722.7pt x 722.7pt>
 File: figures/convergence/spectra_num_layers_100nm_L1.png Graphic file (type png)
 <use figures/convergence/spectra_num_layers_100nm_L1.png>
 Package pdftex.def Info: figures/convergence/spectra_num_layers_100nm_L1.png  used on input line 106.
 (pdftex.def)             Requested size: 213.39568pt x 213.39314pt.
-<figures/convergence/spectra_num_layers_100nm_L10.png, id=893, 722.7pt x 722.7pt>
+<figures/convergence/spectra_num_layers_100nm_L10.png, id=899, 722.7pt x 722.7pt>
 File: figures/convergence/spectra_num_layers_100nm_L10.png Graphic file (type png)
 <use figures/convergence/spectra_num_layers_100nm_L10.png>
 Package pdftex.def Info: figures/convergence/spectra_num_layers_100nm_L10.png  used on input line 113.
 (pdftex.def)             Requested size: 213.39568pt x 213.39314pt.
-<figures/convergence/spectra_num_layers_100nm_L25.png, id=896, 722.7pt x 722.7pt>
+<figures/convergence/spectra_num_layers_100nm_L25.png, id=902, 722.7pt x 722.7pt>
 File: figures/convergence/spectra_num_layers_100nm_L25.png Graphic file (type png)
 <use figures/convergence/spectra_num_layers_100nm_L25.png>
 Package pdftex.def Info: figures/convergence/spectra_num_layers_100nm_L25.png  used on input line 120.
 (pdftex.def)             Requested size: 213.39568pt x 213.39314pt.
-<figures/convergence/spectra_num_layers_100nm_L100.png, id=899, 722.7pt x 722.7pt>
+<figures/convergence/spectra_num_layers_100nm_L100.png, id=905, 722.7pt x 722.7pt>
 File: figures/convergence/spectra_num_layers_100nm_L100.png Graphic file (type png)
 <use figures/convergence/spectra_num_layers_100nm_L100.png>
 Package pdftex.def Info: figures/convergence/spectra_num_layers_100nm_L100.png  used on input line 127.
 (pdftex.def)             Requested size: 213.39568pt x 213.39314pt.
-<../Data/LHS_Dataset_TiO2/evaluation/all_data/dataset_baseline_2d_A_film_both_all_data_scatter.png, id=902, 578.16pt x 433.62pt>
+<../Data/LHS_Dataset_TiO2/evaluation/all_data/dataset_baseline_2d_A_film_both_all_data_scatter.png, id=908, 578.16pt x 433.62pt>
 File: ../Data/LHS_Dataset_TiO2/evaluation/all_data/dataset_baseline_2d_A_film_both_all_data_scatter.png Graphic file (type png)
 <use ../Data/LHS_Dataset_TiO2/evaluation/all_data/dataset_baseline_2d_A_film_both_all_data_scatter.png>
 Package pdftex.def Info: ../Data/LHS_Dataset_TiO2/evaluation/all_data/dataset_baseline_2d_A_film_both_all_data_scatter.png  used on input line 141.
 (pdftex.def)             Requested size: 204.85802pt x 153.64174pt.
-<../Data/LHS_Dataset_TiO2/evaluation/all_data/dataset_baseline_2d_jsc_A_film_both_all_data_scatter.png, id=903, 578.16pt x 433.62pt>
+<../Data/LHS_Dataset_TiO2/evaluation/all_data/dataset_baseline_2d_jsc_A_film_both_all_data_scatter.png, id=909, 578.16pt x 433.62pt>
 File: ../Data/LHS_Dataset_TiO2/evaluation/all_data/dataset_baseline_2d_jsc_A_film_both_all_data_scatter.png Graphic file (type png)
 <use ../Data/LHS_Dataset_TiO2/evaluation/all_data/dataset_baseline_2d_jsc_A_film_both_all_data_scatter.png>
 Package pdftex.def Info: ../Data/LHS_Dataset_TiO2/evaluation/all_data/dataset_baseline_2d_jsc_A_film_both_all_data_scatter.png  used on input line 147.
 (pdftex.def)             Requested size: 204.85802pt x 153.64174pt.
-<../Data/LHS_Dataset_Si3N4/evaluation/all_data/dataset_baseline_2d_A_film_both_all_data_scatter.png, id=904, 578.16pt x 433.62pt>
+<../Data/LHS_Dataset_Si3N4/evaluation/all_data/dataset_baseline_2d_A_film_both_all_data_scatter.png, id=910, 578.16pt x 433.62pt>
 File: ../Data/LHS_Dataset_Si3N4/evaluation/all_data/dataset_baseline_2d_A_film_both_all_data_scatter.png Graphic file (type png)
 <use ../Data/LHS_Dataset_Si3N4/evaluation/all_data/dataset_baseline_2d_A_film_both_all_data_scatter.png>
 Package pdftex.def Info: ../Data/LHS_Dataset_Si3N4/evaluation/all_data/dataset_baseline_2d_A_film_both_all_data_scatter.png  used on input line 159.
 (pdftex.def)             Requested size: 204.85802pt x 153.64174pt.
-<../Data/LHS_Dataset_Si3N4/evaluation/all_data/dataset_baseline_2d_jsc_A_film_both_all_data_scatter.png, id=905, 578.16pt x 433.62pt>
+<../Data/LHS_Dataset_Si3N4/evaluation/all_data/dataset_baseline_2d_jsc_A_film_both_all_data_scatter.png, id=911, 578.16pt x 433.62pt>
 File: ../Data/LHS_Dataset_Si3N4/evaluation/all_data/dataset_baseline_2d_jsc_A_film_both_all_data_scatter.png Graphic file (type png)
 <use ../Data/LHS_Dataset_Si3N4/evaluation/all_data/dataset_baseline_2d_jsc_A_film_both_all_data_scatter.png>
 Package pdftex.def Info: ../Data/LHS_Dataset_Si3N4/evaluation/all_data/dataset_baseline_2d_jsc_A_film_both_all_data_scatter.png  used on input line 165.
 (pdftex.def)             Requested size: 204.85802pt x 153.64174pt.
-<../Data/LHS_3D_Dataset_Si/evaluation/all_data/dataset_baseline_3d_A_film_normal_both_all_data.png, id=906, 1084.05pt x 433.62pt>
+<../Data/LHS_3D_Dataset_Si/evaluation/all_data/dataset_baseline_3d_A_film_normal_both_all_data.png, id=912, 1084.05pt x 433.62pt>
 File: ../Data/LHS_3D_Dataset_Si/evaluation/all_data/dataset_baseline_3d_A_film_normal_both_all_data.png Graphic file (type png)
 <use ../Data/LHS_3D_Dataset_Si/evaluation/all_data/dataset_baseline_3d_A_film_normal_both_all_data.png>
 Package pdftex.def Info: ../Data/LHS_3D_Dataset_Si/evaluation/all_data/dataset_baseline_3d_A_film_normal_both_all_data.png  used on input line 176.
 (pdftex.def)             Requested size: 426.79135pt x 170.71892pt.
-<../Data/LHS_3D_Dataset_TiO2/evaluation/all_data/dataset_baseline_3d_A_film_normal_both_all_data.png, id=907, 1084.05pt x 433.62pt>
+<../Data/LHS_3D_Dataset_TiO2/evaluation/all_data/dataset_baseline_3d_A_film_normal_both_all_data.png, id=913, 1084.05pt x 433.62pt>
 File: ../Data/LHS_3D_Dataset_TiO2/evaluation/all_data/dataset_baseline_3d_A_film_normal_both_all_data.png Graphic file (type png)
 <use ../Data/LHS_3D_Dataset_TiO2/evaluation/all_data/dataset_baseline_3d_A_film_normal_both_all_data.png>
 Package pdftex.def Info: ../Data/LHS_3D_Dataset_TiO2/evaluation/all_data/dataset_baseline_3d_A_film_normal_both_all_data.png  used on input line 185.
 (pdftex.def)             Requested size: 426.79135pt x 170.71892pt.
-<../Data/LHS_3D_Dataset_Si3N4/evaluation/all_data/dataset_baseline_3d_A_film_normal_both_all_data.png, id=908, 1084.05pt x 433.62pt>
+<../Data/LHS_3D_Dataset_Si3N4/evaluation/all_data/dataset_baseline_3d_A_film_normal_both_all_data.png, id=914, 1084.05pt x 433.62pt>
 File: ../Data/LHS_3D_Dataset_Si3N4/evaluation/all_data/dataset_baseline_3d_A_film_normal_both_all_data.png Graphic file (type png)
 <use ../Data/LHS_3D_Dataset_Si3N4/evaluation/all_data/dataset_baseline_3d_A_film_normal_both_all_data.png>
 Package pdftex.def Info: ../Data/LHS_3D_Dataset_Si3N4/evaluation/all_data/dataset_baseline_3d_A_film_normal_both_all_data.png  used on input line 194.
@@ -1612,7 +1598,7 @@ LaTeX Warning: There were undefined references.
 LaTeX Warning: There were multiply-defined labels.
 
 Package rerunfilecheck Info: File `main.out' has not changed.
-(rerunfilecheck)             Checksum: F533AD75294BD1C80A590D470EFEBD7A;5217.
+(rerunfilecheck)             Checksum: C5AB4AC6CDF11292E344F4573C1DA41A;5502.
 
 Package biblatex Warning: Please (re)run BibTeX on the file(s):
 (biblatex)                main
@@ -1623,18 +1609,18 @@ Package logreq Info: Writing requests to 'main.run.xml'.
 
  ) 
 Here is how much of TeX's memory you used:
- 51063 strings out of 469515
- 1172856 string characters out of 5470807
- 2155410 words of memory out of 5000000
- 78802 multiletter control sequences out of 15000+600000
+ 51065 strings out of 469515
+ 1172884 string characters out of 5470807
+ 2155345 words of memory out of 5000000
+ 78803 multiletter control sequences out of 15000+600000
  650662 words of font info for 117 fonts, out of 8000000 for 9000
  14 hyphenation exceptions out of 8191
  107i,14n,110p,1974b,1803s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx8.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmcsc10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi6.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi8.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmr6.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmr8.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmss10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmss17.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmss8.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmss9.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmssbx10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmssi10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy6.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy8.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt9.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/symbols/msbm10.pfb>
-Output written on main.pdf (48 pages, 12927820 bytes).
+Output written on main.pdf (48 pages, 12927954 bytes).
 PDF statistics:
- 1097 PDF objects out of 1200 (max. 8388607)
- 744 compressed objects within 8 object streams
- 209 named destinations out of 1000 (max. 500000)
- 477 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 1103 PDF objects out of 1200 (max. 8388607)
+ 750 compressed objects within 8 object streams
+ 210 named destinations out of 1000 (max. 500000)
+ 485 words of extra memory for PDF output out of 10000 (max. 10000000)
 

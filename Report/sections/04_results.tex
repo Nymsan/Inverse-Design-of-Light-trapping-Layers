@@ -4,13 +4,13 @@ In this section I will present the results and performance of my surrogate model
 I will discuss the results as I present them, as I believe this fits the spirit of the project better as it is an exploration of machine learning tools in nanophotonic inverse design.
 
 \section{Generated Dataset}
-First, I present the generated dataset, both for 2D and 3D data. As described in sections \ref{sec:methods}, the data has been samled using Latin Hypercube Sampling, to try to explore the 16 dimensional as well as possible.
+Here the generated dataset is presented, both for 2D and 3D data. As described in sections \ref{sec:methods}, the data has been samled using Latin Hypercube Sampling, to try to explore the 16 dimensional as well as possible.
 Table \ref{tab:sampled_parameters} shows the stat overview of the sampled dataset for both the generated 2D and 3D dataset. The choice of film height was inspired by the discussion in section \ref{sec:fabry-perot}, since a much higher film would make the resonance peaks have inter peak distances shorter than the wavelength sampling rate.
 While this might prove to not be catastrophic, I'd rather stay above or close to the Nyquist-limit to properly capture the peaks, especially as the main loss target for the surrogate models was an fft inspired loss.
 Since sampling a varied range of the possible dataspace is essentially a monte-carlo optimization technique, this dataset sampling will act as a powerful baseline comparison for the trained surrogate models. The height per layer in the staircase approximation and the fourier truncation order for the 2D dataset exceed what was deemed acceptable in section \ref{sec:methods}, and is close to the acceptable limit for the 3D dataset.
 \begin{table}[htbp]
 \centering
-\caption{Overview of sampled parameters for the 2D and 3D datasets. *Note that half the samples of the 2D dataset was at normal incidence, while the rest where in the noted range. For the 3D dataset, note that half the samples was at $495$ nm, and the rest were sampled between $300$ nm and $1100$ nm.}
+\caption{Overview of sampled parameters for the 2D and 3D datasets. Note that half the samples of the 2D dataset was at normal incidence, while the rest where in the noted range. For the 3D dataset, note that half the samples was at $495$ nm, and the rest were sampled between $300$ nm and $1100$ nm.}
 \label{tab:sampled_parameters}
 \begin{tabular}{@{}llcccc@{}}
 \toprule
@@ -85,6 +85,8 @@ Only 1 datapoint from the 3D dataset  has absorptance larger than $1$. This seem
 \end{figure}
 
 
+\section{Classical Topology Optimization example}
+To show some of the challenges of classical topology optimization for a broadband and multimaterial problem, I setup up a toybox problem of optimizing a Fourier patterned 2D grayscale light trapping layer, with 
 
 
 
