@@ -31,14 +31,36 @@ Height per Layer (nm) & $h_{layer}$ & \multicolumn{2}{c}{$5\text{nm}$} & \multic
 \bottomrule
 \end{tabular}
 \end{table}
+
+
 The 3D dataset was generated using an a fourier order $M=N=8$. Refering to section \ref{sec:rcwa}, the algorithmic time complexity of RCWA even with a truncation order
 of 8 compared to twenty, is still about 32 times higher. To mitigate this, fewer samples were sampled, and only two wavelengths were sampled; one random, in the given range, and one at $495$ nm, which is the maximum of the AM1.5g solar spectrum.  
-Select visualizations of the generated dataset are included here, and more in the appendix for both the 2D and 3D datasets \ref{sec:datasetScatterPlots}.
+Select visualizations of the generated dataset are included here, and more in the appendix for both the 2D and 3D datasets \ref{sec:datasetScatterPlots}. Figure \ref{fig:ds2d_si_scatter} shows the distribution of absorptance values vs wavelength, colored by wavelength to the left, and the distribution of $J_{sc}$ vs film height, colored by total grating height for Silicon as the grating layer material.
+The same plots for the two other grating materials are in the appendix. The short circuit current plots shows something interesting. In general, a higher film height yields a higher short circuit current, which is not surprising. But judging by the color of the scatter plot, there as an optimum where too high a grating starts to reduce the short circuit current. For crystalline silicon, this makes sense given the parasitic loss in the grating. But the same seems to be true for TiO$_2$ and Si$_3$N$_4$.
+This suggests that for 7 harmonics, the sampled data set has ample amplitude height to learn optimal short circuit current structures.
+
+
+\begin{figure}[htbp]
+    \centering
+    \begin{subfigure}[b]{0.48\textwidth}
+        \includegraphics[width=\textwidth]{../Data/LHS_Dataset_Si/evaluation/all_data/dataset_baseline_2d_A_film_both_all_data_scatter.png}
+        \caption{Spectral absorptance density.}
+        \label{fig:ds2d_si_abs_scatter}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.48\textwidth}
+        \includegraphics[width=\textwidth]{../Data/LHS_Dataset_Si/evaluation/all_data/dataset_baseline_2d_jsc_A_film_both_all_data_scatter.png}
+        \caption{$J_{sc}$ vs.\ film height, coloured by total grating amplitude.}
+        \label{fig:ds2d_si_jsc_scatter}
+    \end{subfigure}
+    \caption{2D LHS dataset scatter plots for Si.}
+    \label{fig:ds2d_si_scatter}
+\end{figure}
 
 Figure \ref{fig:2dDatasetHists} shows a histogram over the 2D dataset distribution, both the short circuit current and average absorptance. Matchin these curves will be the target of the surrogte models, as this will signify that they have sufficiently learned the data space.
 It is interesting to note that while Si$_3$N$_4$ has the generally highest average absorptance, the short cirtuit current of TiO$_2$ about matches Si$_3$N$_4$. This might signify that TiO$_2$ is better at trapping light where more photons are present. We can compare directly by looking at the scatter plots in the appendix, section \ref{sec:datasetScatterPlots}.
 The reason that the number of samples for the 2D dataset is not a clean 120000, is that one of the batches exceeded the data generation scripts wall time on the HPC, losing 200 datapoints. Also, of all the other batches, 25 single curves had absorptance values exceeding 1, most likely owing to numerical instabilities in the RCWA algorithm, that occur when a scattered order is close to half the spatial period, as discussed earlier.
-Only 1 datapoint from the 3D dataset  has absorptance larger than $1$. This seems to indicate that 3D datapoints are more robust against Wood's anomalies or ill-conditioned linear systems, since there are more diffracted orders, and the matrices are less likely to become singular. 
+Only 1 datapoint from the 3D dataset  has absorptance larger than $1$. This seems to indicate that 3D datapoints are more robust against ill-conditioned linear systems, since there are more diffracted orders, and the matrices are less likely to become singular. 
 
 \begin{figure}[htbp]
     \centering
@@ -61,6 +83,8 @@ Only 1 datapoint from the 3D dataset  has absorptance larger than $1$. This seem
     \caption{(a) A histogram over the full 2D dataset distritbution of Short-circuit currents.\newline (b) A histogram over the full 2D dataset distritbution of average absorptances}
     \label{fig:2dDatasetHists}
 \end{figure}
+
+
 
 
 

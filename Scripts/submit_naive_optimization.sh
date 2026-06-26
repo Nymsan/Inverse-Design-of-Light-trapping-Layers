@@ -32,9 +32,8 @@ echo "=== Phase 1: Bounded Optimization (h = 1000-3000 nm) ==="
 uv run python Scripts/evaluate_naive_optimization.py \
     --material $MAT_NAME \
     --h_val 1000 3000 \
-    --objective jsc \
     --n_iters 500 \
-    --n_restarts 5 \
+    --n_restarts 2 \
     --seed 42 \
     --out_dir Results/naive_opt_bounded
 
@@ -43,9 +42,8 @@ echo "=== Phase 2: Pinned Optimization (h = 2000 nm) ==="
 uv run python Scripts/evaluate_naive_optimization.py \
     --material $MAT_NAME \
     --h_val 2000 \
-    --objective jsc \
     --n_iters 500 \
-    --n_restarts 5 \
+    --n_restarts 2 \
     --seed 42 \
     --out_dir Results/naive_opt_pinned
 

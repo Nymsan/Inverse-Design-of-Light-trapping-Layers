@@ -23,12 +23,12 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 # Styling
 plt.rcParams.update({
-    "font.size": 16,
-    "axes.titlesize": 14,
-    "axes.labelsize": 12,
-    "xtick.labelsize": 14,
-    "ytick.labelsize": 14,
-    "legend.fontsize": 14,
+    "font.size": 20,
+    "axes.titlesize": 18,
+    "axes.labelsize": 18,
+    "xtick.labelsize": 18,
+    "ytick.labelsize": 18,
+    "legend.fontsize": 18,
     "figure.dpi": 150,
     "savefig.dpi": 150,
 })

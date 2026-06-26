@@ -45,7 +45,7 @@ from Utils.utils import (
 # ---------------------------------------------------------------------------
 N_HARMONICS   = 7
 ORDER_N       = 20          # same as LHS_Dataset_Si
-NX            = 5000        # same as LHS_Dataset_Si
+NX            = 2000        # same as LHS_Dataset_Si
 N_LAYERS      = 10          # same as LHS_Dataset_Si
 HEIGHT_PER_LAYER = 5.0      # nm, same as LHS_Dataset_Si
 GRATING_PERIOD   = 1000.0   # nm
@@ -172,7 +172,7 @@ def run_optimization(material, h_pinned, h_bounds, objective, n_iters, device, s
         raw_h = torch.zeros(1, dtype=torch.float32, device=device, requires_grad=True)
         opt_vars.append(raw_h)
 
-    opt       = torch.optim.AdamW(opt_vars, lr=1e-1, weight_decay=1e-3)
+    opt       = torch.optim.Adam(opt_vars, lr=1e-1, weight_decay=1e-3)
     scheduler = torch.optim.lr_scheduler.ExponentialLR(opt, gamma=0.99)
 
     best_loss   = float('inf')
@@ -293,7 +293,7 @@ def plot_results(results_list, material, h_pinned, h_bounds, objective,
 
 def parse_args():
     p = argparse.ArgumentParser(
-        description="Naive gradient-based RCWA optimisation (AdamW) — LHS_Dataset_Si settings.")
+        description="Naive gradient-based RCWA optimisation (Adam) — LHS_Dataset_Si settings.")
     p.add_argument("--material", type=str, default="Si",
                    choices=["Si", "TiO2", "Si3N4"],
                    help="Grating material.")
@@ -302,7 +302,7 @@ def parse_args():
     p.add_argument("--objective", type=str, default="jsc", choices=["jsc", "mean_abs"],
                    help="Optimisation objective: 'jsc' (default) or 'mean_abs'.")
     p.add_argument("--n_iters", type=int, default=500,
-                   help="Number of AdamW iterations per restart.")
+                   help="Number of Adam iterations per restart.")
     p.add_argument("--n_restarts", type=int, default=3,
                    help="Number of independent random restarts.")
     p.add_argument("--seed", type=int, default=42,
