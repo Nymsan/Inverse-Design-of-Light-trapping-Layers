@@ -272,7 +272,7 @@ def main():
     plt.xlabel('Steps')
     plt.ylabel('Max Surrogate Absorptance')
     plt.legend()
-    plt.title('Optimization History (Pure Unpenalized Absorptance)')
+    plt.title('Optimization History')
     plt.tight_layout()
     plt.savefig(out_dir / f"optimization_history_{args.mode}.png")
     plt.close()

@@ -299,8 +299,8 @@ def parse_args():
                    help="Grating material.")
     p.add_argument("--h_val", type=float, nargs='+', default=[2000.0],
                    help="Film height. One value = pinned; two values = bounded range [lo, hi].")
-    p.add_argument("--objective", type=str, default="jsc", choices=["jsc", "mean_abs"],
-                   help="Optimisation objective: 'jsc' (default) or 'mean_abs'.")
+    p.add_argument("--objective", type=str, default="mean_abs", choices=["jsc", "mean_abs"],
+                   help="Optimisation objective: 'jsc' or 'mean_abs' (default).")
     p.add_argument("--n_iters", type=int, default=500,
                    help="Number of Adam iterations per restart.")
     p.add_argument("--n_restarts", type=int, default=3,

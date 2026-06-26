@@ -107,7 +107,7 @@ As such, I have approximated a perfect electrical conductor (mirror) by an artif
     \begin{subfigure}[b]{0.32\textwidth}
         \centering
         \includegraphics[width=\linewidth]{figures/convergence/geometry and port.png}
-        \caption{An overview of the built fourier grated light trapping layer, here in pure silicon.}
+        \caption{An overview of the light trapping layer in silicon}
         \label{fig:geom}
     \end{subfigure}
     \hfill
@@ -115,7 +115,7 @@ As such, I have approximated a perfect electrical conductor (mirror) by an artif
     \begin{subfigure}[b]{0.32\textwidth}
         \centering
         \includegraphics[width=\linewidth]{figures/convergence/fine mesh.png}
-        \caption{the geometry with the mesh built on top}
+        \caption{The geometry with the mesh built on top}
         \label{fig:mesh}
     \end{subfigure}
     \hfill
@@ -179,8 +179,7 @@ For the 3D combinations, very good performance at an error of less than $1\%$ al
 Because of these convergence tests, and to err on the side of caution, going forward, 2D datasets will be simulated with a height per layer of $5\text{nm}$ and a truncated order of $O_N = 20$. For 3D datasets, $O_{N,3D} = 8$ and a height per layer of $10 \text{nm}$ has been chosen. These results are summarized in table \ref{tab:sampled_parameters}
 
 \section{Machine Learning Surrogates}
-The training loss curves of the final training run for the 2D dataset with the most data is seen in figure \ref{fig:loss_curves}. I have included this figure in the methods section, and not the results section, because
-i wanted to discuss how the weights of the trained model are stored. I have implemented a custom exponential moving average tracker, to handle the noisy validation scores seen in the \texttt{skip\_cnn} and \texttt{SIREN} models.
+The training loss curves of the final training run for the 2D dataset with the most data is seen in figure \ref{fig:loss_curves}. I have included this figure in the methods section, and not the results section, because I want to discuss how the weights of the trained model are stored. I have implemented a custom exponential moving average tracker, to handle the noisy validation scores seen in the \texttt{skip\_cnn} and \texttt{SIREN} models.
 Both of these models have a convolution based encoder, which can be sensitive to edges and small changes in the weights. As such, both the train data and validation data is more noisy than the forward mlp.
 The forward mlp is seen to slightly overfit to the train data, yet with much worse performance than the two other models.
 \begin{figure}[h!]
