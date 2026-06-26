@@ -71,7 +71,7 @@ The hars edges come solely from the discretization along the z-direction. Since 
     grating_period_y = grating_period_y or grating_period
     
     profile_x, height_x = _compute_1d_profile(x, params_x, grating_period)
-    # Here was logic for the 3d. profile if params_y is given. Its a sum of two _compute_1d_profiles.
+    # Here was logic for the 3d profile if params_y is given. It is a sum of two _compute_1d_profiles.
 
         eps_profile = profile_x
         grating_height = height_x
@@ -84,7 +84,7 @@ The hars edges come solely from the discretization along the z-direction. Since 
     eps = torch.clamp((eps_profile - thresholds) / cell_height, min=0, max=1)
     
     if not subpixel:
-        # The Straight-Through Estimator (STE) trick
+        # Straight-Through Estimator trick
         # This avoids killing gradients
         eps = (torch.round(eps) - eps).detach() + eps
         
@@ -92,7 +92,7 @@ The hars edges come solely from the discretization along the z-direction. Since 
 \end{lstlisting}
 The machine learning target of this project is the absorptance in the film layer. As discussed previously, I found the dissipated power in the film layer by Poynting analysis. For the incident power, I ran a dummy simulation with just a free space input and output layer, with the same incident conditions of light. I kept track of the absorptance in both polarizations, which thanks to the $S$-matrix formulation of RCWA was obtained simultaneously. In COMSOL, a simulation for each polarization was made.
 The rest of the RCWA imlementation was about using TORCWA, and I will therefore just refer again to their article \cite{torcwa}.
-All of my own implementations are available on my github \url{https://github.com/Nymsan/Inverse-Design-of-Light-trapping-Layers/tree/main}
+All of my own implementations are available on my github \footnote{\url{https://github.com/Nymsan/Inverse-Design-of-Light-trapping-Layers/tree/main}}.
 
 \section{COMSOL implementation of a grating}
 \label{sec:comsol}
@@ -181,11 +181,29 @@ Because of these convergence tests, and to err on the side of caution, going for
 \section{Machine Learning Surrogates}
 The training loss curves of the final training run for the 2D dataset with the most data is seen in figure \ref{fig:loss_curves}. I have included this figure in the methods section, and not the results section, because I want to discuss how the weights of the trained model are stored. I have implemented a custom exponential moving average tracker, to handle the noisy validation scores seen in the \texttt{skip\_cnn} and \texttt{SIREN} models.
 Both of these models have a convolution based encoder, which can be sensitive to edges and small changes in the weights. As such, both the train data and validation data is more noisy than the forward mlp.
-The forward mlp is seen to slightly overfit to the train data, yet with much worse performance than the two other models.
-\begin{figure}[h!]
+The forward mlp is seen to slightly overfit to the train data, yet with much worse performance than the two other models. I've included the loss curves both for the models trained on $10\%$ of the total train set and on the entire train dataset.
+\begin{figure}[htbp]
     \centering
-    \includegraphics[width=0.9\textwidth]{figures/loss_curves/forward_loss_curves_Si_TiO2_Si3N4.png}
-    \caption{Training and validation loss curves for the surrogate models trained on the full dataset (100\% train set).}
+    
+    % --- Top Image (10%) ---
+    \begin{subfigure}[b]{0.9\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{../Checkpoints/Si_TiO2_Si3N4_frac_0.1/evaluation/forward/all_data/forward_loss_curves.png}
+        \caption{Trained on 10\% of the dataset.}
+        \label{fig:loss_10}
+    \end{subfigure}
+    
+    \vfill % Adds vertical space between the top and bottom images
+    
+    % --- Bottom Image (100%) ---
+    \begin{subfigure}[b]{0.9\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{../Checkpoints/Si_TiO2_Si3N4/evaluation/forward/all_data/forward_loss_curves.png}
+        \caption{Trained on 100\% of the dataset.}
+        \label{fig:loss_100}
+    \end{subfigure}
+    
+    \caption{Training and validation loss curves for the surrogate models. Top (a) shows models trained on a 10\% fractional subset, while bottom (b) shows models trained on the full dataset.}
     \label{fig:loss_curves}
 \end{figure}
 
@@ -195,7 +213,7 @@ The final training loss/validation error of the machine learning surrogates repr
 During training of the machine learning surrogate models, weights were stored using exponential moving average. The moving average was handled by a small custom tracker, seen below
 After every single batch, the weights of the tracker are updated smoothly by exponential decay, as seen below in the code snippet.
 \begin{lstlisting}
-    ...code...
+    #...code cut out above...
     "self._shadow stores the weights, self._best_snapshot stores the best seen weights"
     @torch.no_grad()
     def update(self, model: nn.Module) -> None:
@@ -208,3 +226,7 @@ After every single batch, the weights of the tracker are updated smoothly by exp
         """Save the current EMA shadow as the best seen so far."""
         self._best_snapshot = {k: v.clone() for k, v in self._shadow.items()}
 \end{lstlisting}
+
+\section{Overview of surrogate model architectures}
+
+

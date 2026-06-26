@@ -4,7 +4,7 @@ In this section I will present the results and performance of my surrogate model
 I will discuss the results as I present them, as I believe this fits the spirit of the project better as it is an exploration of machine learning tools in nanophotonic inverse design.
 
 \section{Generated Dataset}
-Here the generated dataset is presented, both for 2D and 3D data. As described in sections \ref{sec:methods}, the data has been samled using Latin Hypercube Sampling, to try to explore the 16 dimensional as well as possible.
+Here the generated dataset is presented, both for 2D and 3D data.The data has been samled using Latin Hypercube Sampling (LHS), to try to explore the 16 dimensional as well as possible. LHS is a random sampling method that takes into account the placement of earlier datapoints, as described by \cite{mckay1979comparison}, to ensure all portions of a high dimensional vector space is sampled.
 Table \ref{tab:sampled_parameters} shows the stat overview of the sampled dataset for both the generated 2D and 3D dataset. The choice of film height was inspired by the discussion in section \ref{sec:fabry-perot}, since a much higher film would make the resonance peaks have inter peak distances shorter than the wavelength sampling rate.
 While this might prove to not be catastrophic, I'd rather stay above or close to the Nyquist-limit to properly capture the peaks, especially as the main loss target for the surrogate models was an fft inspired loss.
 Since sampling a varied range of the possible dataspace is essentially a monte-carlo optimization technique, this dataset sampling will act as a powerful baseline comparison for the trained surrogate models. The height per layer in the staircase approximation and the fourier truncation order for the 2D dataset exceed what was deemed acceptable in section \ref{sec:methods}, and is close to the acceptable limit for the 3D dataset.
@@ -36,25 +36,24 @@ Height per Layer (nm) & $h_{layer}$ & \multicolumn{2}{c}{$5\text{nm}$} & \multic
 The 3D dataset was generated using an a fourier order $M=N=8$. Refering to section \ref{sec:rcwa}, the algorithmic time complexity of RCWA even with a truncation order
 of 8 compared to twenty, is still about 32 times higher. To mitigate this, fewer samples were sampled, and only two wavelengths were sampled; one random, in the given range, and one at $495$ nm, which is the maximum of the AM1.5g solar spectrum.  
 Select visualizations of the generated dataset are included here, and more in the appendix for both the 2D and 3D datasets \ref{sec:datasetScatterPlots}. Figure \ref{fig:ds2d_si_scatter} shows the distribution of absorptance values vs wavelength, colored by wavelength to the left, and the distribution of $J_{sc}$ vs film height, colored by total grating height for Silicon as the grating layer material.
-The same plots for the two other grating materials are in the appendix. The short circuit current plots shows something interesting. In general, a higher film height yields a higher short circuit current, which is not surprising. But judging by the color of the scatter plot, there as an optimum where too high a grating starts to reduce the short circuit current. For crystalline silicon, this makes sense given the parasitic loss in the grating. But the same seems to be true for TiO$_2$ and Si$_3$N$_4$.
-This suggests that for 7 harmonics, the sampled data set has ample amplitude height to learn optimal short circuit current structures.
-
+The same plots for the two other grating materials are in the appendix. The short circuit current plots shows something interesting. In general, a higher film height yields a higher short circuit current, which is not surprising. Judging by the color of the scatter plot, the higher the grating, the better the short circuit current. This surprises me a bit, I would have expected highest parasitic losses for the pure silicon grating. For the other two materials, TiO$_2$ and Si$_3$N$_4$, as seen in appendix \ref{sec:datasetScatterPlots}, the converse is True - there seems to be an  optimum that is lower than the highest possible grating height.
+This suggests that for 7 harmonics, the sampled data set has ample amplitude height to learn optimal short circuit current structures for TiO$_2$ and Si$_3$N$_4$, but for a future dataset, the silicon amplitudes should be allowed higher.
 
 \begin{figure}[htbp]
     \centering
     \begin{subfigure}[b]{0.48\textwidth}
         \includegraphics[width=\textwidth]{../Data/LHS_Dataset_Si/evaluation/all_data/dataset_baseline_2d_A_film_both_all_data_scatter.png}
         \caption{Spectral absorptance density.}
-        \label{fig:ds2d_si_abs_scatter}
+        \label{fig:ds2d_si_abs_scatter2}
     \end{subfigure}
     \hfill
     \begin{subfigure}[b]{0.48\textwidth}
         \includegraphics[width=\textwidth]{../Data/LHS_Dataset_Si/evaluation/all_data/dataset_baseline_2d_jsc_A_film_both_all_data_scatter.png}
         \caption{$J_{sc}$ vs.\ film height, coloured by total grating amplitude.}
-        \label{fig:ds2d_si_jsc_scatter}
+        \label{fig:ds2d_si_jsc_scatter2}
     \end{subfigure}
     \caption{2D LHS dataset scatter plots for Si.}
-    \label{fig:ds2d_si_scatter}
+    \label{fig:scatter_si}
 \end{figure}
 
 Figure \ref{fig:2dDatasetHists} shows a histogram over the 2D dataset distribution, both the short circuit current and average absorptance. Matchin these curves will be the target of the surrogte models, as this will signify that they have sufficiently learned the data space.
@@ -84,27 +83,203 @@ Only 1 datapoint from the 3D dataset  has absorptance larger than $1$. This seem
     \label{fig:2dDatasetHists}
 \end{figure}
 
-
-\section{Classical Topology Optimization example}
-To show some of the challenges of classical topology optimization for a broadband and multimaterial problem, I setup up a toybox problem of optimizing a Fourier patterned 2D grayscale light trapping layer, with 
-
-
-
-
-
 \section{Surrogate Model Training}
-Table \ref{tab:frac_models_stats} summarizes the training history of various surrogate models across different sizes of the training dataset ($10\%$, $25\%$, $50\%$, and $100\%$). For each dataset configuration, three architectures were trained: an MLP baseline (\texttt{forward\_mlp}), a Convolutional Neural Network with skip connections (\texttt{skip\_cnn}), and a SIREN network \texttt{siren}.
+Table \ref{tab:frac_models_stats} summarizes the training history of various surrogate models across different sizes of the training dataset ($10\%$, $25\%$, $50\%$, and $100\%$). For each dataset configuration, three architectures were trained: an MLP baseline (\texttt{forward\_mlp}), a Convolutional Neural Network with skip connections (\texttt{skip\_cnn}), and a SIREN network \texttt{siren}, as described in section \ref{sec:methods}.
 The study here is to see how little data we can get away with generating for the models. It is seen that for low train dataset sizes, the \texttt{skip\_cnn} architecture dominates. From $25\%$ of the dataset and up, \texttt{siren} competes closely with the \texttt{skip\_cnn}, and actually performs best at 50\% of the training set size.
 The loss curves of the full dataset training are seen in figure \ref{fig:loss_curves}. By definition, the training/validation data set had a 80-20\% split between all the data. This might be argued to be a bit high, but it makes the validation errors more precise.
 
 \begin{table}[htbp]
     \centering
     \input{tables/frac_models_stats.tex}
-    \caption{Global statistics for surrogate models trained on fractional subsets of the Si-TiO$_2$-Si$_3$N$_4$ dataset. Mean Absolute Error (MAE), Maximum Absolute Error, and $R^2$ are evaluated on the full test dataset.}
+    \caption{Global statistics for surrogate models trained on fractional subsets of the Si-TiO$_2$-Si$_3$N$_4$ dataset. Mean Absolute Error (MAE), Maximum Absolute Error, and $R^2$ are evaluated on the full test dataset. Bolded entries are the best for the row.}
     \label{tab:frac_models_stats}
 \end{table}
 
 It is noted that the $\texttt{forward\_mlp}$ seems to stop improving after just $25\%$ of the training data set, as none of the test scores noticeably improve for more data afterwards.
 The $\texttt{SIREN}$ seems to be saturated after $50\%$ of the training data set. It is not certain if the $\texttt{skip\_cnn}$ is fully saturated after $100\%$ of the training data set, but the returns seem to be diminishing. Though the \texttt{forward\_mlp} saturates much earlier, validation scores are much worse. The model is just less expressive than the other two models, but it provides a good baseline.
+The story told in the 
 
-\input{tables/timing_stats.tex}
+\section{Surrogate model performance}
+The performance of the surrogate models can be seen in figure in figure \ref{fig:avgAbs histogram overlap}. 
+The histograms in translucent solid bins show the validation dataset distributions. The full line shows the distribution of 
+predicted average absorptance over the design space parameters of the validation dataset. It is seen that most of the mass of the real dataset fits
+within the curve of the predicted. This is a good sign, and it shows that the models have learned to map the distribution. It is perhaps a bit surprising
+that even though the models $R^2$ score and mean absolute error varied quite wildly as seen in table \ref{tab:frac_models_stats}, when they all seem to map the average distribution well. There are a couple of things to note here. Though the \texttt{forward\_mlp} has a test mean absolute error that
+seems to stop improving after just $25\%$ of the dataset, the parity plots of figure \ref{fig:parity} tell a different story.
+Here it is seen that the forward mlp actually keeps learning the average performance, 
+mapping better to the actual distribution. This is a bit surprising, since inspecting figure \ref{fig:loss_curves} seems to indicate that the 
+validation loss is about the same for $10\%$ as it is for $100\%$. Certainly, the validation loss of \texttt{skip\_cnn} is better for $10\%$ train data than the the validation loss of the \texttt{forward\_mlp} for $100\%$ of the data, 
+but according to the parity plots, \texttt{forward\_mlp} keeps improving in ways the metrics dont seem to catch. figure \ref{fig:skip_cnn} shows the spectrum of one of the \texttt{skip\_cnn} forward model trained on all of the training data. The other models spectrums can be seen in the appendix.
+I have not mentioned any model for the 3D data. I did train one, but its performance was subpar. The architecture is based off the \texttt{skip\_cnn}, but with 2D convolutional layers and wavelength embedding, the same way \texttt{skip\_cnn} has height embedding.
+I think not having the full spectrums, and therefore losing the ability to train on an fft-based loss term hits the performance a lot. Also, the data is just a lot sparser for the 3D data, so I believe the model is starved. The model, like everything else in this project, is available on my github\footnote{\url{https://github.com/Nymsan/Inverse-Design-of-Light-trapping-Layers/tree/main}}.
+\begin{figure}
+    \centering
+    \includegraphics[width=1\textwidth]{../Checkpoints/Si_TiO2_Si3N4/evaluation/forward/all_data/forward_spectrum_samples_skip_cnn.png}
+    \label{fig:skip_cnn}
+    \caption{Predicted spectra for the 3 geometries shown to the right. The first two rows are the spectre for p- and s-pol respectively, the next two are the errors.}
+\end{figure}
+
+
+\begin{figure}[hbtp]
+    \centering
+
+   
+    \begin{subfigure}[b]{\textwidth}
+        \centering
+        \includegraphics[width=0.8\linewidth]{../Checkpoints/Si_TiO2_Si3N4_frac_0.1/evaluation/forward/all_data/forward_parity.png}
+
+    \end{subfigure}
+    \vfill
+   
+    \begin{subfigure}[b]{\textwidth}
+        \centering
+        \includegraphics[width=0.8\linewidth]{../Checkpoints/Si_TiO2_Si3N4_frac_0.25/evaluation/forward/all_data/forward_parity.png}
+
+    \end{subfigure}
+    \vfill
+
+    \begin{subfigure}[b]{\textwidth}
+        \centering
+        \includegraphics[width=0.8\linewidth]{../Checkpoints/Si_TiO2_Si3N4_frac_0.5/evaluation/forward/all_data/forward_parity.png}
+
+    \end{subfigure}
+    \vfill
+    \begin{subfigure}[b]{\textwidth}
+        \centering
+        \includegraphics[width=0.8\linewidth]{../Checkpoints/Si_TiO2_Si3N4/evaluation/forward/all_data/forward_parity.png}
+
+    \end{subfigure}
+    
+    \caption{Overview of the parity plots for the different train dataset splits percentages. From top to bottom, the train dataset fractions are $10\%, 25\%, 50\%$ and $100\%$}
+
+    \label{fig:parity}
+\end{figure}
+
+\begin{figure}[hbtp]
+    \centering
+    
+    % --- Left Image ---
+    \begin{subfigure}[b]{\textwidth}
+        \centering
+        \includegraphics[width=0.8\linewidth]{../Checkpoints/Si_TiO2_Si3N4/evaluation/forward/all_data/histogram_forward_mlp.png}
+
+    \end{subfigure}
+    \vfill
+    % --- Center Image ---
+    \begin{subfigure}[b]{\textwidth}
+        \centering
+        \includegraphics[width=0.8\linewidth]{../Checkpoints/Si_TiO2_Si3N4/evaluation/forward/all_data/histogram_skip_cnn.png}
+
+    \end{subfigure}
+    \vfill
+    % --- Right Image ---
+    \begin{subfigure}[b]{\textwidth}
+        \centering
+        \includegraphics[width=0.8\linewidth]{../Checkpoints/Si_TiO2_Si3N4/evaluation/forward/all_data/histogram_siren.png}
+
+    \end{subfigure}
+    
+    \caption{Overview of the validation dataset and the surrogate prediction performance. The models are trained on $100\%$ of the training dataset}
+    \label{fig:avgAbs histogram overlap}
+\end{figure}
+\newpage
+\section{Surrogate Model Optimization}
+The surrogate optimization procedure is a straight forward idea. If the surrogate can accurately predict absorptance curves in the design space, we should take advtange of the batches capabilites. First, an enourmous amount of random samples, say $10^7$ are evaluated in large batches. The best performing $N$ of these samples are then optimized using the Adam optimizer of pytorch.
+Then torcwa is used for validation of the best found design, and hopefully the output exceeds the training dataset. The process is stochastic, so results vary from time to time. Figure \ref{fig:surrogateOptHist} shows the surrogate optimization history after random sampling of the \texttt{forward\_mlp} and figure \ref{fig:surrogateOptRes} shows the results.
+In the appendix, the same results are included for the two other forward models.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=1\textwidth]{../Checkpoints/Si_TiO2_Si3N4/evaluation/surrogate_optimization/inc0.0_forward_mlp/optimization_history_geometry.png}
+    \caption{The history of the surrogate optimization using \texttt{forward\_mlp}. Noteably, even though the surrogate doesnt think it will do better than the dataset max of TiO$_2$ and Si$_3$N$_4$, in the end, it still (slightly) outperforms the dataset.}
+    \label{fig:surrogateOptHist}
+\end{figure}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=1\textwidth]{../Checkpoints/Si_TiO2_Si3N4/evaluation/surrogate_optimization/inc0.0_forward_mlp/surrogate_optimization_geometry.png}
+    \caption{First two columns show the $p$ and $s$ polarized absorptance curves of the design found by optimizing the \texttt{forward\_mlp} surrogate model. Three curves are present, the predicted absorptance curve of the surrogate for the found parameters, the actual, RCWA simulated absorptance curve for those parameters, and for reference, the absorptance curve of the best dataset entry. 
+    the middle column shows the profile found by surrogate optimization and notes the grating height. The fourth column shows the breakdown over the harmonic amplitudes and phases that constitute the grating. The last column shows the harmonics of the best dataset sample.}
+    \label{fig:surrogateOptRes}
+\end{figure}
+
+Surprisingly, the only of the forward models that find a design that after validation with RCWA outperforms
+the base dataset is the \texttt{forward\_mlp}, which was the model with the worst training loss, highest 
+mean average error, and worst correlation. It does however show the best parity. This means that the baseline surrogate model actually succeeds in finding an optimal light-trapping layer!
+The results of the surrogate optimization are included in table \ref{tab:opt_vs_lhs_vs_surr}.
+
+It is important to talk about margins here. the surrogate optimization outperforms the base dataset by $0.1\%$ averaged absorptance for Si and TiO$_2$, and by $0.3\%$ for Si$_3$N$_4$.
+This is below the epistemic noise limit discussed in section \ref{sec:methods}. This means that the results obtained here should be treated at least with an uncertainty of $\pm 1\%$. The results of surrogate optimization also vary stochastically, and sometimes the results do not beat the baseline dataset. The same optimization procedure was tested for short-circuit current, and also here the \texttt{forward\_mlp} found a better structure than was in the base dataset. This should be seen with the same uncertainties as the averaged absorptance.
+
+These results give some clues, that perhaps the sampled dataset itself is not expressive enough for optimization by interpolation. Random LHS sampling performs well, and the surrogate models match, but in most cases do not beat the dataset itself. The harmonics of the optimal structure of the silicon grating of figure \ref{fig:surrogateOptRes} are completely saturated, and this could indicate too tight bounds on the parameter space.
+
+Nonetheless, this is a strong indication that surrogate Maxwell solvers may help solve classical bottlenecks by speeding up simulation.
+It should be noted from figure \ref{fig:surrogateOptRes}, that all the amplitudes of the silicon grating are maxed out at 15, the highest allowed. This matches what was observed in figure \ref{fig:scatter_si}. The next section will touch on some points why \texttt{forward\_mlp} might perform so well for a surrogate optimizer, while perform the worst as a spectrum predictor.
+
+\section{Why not just do Topology Optimization?}
+To show some of the challenges of classical topology optimization for a broadband and multimaterial problem, I setup up a toybox problem of optimizing a Fourier patterned 2D grayscale light trapping layer, where I used the quasi-Newton method L-BFGS to optmize the light trapping performance of a grating layer, that followed all the same limits as the 2D dataset generation of table \ref{tab:sampled_parameters}.
+I used TORCWA as the simulation tool, and to minizmize VRAM cost, I only optimized over a half resolution wavelength sweep compared to the dataset generation, so $300$ nm to $1100$ nm with a $10$ nm spacing. 500 steps were taken. For reference the surrogate stats, which will be detailed later in this section, also took 500 steps, though it had a dense pre-sampling phase and more restarts for the optimization. Again, in normal circumstances this would probably be an unfair comparison, but table \ref{tab:timing_comparison} shows just how much faster the surrogate models are than classical TORCWA at this fidelity.
+The topology optimization was for normal incidence. The optimization objective was to minimize the mean absolute error to a unit curve - so max absorptance everywhere. For the final structure, I evaluated it on the same wavelength grid as the dataset, so $161$ wavelengths. I am aware that this is a biased comparison, but it also highligts several points about topology optmization of broadband nanophotonic topology optimization.
+The results of the topology optimization are seen in table \ref{tab:opt_vs_lhs_vs_surr}.
+
+\begin{table}[htbp]
+\centering
+\caption{Comparison of Topology Optimization and Surrogate Model results against the best LHS sampled datapoints for Si, TiO$_2$, and Si$_3$N$_4$. Highest average absorptance is in bold.}
+\label{tab:opt_vs_lhs_vs_surr}
+\begin{tabular}{@{}llcc@{}}
+\toprule
+\textbf{Material} & \textbf{Method} & \textbf{Absorptance} & \textbf{Height (nm)} \\
+\midrule
+Si & Topology Optimization & 0.29 & 1429 \\
+ & Surrogate optimization & \textbf{0.368} & 2996  \\
+ & LHS Best Datapoint & 0.367 & 2914 \\
+\midrule
+TiO$_2$ & Topology Optimization & 0.491 & 2997  \\
+ & Surrogate optimization & \textbf{0.503} & 3000 \\
+ & LHS Best Datapoint & 0.502 & 2994  \\
+\midrule
+Si$_3$N$_4$ & Topology Optimization & 0.493 & 2415  \\
+ & Surrogate optimization & \textbf{0.535} & 3000 \\
+ & LHS Best Datapoint & 0.532 & 2987  \\
+\bottomrule
+\end{tabular}
+\end{table}
+The surrogate optimization using the \texttt{forward\_mlp} found, after valdation with torcwa, the highest average absorptance across the test spectrum . Depending on the seed, the forward model used, the wavelength bands queried and so on, sometimes the surrogate optimization does not outperform the LHS dataset, as discussed in last section. But this suggests that LHS sampling a dataset of fourier patterned light trapping gratings is actually quite a robust monte carlo global maximization procedure.
+Note the extreme timing differences of table \ref{tab:timing_comparison}. The specific times is stochastic for TORCWA, as it depends on the params. For the surrogate models the times will also vary, but much less, as their algorithmic complexity remains constant no matter the inputs.
+The stochastic nature has to do with syncing clock cycles on the CPU and GPU, Of course, the batched speedup time was for an example batch size of 10! This might scale even better with a higher batch size, up until the point that the data transfer is again CPU limited.
+\begin{table}[h!]
+    \centering
+    \resizebox{\textwidth}{!}{%
+    \begin{tabular}{lcccc}
+        \toprule
+        \textbf{Model} & \textbf{Sequential Total (s)} & \textbf{Batched Total (s)} & \textbf{Speedup (Sequential)} & \textbf{Speedup (Batched)} \\
+        \midrule
+        TORCWA & 1629.7 & -- & 1$\times$ & -- \\
+        Skip CNN & 0.0351 & 0.0011 & 46,427$\times$ & 1,433,628$\times$ \\
+        SIREN & 0.0213 & 0.0029 & 76,555$\times$ & 553,664$\times$ \\
+        Forward MLP & 0.0041 & 0.0024 & 399,039$\times$ & 680,356$\times$ \\
+        \bottomrule
+    \end{tabular}%
+    }
+    \caption{Computational timing comparison between TORCWA and surrogate models for evaluating 10 sample structures. Surrogate models show massive acceleration, especially when batched. For reference, Silicon is in general the slowest material for RCWA to solve, which this was. The time for the surrogate solver is constant with material.}
+    \label{tab:timing_comparison}
+\end{table}
+It is interesting to study the actual absorptance curves of the L-BFGS topology optimized curves. figure \ref{fig:lbfgs_Si} shows that the absorptance at three different wavelengths exceed 1, which is of course unphysical. As previously discussed RCWA can be unstaable for highly resonant modes. A way to optimize a topology naively is to exploit these instabilities, that lead to higher than physical absorptance.
+By a roundabout way, since the surrogate models are forced through a sigmoid, it is a mathematical impossibility that it throws unphysical wavelengths, so this loophole does exist for the surrogate models. So if the surrogate models agree within reason with the real physics, the surrogate optimization has no reason to look for loopholes.
+Now, this might be a somewhat contentious argument against Classical Topology optimization; First, there are ways to force the classical optimizer not to find loopholes. Second, there are ways to implement the RCWA algorithm that is more stable, or at least throws an error for unstable systems. And there are plenty of better and more robust ways to do the optmization.
+But this is not the purpose of my project! The purpose is to explore how machine learning can help alleviate some of the classical issues of topology optimization.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=1\textwidth]{../Results/Naive_Optimization_Bounded/naive_optimization_lbfgs_broadband_Si.png}
+    \caption{Upon inspection of L-BFGS optimized light-trapping layers, it is seen how the optimizer learns a local optimum, which is a structure that tricks the RCWA solver into an unphysical territory. The optimization scheme has found a loophole, in other words.}
+    \label{fig:lbfgs_Si}
+\end{figure}
+
+Another point that should be noted for the L-BFGS optimization in figure \ref{fig:lbfgs_Si} - The reported mean average error is $0.5881$, which would imply an average absorptance of $(1-0.5881 = 0.4119)$. But the actual TORCWA average absorptance is only $0.29$. This arises directly from the fact that I ran the optimization on only $81$ wavelengths instead of $161$. As discussed in section \ref{sec:fabry-perot}, the spectral peaks of high asborptance are narrower than the low bands. This means that averaging over a wider curve will weigh the low points more than the high points. The optimal obtained
+for L-BFGS was a comb-aliased optimum, where the peaks just happened to overlap with the sample points. This issue is common to all frequency based electrodynamics solvers. If the field and optical figure-of-merit is non-trivial to obtain, the spectrum must be comb-sampled. This allows a much harder to close loophole for optical solvers.
+
+By learning from an fft-based loss, the surrogate models learn that there are peaks, though not necessarily where the peaks are in the spectrum. This means that even though the models are evaluated on discretized grids, the comb-aliasing is somewhat alleviated by just random translation of peaks and fft-spectrum error. This is true especially for the \texttt{siren} model, which is an implicit model than can predict the absorptance for any wavelength. This also means that the evaluation points during optimization of the \texttt{siren} model can be much denser sampled, to avoid some of the comb aliasing.
+This explanation might also explain the very good parity performance of figure \ref{fig:parity}, even though most surrogate optimized structures still performs a bit worse than the best of the LHS dataset, and can also explain why the \texttt{forward\_mlp} performs well as a surrogate for compound effect, but poorly as a spectrum predictor.
+
+

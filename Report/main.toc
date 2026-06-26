@@ -18,16 +18,21 @@
 \contentsline {section}{\numberline {3.2}COMSOL implementation of a grating}{17}{section.0.3.2}%
 \contentsline {section}{\numberline {3.3}Convergence tests}{17}{section.0.3.3}%
 \contentsline {section}{\numberline {3.4}Machine Learning Surrogates}{19}{section.0.3.4}%
-\contentsline {chapter}{\numberline {4}Results \& Discussion}{21}{chapter.0.4}%
-\contentsline {section}{\numberline {4.1}Generated Dataset}{21}{section.0.4.1}%
-\contentsline {section}{\numberline {4.2}Classical Topology Optimization example}{22}{section.0.4.2}%
-\contentsline {section}{\numberline {4.3}Surrogate Model Training}{22}{section.0.4.3}%
-\contentsline {chapter}{\numberline {5}Outlook}{25}{chapter.0.5}%
-\contentsline {chapter}{\numberline {6}Conclusion}{26}{chapter.0.6}%
-\contentsline {chapter}{Bibliography}{27}{chapter*.19}%
-\contentsline {chapter}{\numberline {A}Appendix}{29}{appendix.A}%
-\contentsline {section}{\numberline {A.1}Additional Convergence Tests}{29}{section.A.1}%
-\contentsline {subsection}{\numberline {A.1.1}Convergence Tests for 1000 nm Grating}{29}{subsection.A.1.1}%
-\contentsline {subsection}{\numberline {A.1.2}Convergence Tests without Subpixel Smoothing}{32}{subsection.A.1.2}%
-\contentsline {subsection}{\numberline {A.1.3}Field correspondence of RCWA and COMSOL}{35}{subsection.A.1.3}%
-\contentsline {section}{\numberline {A.2}Dataset Scatter Plots}{35}{section.A.2}%
+\contentsline {section}{\numberline {3.5}Overview of surrogate model architectures}{21}{section.0.3.5}%
+\contentsline {chapter}{\numberline {4}Results \& Discussion}{22}{chapter.0.4}%
+\contentsline {section}{\numberline {4.1}Generated Dataset}{22}{section.0.4.1}%
+\contentsline {section}{\numberline {4.2}Surrogate Model Training}{23}{section.0.4.2}%
+\contentsline {section}{\numberline {4.3}Surrogate model performance}{25}{section.0.4.3}%
+\contentsline {section}{\numberline {4.4}Surrogate Model Optimization}{28}{section.0.4.4}%
+\contentsline {section}{\numberline {4.5}Why not just do Topology Optimization?}{30}{section.0.4.5}%
+\contentsline {chapter}{\numberline {5}Outlook}{33}{chapter.0.5}%
+\contentsline {chapter}{\numberline {6}Conclusion}{34}{chapter.0.6}%
+\contentsline {chapter}{Bibliography}{35}{chapter*.26}%
+\contentsline {chapter}{\numberline {A}Appendix}{37}{appendix.A}%
+\contentsline {section}{\numberline {A.1}Additional Convergence Tests}{37}{section.A.1}%
+\contentsline {subsection}{\numberline {A.1.1}Convergence Tests for 1000 nm Grating}{37}{subsection.A.1.1}%
+\contentsline {subsection}{\numberline {A.1.2}Convergence Tests without Subpixel Smoothing}{40}{subsection.A.1.2}%
+\contentsline {subsection}{\numberline {A.1.3}Field correspondence of RCWA and COMSOL}{43}{subsection.A.1.3}%
+\contentsline {section}{\numberline {A.2}Dataset Scatter Plots}{43}{section.A.2}%
+\contentsline {section}{\numberline {A.3}Spectrums of 2D forward models.}{43}{section.A.3}%
+\contentsline {section}{\numberline {A.4}Surrogate optimization}{43}{section.A.4}%

@@ -103,28 +103,28 @@ This section provides additional convergence tests for the RCWA implementation. 
 \label{sec:comsolSpectra}
 \begin{figure}[htbp]
     \centering
-    \includegraphics[width=0.5\textwidth]{figures/convergence/spectra_num_layers_100nm_L1.png}
+    \includegraphics[width=0.9\textwidth]{figures/convergence/spectra_num_layers_100nm_L1.png}
     \caption{The p and s polarized absorptance curves of the film absorptance for $N=1$ layers and $20$ truncated fourier orders. The comsol model is the one described in section \ref{sec:comsol}}
     \label{fig:conv_nosub_6}
 \end{figure}
 
 \begin{figure}[htbp]
     \centering
-    \includegraphics[width=0.5\textwidth]{figures/convergence/spectra_num_layers_100nm_L10.png}
+    \includegraphics[width=0.9\textwidth]{figures/convergence/spectra_num_layers_100nm_L10.png}
     \caption{The p and s polarized absorptance curves of the film absorptance for $N=10$ layers and $20$ truncated fourier orders. The comsol model is the one described in section \ref{sec:comsol}}
     \label{fig:conv_nosub_6}
 \end{figure}
 
 \begin{figure}[htbp]
     \centering
-    \includegraphics[width=0.5\textwidth]{figures/convergence/spectra_num_layers_100nm_L25.png}
+    \includegraphics[width=0.9\textwidth]{figures/convergence/spectra_num_layers_100nm_L25.png}
     \caption{The p and s polarized absorptance curves of the film absorptance for $N=25$ layers and $20$ truncated fourier orders. The comsol model is the one described in section \ref{sec:comsol}}
     \label{fig:conv_nosub_6}
 \end{figure}
 
 \begin{figure}[htbp]
     \centering
-    \includegraphics[width=0.5\textwidth]{figures/convergence/spectra_num_layers_100nm_L100.png}
+    \includegraphics[width=0.9\textwidth]{figures/convergence/spectra_num_layers_100nm_L100.png}
     \caption{The p and s polarized absorptance curves of the film absorptance for $N=100$ layers and $20$ truncated fourier orders. The comsol model is the one described in section \ref{sec:comsol}}
     \label{fig:conv_nosub_6}
 \end{figure}
@@ -134,6 +134,19 @@ This section provides additional convergence tests for the RCWA implementation. 
 
 This section provides scatter plots of the spectral absorptance and short-circuit current $J_{sc}$ for all three grating materials in the 2D LHS dataset (combining normal and oblique incidence). Each row shows the spectral response density and the $J_{sc}$ scatter as a function of film height, coloured by total grating amplitude.
 
+\begin{figure}[htbp]
+    \centering
+    \begin{subfigure}[b]{0.48\textwidth}
+        \includegraphics[width=\textwidth]{../Data/LHS_Dataset_Si/evaluation/all_data/dataset_baseline_2d_A_film_both_all_data_scatter.png}
+        \caption{Spectral absorptance density.}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.48\textwidth}
+        \includegraphics[width=\textwidth]{../Data/LHS_Dataset_Si/evaluation/all_data/dataset_baseline_2d_jsc_A_film_both_all_data_scatter.png}
+        \caption{$J_{sc}$ vs.\ film height, coloured by total grating amplitude.}
+    \end{subfigure}
+    \caption{2D LHS dataset scatter plots for Si.}
+\end{figure}
 
 \begin{figure}[htbp]
     \centering
@@ -194,5 +207,46 @@ This section provides scatter plots of the spectral absorptance and short-circui
         \includegraphics[width=\textwidth]{../Data/LHS_3D_Dataset_Si3N4/evaluation/all_data/dataset_baseline_3d_A_film_normal_both_all_data.png}
                 \caption{3D LHS dataset scatter plots and histogram for Si$_3$N$_4$.}
     \label{fig:ds3d_si3n4_scatter}
+\end{figure}
+
+\section{Spectrums of 2D forward models.}
+\begin{figure}
+    \centering
+    \includegraphics[width=0.9\textwidth]{../Checkpoints/Si_TiO2_Si3N4/evaluation/forward/all_data/forward_spectrum_samples_forward_mlp.png}
+    \label{fig:forward_mlp}
+\end{figure}
+\begin{figure}
+    \centering
+    \includegraphics[width=0.9\textwidth]{../Checkpoints/Si_TiO2_Si3N4/evaluation/forward/all_data/forward_spectrum_samples_siren.png}
+    \label{fig:siren}
+\end{figure}
+
+\section{Surrogate optimization}
+\begin{figure}
+    \centering
+    \includegraphics[width=0.9\textwidth]{../Checkpoints/Si_TiO2_Si3N4/evaluation/surrogate_optimization/inc0.0_skip_cnn/optimization_history_geometry.png}
+    \label{fig:surrogateOptHist}
+    \caption{The history of the surrogate optimization of \texttt{skip\_cnn}.}
+\end{figure}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.9\textwidth]{../Checkpoints/Si_TiO2_Si3N4/evaluation/surrogate_optimization/inc0.0_skip_cnn/surrogate_optimization_geometry.png}
+    \label{fig:surrogateOptHist}
+    \caption{performance of the design found by \texttt{skip\_cnn} optimization}
+\end{figure}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.9\textwidth]{../Checkpoints/Si_TiO2_Si3N4/evaluation/surrogate_optimization/inc0.0_siren/optimization_history_geometry.png}
+    \label{fig:surrogateOptHist}
+  \caption{The history of the surrogate optimization of \texttt{siren}.}
+\end{figure}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.9\textwidth]{../Checkpoints/Si_TiO2_Si3N4/evaluation/surrogate_optimization/inc0.0_siren/surrogate_optimization_geometry.png}
+    \label{fig:surrogateOptHist}
+        \caption{performance of the design found by \texttt{siren} optimization}
 \end{figure}
 
