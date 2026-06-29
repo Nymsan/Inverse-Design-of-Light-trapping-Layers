@@ -24,7 +24,7 @@ echo "Material:   $MAT_NAME"
 echo "Harmonics:  7  |  order_N: 20  |  nx: 5000"
 echo "Amp bound:  0-15 nm per harmonic"
 echo "Reflector:  pec  |  height_per_layer: 5 nm"
-echo "Objective:  Jsc (mA/cm²)"
+echo "Objective:  Absorptance "
 echo "========================================="
 
 echo ""

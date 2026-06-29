@@ -344,7 +344,7 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 70)
-    print(f"Naive RCWA Optimisation")
+    print("Naive RCWA Optimisation")
     print(f"  Material:   {args.material}")
     print(f"  Height:     {mode_label}")
     print(f"  Objective:  {args.objective}")
