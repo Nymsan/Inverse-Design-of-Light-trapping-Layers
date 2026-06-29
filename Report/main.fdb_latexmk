@@ -1,14 +1,14 @@
 # Fdb version 4
-["bibtex main"] 1782509782.08646 "main.aux" "main.bbl" "main" 1782510288.25063 0
-  "./main-blx.bib" 1782510287.99083 343 7df4daaf12a96e5cb5559adaf253a91c ""
+["bibtex main"] 1782510407.03038 "main.aux" "main.bbl" "main" 1782510876.49388 0
+  "./main-blx.bib" 1782510876.2717 343 7df4daaf12a96e5cb5559adaf253a91c ""
   "./references.bib" 1782504867.00822 6721 8ec3da401495f2bf05d481b7d05108fa ""
   "/usr/share/texmf-dist/bibtex/bst/biblatex/biblatex.bst" 1775415801 65510 9a2a51799b543ff279b8ea2dd91ec499 ""
-  "main.aux" 1782510287.98383 56232 ba9cf0d913c68b1012a89a6a5a10b421 "pdflatex"
+  "main.aux" 1782510876.2657 56226 17c1fb44d5a632f8c9fd56551d7db4e3 "pdflatex"
   (generated)
   "main.bbl"
   "main.blg"
   (rewritten before read)
-["pdflatex"] 1782510276.9993 "/home/an/Documents/Inverse-Design-of-Light-trapping-Layers/Report/main.tex" "main.pdf" "main" 1782510288.25082 0
+["pdflatex"] 1782510865.58643 "/home/an/Documents/Inverse-Design-of-Light-trapping-Layers/Report/main.tex" "main.pdf" "main" 1782510876.49407 0
   "../Checkpoints/Si_TiO2_Si3N4/evaluation/dataset_baseline/all_data/dataset_metric_histogram.png" 1782428649.84644 72192 e109c6f70c65a94993f6add612145a33 ""
   "../Checkpoints/Si_TiO2_Si3N4/evaluation/dataset_baseline/jsc/dataset_metric_histogram.png" 1782428653.65044 67901 b6c6c2b780c1eb2220995b4df00b07e1 ""
   "../Checkpoints/Si_TiO2_Si3N4/evaluation/forward/all_data/forward_loss_curves.png" 1782485509.88648 171789 98c476ffe8d7257ae3a097dd771b0837 ""
@@ -315,9 +315,9 @@
   "/usr/share/texmf-dist/web2c/texmf.cnf" 1775415801 43569 fd570f2fa160877d211e859f687312ba ""
   "/var/lib/texmf/fonts/map/pdftex/updmap/pdftex.map" 1781894223 5385779 47c0c393a77fd4a098bacfd57d66b88a ""
   "/var/lib/texmf/web2c/pdftex/pdflatex.fmt" 1781894210 3084559 947c3970df5a29c44a086ab11216362f ""
-  "Backmatter/Appendix.tex" 1782497404.32435 10862 9a894a7504431581f2d55afca8fedd98 ""
+  "Backmatter/Appendix.tex" 1782510396.13454 10860 c89aa1a60832ee214f451d6d3b65456c ""
   "Backmatter/Backpage.tex" 1782464249.67171 331 2b045f4191f5d03fc630ff4d4267cd38 ""
-  "Frontmatter/Abstract.tex" 1782508112.29327 1358 4f77428e844be9afd21cc5d75ef28752 ""
+  "Frontmatter/Abstract.tex" 1782510865.39427 1361 1ad999be5017841a7bdced1e002fd0e8 ""
   "Frontmatter/Acknowledgements.tex" 1782464249.67178 291 34685d95da3dc2aa0e9c56ea90eef1d5 ""
   "Frontmatter/Approval.tex" 1782493734.94076 484 aa2ebec0d5cee9ea54b0edef1bed250b ""
   "Frontmatter/Copyright.tex" 1782464249.67183 804 1a6ea5730ad93ecadaaa59433a18cdf5 ""
@@ -361,12 +361,12 @@
   "figures/fabry_perot_grid.pdf" 1782464249.74227 87956 d8c44a13fc9ac853965e5da7c4217faa ""
   "figures/jsc_integrand_am15g.pdf" 1782464249.74247 55305 6be0b9676dea7a45fee258e4b93a78c0 ""
   "figures/refractive_indices.pdf" 1782464249.74386 19242 0306ac7d41e55ef88d28b89992b8e208 ""
-  "main.aux" 1782510287.98383 56232 ba9cf0d913c68b1012a89a6a5a10b421 "pdflatex"
-  "main.bbl" 1782509782.14219 19768 8d56534b1a2680437d227cf56c295e34 "bibtex main"
-  "main.out" 1782510287.98983 6686 fe1e86e20d0ad00bc697d2ff7fab3b14 "pdflatex"
-  "main.run.xml" 1782510287.99287 2528 47d98899412914b94d26319bb09fe473 "pdflatex"
+  "main.aux" 1782510876.2657 56226 17c1fb44d5a632f8c9fd56551d7db4e3 "pdflatex"
+  "main.bbl" 1782510407.08283 19768 8d56534b1a2680437d227cf56c295e34 "bibtex main"
+  "main.out" 1782510876.2707 6676 09a8f7a8986947d38e8eab91d02c25b0 "pdflatex"
+  "main.run.xml" 1782510876.2737 2528 47d98899412914b94d26319bb09fe473 "pdflatex"
   "main.tex" 1782464249.78621 1091 9dd29739d1c8d4cbc68e9dac096e0233 ""
-  "main.toc" 1782510287.99287 3193 a0cf2196fe11124bbfaf57ed21267778 "pdflatex"
+  "main.toc" 1782510876.2737 3191 a0c33e277446f2fa826c02df0cde0da0 "pdflatex"
   "sections/01_introduction.tex" 1782509770.47579 12274 c480c0556b6bb71210a886a079a4f68c ""
   "sections/02_theory.tex" 1782509859.98428 37455 edcfecfc4c949a4ef98ff1afdd6e6477 ""
   "sections/03_methods.tex" 1782510276.81334 25635 3402364755c62921793f9d9811a255f0 ""
