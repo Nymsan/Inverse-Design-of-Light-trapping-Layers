@@ -34,5 +34,5 @@
 \contentsline {subsection}{\numberline {A.1.2}Convergence Tests without Subpixel Smoothing}{42}{subsection.A.1.2}%
 \contentsline {subsection}{\numberline {A.1.3}Field correspondence of RCWA and COMSOL}{45}{subsection.A.1.3}%
 \contentsline {section}{\numberline {A.2}Dataset Scatter Plots}{45}{section.A.2}%
-\contentsline {section}{\numberline {A.3}Spectrums of 2D forward models.}{45}{section.A.3}%
+\contentsline {section}{\numberline {A.3}Spectra of 2D forward models.}{45}{section.A.3}%
 \contentsline {section}{\numberline {A.4}Surrogate optimization}{45}{section.A.4}%
