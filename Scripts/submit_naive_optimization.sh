@@ -38,14 +38,4 @@ uv run python Scripts/evaluate_naive_optimization.py \
     --out_dir Results/naive_opt_bounded
 
 echo ""
-echo "=== Phase 2: Pinned Optimization (h = 2000 nm) ==="
-uv run python Scripts/evaluate_naive_optimization.py \
-    --material $MAT_NAME \
-    --h_val 2000 \
-    --n_iters 500 \
-    --n_restarts 2 \
-    --seed 42 \
-    --out_dir Results/naive_opt_pinned
-
-echo ""
 echo "=== Naive Torcwa Optimization Complete for $MAT_NAME ==="

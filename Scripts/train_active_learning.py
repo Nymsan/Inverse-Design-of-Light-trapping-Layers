@@ -47,7 +47,7 @@ def evaluate_oracle(geometries: torch.Tensor, mat_name: str, stats: dict, device
     try:
         prefix = stats.get("dataset_prefixes", ["LHS_Dataset"])[0]
         mat_dir = PROJECT_ROOT / "Data" / f"{prefix}_{mat_name}"
-        first_batch = next(mat_dir.glob("batch_*.pt"))
+        first_batch = mat_dir / "train_dataset.pt"
         rcwa_config_dict = torch.load(first_batch, map_location="cpu", weights_only=False).get("metadata", {}).get("config", {})
     except StopIteration:
         pass
@@ -136,10 +136,9 @@ def finetune_surrogate(model: nn.Module, trained_materials: list, stats: dict, a
             
         # 2. Load Original Data (to prevent catastrophic forgetting)
         orig_dir = PROJECT_ROOT / "Data" / f"LHS_Dataset_{mat_name}"
-        all_batch_files = list(orig_dir.glob("batch_*.pt"))
-        if all_batch_files:
-            selected_files = random.sample(all_batch_files, min(2, len(all_batch_files)))
-            data_files_dict[mat_name] = [str(f) for f in selected_files]
+        train_file = orig_dir / "train_dataset.pt"
+        if train_file.exists():
+            data_files_dict[mat_name] = [str(train_file)]
             
     if len(all_geos_raw) == 0:
         return model
@@ -152,9 +151,15 @@ def finetune_surrogate(model: nn.Module, trained_materials: list, stats: dict, a
             geo_min=stats["geo_min"], geo_max=stats["geo_max"]
         )
         # orig_ds returns (geometry, material, target)
-        orig_geos = orig_ds.geometry
-        orig_curves = orig_ds.target
-        orig_mat_idx = orig_ds.material_id
+        
+        # Subsample original dataset to ~2000 samples to prevent swamping the AL data
+        num_orig = len(orig_ds)
+        subset_size = min(2000, num_orig)
+        indices = torch.randperm(num_orig)[:subset_size]
+        
+        orig_geos = orig_ds.geometry[indices]
+        orig_curves = orig_ds.target[indices]
+        orig_mat_idx = orig_ds.material_id[indices]
         orig_dataset = TensorDataset(orig_geos, orig_mat_idx, orig_curves)
         
         # Combine

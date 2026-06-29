@@ -95,9 +95,8 @@ spectra = spectrum.get_reference_spectra()
 am15g = spectra['global']
 def sun_weights(w):
     device = w.device if hasattr(w, "device") else default_device
-    vals = am15g[w.cpu().numpy()]
-    if hasattr(vals, "to_numpy"):
-        vals = vals.to_numpy()
+    w_np = w.cpu().numpy()
+    vals = np.interp(w_np, am15g.index.to_numpy(), am15g.to_numpy())
     return torch.tensor(vals, dtype=geo_dtype, device=device)
 
 def get_jsc_scaling_factor(wl_len):
