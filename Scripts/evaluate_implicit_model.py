@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import argparse
 import sys
+import time
 from pathlib import Path
 import numpy as np
 import torch
@@ -12,7 +13,7 @@ from tqdm import tqdm
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from Utils.models import MATERIAL_LIBRARY, N_MATERIALS, SIREN
+from Utils.models import MATERIAL_LIBRARY, N_MATERIALS, SIREN, build_profile
 from Utils.utils import RCWAConfig, get_absorptance_curve
 from Utils.checkpoint import load_forward_model
 
@@ -21,6 +22,7 @@ def parse_args():
     p.add_argument("--ckpt_dir", default="Checkpoints/Si_TiO2_Si3N4", help="Path to checkpoint dir")
     p.add_argument("--spacing", type=float, default=1.0, help="Wavelength spacing in nm (default: 1.0)")
     p.add_argument("--num_samples", type=int, default=5, help="Number of random samples to evaluate (default: 5)")
+    p.add_argument("--use_val_data", action="store_true", help="Sample from the consolidated validation dataset instead of uniform random.")
     return p.parse_args()
 
 def main():
@@ -43,6 +45,10 @@ def main():
     n_harmonics = stats["n_harmonics"]
     n_fourier = n_harmonics * 2
     trained_mats = stats["materials"]
+    
+    # Hardcode inc_ang limit to zero to evaluate normal incidence only
+    geo_min[-1] = 0.0
+    geo_max[-1] = 0.0
     
     # Load SIREN model specifically
     siren_ckpt = ckpt_dir / "siren.pt"
@@ -77,10 +83,47 @@ def main():
     
     # Generate random test geometries
     torch.manual_seed(42)
-    test_geos = torch.rand(args.num_samples, len(geo_min), device=device) * (geo_max - geo_min) + geo_min
-    test_mats = torch.randint(0, len(trained_mats), (args.num_samples,), device=device)
-    # Map to global library indices
-    test_mat_ids = torch.tensor([list(MATERIAL_LIBRARY.keys()).index(trained_mats[m]) for m in test_mats], device=device)
+    
+    if args.use_val_data:
+        dataset_geos = []
+        dataset_mat_ids = []
+        dataset_targets = []
+        for mat_name in trained_mats:
+            val_path = PROJECT_ROOT / "Data" / f"LHS_Dataset_{mat_name}" / "val_dataset.pt"
+            if val_path.exists():
+                data = torch.load(val_path, map_location="cpu", weights_only=False)
+                px = data["params_x"].float()
+                h = data["h"].float().unsqueeze(-1)
+                inc = data["inc_ang"].float().unsqueeze(-1)
+                geo = torch.cat([px.view(px.shape[0], -1), h, inc], dim=-1)
+                
+                dataset_geos.append(geo)
+                dataset_targets.append(data["A_film_normal"].float())
+                mat_id = list(MATERIAL_LIBRARY.keys()).index(mat_name)
+                dataset_mat_ids.append(torch.full((geo.shape[0],), mat_id, dtype=torch.long))
+        
+        if dataset_geos:
+            all_geos = torch.cat(dataset_geos).to(device)
+            all_mats = torch.cat(dataset_mat_ids).to(device)
+            all_targets = torch.cat(dataset_targets).to(device)
+            indices = torch.randperm(len(all_geos))[:args.num_samples]
+            test_geos = all_geos[indices]
+            test_mat_ids = all_mats[indices]
+            test_targets = all_targets[indices]
+            
+            # Hardcode inc_ang to 0.0 for normal incidence evaluation only
+            test_geos[:, -1] = 0.0
+        else:
+            print("Warning: Could not find val_dataset.pt files. Falling back to uniform random sampling.")
+            args.use_val_data = False
+            test_targets = None
+            
+    if not args.use_val_data:
+        test_geos = torch.rand(args.num_samples, len(geo_min), device=device) * (geo_max - geo_min) + geo_min
+        test_mats = torch.randint(0, len(trained_mats), (args.num_samples,), device=device)
+        # Map to global library indices
+        test_mat_ids = torch.tensor([list(MATERIAL_LIBRARY.keys()).index(trained_mats[m]) for m in test_mats], device=device)
+        test_targets = None
     
     print("Running evaluations...")
     for i in tqdm(range(args.num_samples), desc="Simulating"):
@@ -89,10 +132,12 @@ def main():
         mat_name = list(MATERIAL_LIBRARY.keys())[mat_id.item()]
         
         # 1. SIREN prediction
+        t0 = time.time()
         with torch.no_grad():
             siren_pred = model(geo, mat_id, wls=fine_wls_tensor)
             siren_p = siren_pred[0, :, 0].cpu().numpy()
             siren_s = siren_pred[0, :, 1].cpu().numpy()
+        siren_time = time.time() - t0
             
         # 2. Torcwa Simulation
         base_config = RCWAConfig(**rcwa_config_dict)
@@ -112,17 +157,41 @@ def main():
             
         px = geo[0, :n_fourier].view(-1, 2).to(torch.float32).cpu()
         
+        t0 = time.time()
         A_film, _ = get_absorptance_curve(
             params_x=px, params_y=None, wavelengths=torcwa_wls_tensor.cpu(), config=base_config, show_progress=True
         )
+        torcwa_time = time.time() - t0
         rcwa_p = A_film[:, 0].cpu().numpy()
         rcwa_s = A_film[:, 1].cpu().numpy()
         
+        # 3. Torcwa Simulation on original dataset resolution
+        orig_wls = np.linspace(300, 1100, 161)
+        if test_targets is not None:
+            rcwa_p_orig = test_targets[i, :, 0].cpu().numpy()
+            rcwa_s_orig = test_targets[i, :, 1].cpu().numpy()
+        else:
+            orig_wls_tensor = torch.tensor(orig_wls, dtype=torch.float64, device=device)
+            A_film_orig, _ = get_absorptance_curve(
+                params_x=px, params_y=None, wavelengths=orig_wls_tensor.cpu(), config=base_config, show_progress=False
+            )
+            rcwa_p_orig = A_film_orig[:, 0].cpu().numpy()
+            rcwa_s_orig = A_film_orig[:, 1].cpu().numpy()
+        
+        # 4. Extract Geometry profile
+        prof_tensor, _, _ = build_profile(geo.cpu(), n_harmonics, nx=128)
+        profile_np = prof_tensor[0].numpy()
+        
         # Plotting
-        fig, axes = plt.subplots(1, 2, figsize=(12, 4), layout="constrained")
+        fig, axes = plt.subplots(1, 4, figsize=(24, 4), layout="constrained")
+        
+        cmap = plt.cm.viridis
+        c_amp = cmap(0.3)
+        c_phase = cmap(0.9)
         
         axes[0].plot(fine_wls, rcwa_p, "k-", lw=2, label="Torcwa (Ground Truth)")
         axes[0].plot(fine_wls, siren_p, "r--", lw=2, label="SIREN (Continuous)")
+        axes[0].scatter(orig_wls, rcwa_p_orig, color="k", s=15, alpha=0.5, label="Torcwa (161 pts)")
         axes[0].set_title("P-Polarization")
         axes[0].set_xlabel("Wavelength (nm)")
         axes[0].set_ylabel("Absorptance")
@@ -132,12 +201,40 @@ def main():
         
         axes[1].plot(fine_wls, rcwa_s, "k-", lw=2, label="Torcwa (Ground Truth)")
         axes[1].plot(fine_wls, siren_s, "r--", lw=2, label="SIREN (Continuous)")
+        axes[1].scatter(orig_wls, rcwa_s_orig, color="k", s=15, alpha=0.5, label="Torcwa (161 pts)")
         axes[1].set_title("S-Polarization")
         axes[1].set_xlabel("Wavelength (nm)")
         axes[1].set_ylim(-0.05, 1.05)
         axes[1].grid(True, alpha=0.3)
         
-        plt.suptitle(f"SIREN Implicit Generalization: Sample {i+1} ({mat_name})\n$h={h_val:.1f}$ nm, $\\theta={inc_ang:.1f}^\\circ$", fontsize=14)
+        xs = np.linspace(0, rcwa_config_dict.get("grating_period", 1000), 128)
+        axes[2].plot(xs, profile_np, "k-", lw=2)
+        axes[2].fill_between(xs, 0, profile_np, color="steelblue", alpha=0.5)
+        axes[2].set_title("Structure Cross-Section")
+        axes[2].set_xlabel("x (nm)")
+        axes[2].set_ylabel("Height (nm)")
+        
+        # Harmonics amplitudes & phases
+        ax_h = axes[3]
+        px_np = px.numpy()
+        amps_geo = px_np[:, 0]
+        phases_geo = px_np[:, 1]
+        x_pos = np.arange(1, n_harmonics + 1)
+        ax_h.bar(x_pos, amps_geo, color=c_amp, edgecolor="black")
+        ax_h.set_ylabel("Amplitude (nm)", color=c_amp)
+        ax_h.tick_params(axis='y', labelcolor=c_amp, labelsize=12)
+        ax_h.tick_params(axis='x', labelsize=12)
+        ax_h.set_xlabel("Harmonic index")
+        ax_h.set_title("Harmonic Composition")
+        
+        ax_p2 = ax_h.twinx()
+        ax_p2.plot(x_pos, phases_geo, 'o', color=c_phase, markersize=10, markeredgecolor="black")
+        ax_p2.set_ylabel("Phase (rad)", color=c_phase)
+        ax_p2.tick_params(axis='y', labelcolor=c_phase, labelsize=12)
+        ax_p2.set_ylim(-0.5, 2 * np.pi + 0.5)
+        
+        speedup = torcwa_time / siren_time if siren_time > 0 else 0
+        plt.suptitle(f"SIREN Implicit Generalization: Sample {i+1} ({mat_name})\n$h={h_val:.1f}$ nm, $\\theta={inc_ang:.1f}^\\circ$\nSIREN: {siren_time*1000:.1f}ms | Torcwa: {torcwa_time:.1f}s | Speedup: {speedup:.0f}x", fontsize=14)
         plt.savefig(out_dir / f"siren_fine_grid_sample_{i+1}.png")
         plt.close(fig)
 

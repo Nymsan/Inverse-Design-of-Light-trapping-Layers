@@ -394,17 +394,66 @@ def main():
         ax_row = axes[idx]
         
         best_target_for_mat = best_dataset_target.get(mat_name)
-        best_abs_for_mat = best_dataset_abs.get(mat_name, -1.0)
-
-        # Dataset targets are stored at the dataset's native resolution (n_dataset_wl per pol).
-        # When --eval_resolution differs, we must interpolate to WAVELENGTHS before plotting.
+        best_geo_for_mat = best_dataset_geo.get(mat_name)
+        
+        # Original dataset targets for the best dataset point
         if best_target_for_mat is not None:
             n_dataset_wl = len(best_target_for_mat) // 2
             ds_wls = np.linspace(300, 1100, n_dataset_wl)
-            ds_p = best_target_for_mat[:n_dataset_wl].numpy()
-            ds_s = best_target_for_mat[n_dataset_wl:].numpy()
-            bdt_p = np.interp(WAVELENGTHS, ds_wls, ds_p)
-            bdt_s = np.interp(WAVELENGTHS, ds_wls, ds_s)
+            ds_p_orig = best_target_for_mat[:n_dataset_wl].numpy()
+            ds_s_orig = best_target_for_mat[n_dataset_wl:].numpy()
+        else:
+            ds_wls = ds_p_orig = ds_s_orig = None
+
+        if best_geo_for_mat is not None:
+            # Re-simulate the best dataset geometry at higher resolution
+            geo_data = best_geo_for_mat
+            h_data = geo_data[-2].item()
+            inc_data = geo_data[-1].item()
+            
+            ds_config = RCWAConfig(**rcwa_config_dict)
+            ds_config.h = float(h_data)
+            ds_config.inc_ang = (float(inc_data) + 1e-3) * np.pi / 180.0
+            ds_config.azi_ang = 1e-3 * np.pi / 180.0
+            if mat_name.endswith("_Ag"):
+                ds_config.grating_material = mat_name[:-3]
+                ds_config.reflector_type = 'Ag'
+            else:
+                ds_config.grating_material = mat_name
+                ds_config.reflector_type = 'pec'
+                
+            if args.order_N is not None:
+                ds_config.order_N = args.order_N
+            if args.height_per_layer is not None:
+                ds_config.height_per_layer = args.height_per_layer
+
+            n_harm_data = (len(geo_data) - 2) // 2
+            px_data = geo_data[:2*n_harm_data].view(-1, 2).cpu()
+            
+            A_film_ds, _ = get_absorptance_curve(
+                params_x=px_data,
+                params_y=None,
+                wavelengths=torch.from_numpy(WAVELENGTHS).double(),
+                config=ds_config,
+                show_progress=False
+            )
+            bdt_p = A_film_ds[:, 0].cpu().numpy()
+            bdt_s = A_film_ds[:, 1].cpu().numpy()
+            
+            # Recalculate dataset objective using the new higher resolution curve
+            mask_ds = mask
+            avg_abs_p_ds = np.mean(bdt_p[mask_ds])
+            avg_abs_s_ds = np.mean(bdt_s[mask_ds])
+            rcwa_avg_abs_ds = float((avg_abs_p_ds + avg_abs_s_ds) / 2.0)
+            
+            if getattr(args, "optimize_jsc", False):
+                rcwa_avg_t_ds = torch.from_numpy((bdt_p + bdt_s) / 2.0).float()
+                jsc_val_ds = (rcwa_avg_t_ds * mask_t * flux).sum() * get_jsc_scaling_factor(len(WAVELENGTHS))
+                cos_theta_ds = np.cos(inc_data * np.pi / 180.0)
+                best_abs_for_mat = float(jsc_val_ds * cos_theta_ds)
+            else:
+                best_abs_for_mat = rcwa_avg_abs_ds
+                
         else:
             bdt_p = bdt_s = None
         

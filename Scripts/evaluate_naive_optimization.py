@@ -172,8 +172,10 @@ def run_optimization(material, h_pinned, h_bounds, objective, n_iters, device, s
         raw_h = torch.zeros(1, dtype=torch.float32, device=device, requires_grad=True)
         opt_vars.append(raw_h)
 
-    opt       = torch.optim.Adam(opt_vars, lr=1e-1, weight_decay=1e-3)
-    scheduler = torch.optim.lr_scheduler.ExponentialLR(opt, gamma=0.99)
+    opt = torch.optim.Adam(opt_vars, lr=1e-1)
+    
+    # 4) Initialize learning rate scheduler to anneal the learning rate smoothly to 0
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=n_iters, eta_min=1e-4)
 
     best_loss   = float('inf')
     best_params = None
