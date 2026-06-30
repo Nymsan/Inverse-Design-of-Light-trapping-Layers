@@ -23,7 +23,7 @@ nvidia-smi
 # Pipeline Toggles
 # ==============================================================================
 TRAIN_FORWARD=true
-TRAIN_INVERSE=true
+TRAIN_INVERSE=false
 # ==============================================================================
 # Model Architecture Hyperparameters
 # Adjust these dimensions to control the parameter count / capacity of the models
@@ -117,7 +117,7 @@ uv run python count_params.py \
 
 if [ "$TRAIN_FORWARD" = true ]; then
     echo -e "\n=== Starting Forward Training ==="
-    for frac in 0.1 0.25 0.5 1.0; do
+    for frac in 1.0; do
         echo "Training forward model with fraction: $frac"
         uv run python train_forward.py \
             --data_dir ../Data \
@@ -128,6 +128,7 @@ if [ "$TRAIN_FORWARD" = true ]; then
             --lr 2e-3 \
             --patience 200 \
             --train_subset_fraction $frac \
+            --smooth_target 3 \
             --seed 42 \
             --embed_dim $EMBED_DIM \
             --skip cnn transformer \

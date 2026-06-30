@@ -48,6 +48,7 @@ def get_args():
     p.add_argument("--device", default=None)
     p.add_argument("--skip", nargs="*", default=[], choices=["mlp", "cnn", "skipcnn", "siren", "transformer"])
     p.add_argument("--embed_dim", type=int, default=8)
+    p.add_argument("--smooth_target", type=int, default=None, help="Window size for moving average smoothing")
     
     # Architecture arguments
     # MLP
@@ -95,6 +96,8 @@ def main():
     run_name = "_".join(args.materials)
     if args.train_subset_fraction < 1.0:
         run_name += f"_frac_{args.train_subset_fraction}"
+    if args.smooth_target is not None and args.smooth_target > 1:
+        run_name += f"_smoothed_{args.smooth_target}"
     ckpt_dir = PROJECT_ROOT / "Checkpoints" / run_name
     ckpt_dir.mkdir(parents=True, exist_ok=True)
 
@@ -132,6 +135,30 @@ def main():
         train_set.material_id = train_set.material_id[t_idx]
         train_set.target = train_set.target[t_idx]
         print(f"Reduced training set to {len(train_set)} samples")
+        
+    if args.smooth_target is not None and args.smooth_target > 1:
+        print(f"Applying moving average smoothing to targets with window {args.smooth_target}")
+        window = args.smooth_target
+        
+        def smooth_targets(target_tensor):
+            n_wl_half = target_tensor.shape[-1] // 2
+            p_pol = target_tensor[..., :n_wl_half].unsqueeze(1)
+            s_pol = target_tensor[..., n_wl_half:].unsqueeze(1)
+            
+            kernel = torch.ones(1, 1, window, dtype=target_tensor.dtype, device=target_tensor.device) / window
+            pad_left = window // 2
+            pad_right = window - 1 - pad_left
+            
+            p_pol_pad = torch.nn.functional.pad(p_pol, (pad_left, pad_right), mode='replicate')
+            s_pol_pad = torch.nn.functional.pad(s_pol, (pad_left, pad_right), mode='replicate')
+            
+            p_smoothed = torch.nn.functional.conv1d(p_pol_pad, kernel)
+            s_smoothed = torch.nn.functional.conv1d(s_pol_pad, kernel)
+            
+            return torch.cat([p_smoothed.squeeze(1), s_smoothed.squeeze(1)], dim=-1)
+            
+        train_set.target = smooth_targets(train_set.target)
+        val_set.target = smooth_targets(val_set.target)
     
     print(f"Datasets loaded: Train {len(train_set)} samples, Val {len(val_set)} samples in {time.time() - t0:.1f} s")
 
