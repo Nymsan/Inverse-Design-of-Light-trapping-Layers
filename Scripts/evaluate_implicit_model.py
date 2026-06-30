@@ -17,6 +17,12 @@ from Utils.models import MATERIAL_LIBRARY, N_MATERIALS, SIREN, build_profile
 from Utils.utils import RCWAConfig, get_absorptance_curve
 from Utils.checkpoint import load_forward_model
 
+MATERIAL_COLORS = {
+    "Si":    "#1f77b4",
+    "TiO2":  "#ff7f0e",
+    "Si3N4": "#2ca02c",
+}
+
 def parse_args():
     p = argparse.ArgumentParser(description="Evaluate SIREN on a fine wavelength grid.")
     p.add_argument("--ckpt_dir", default="Checkpoints/Si_TiO2_Si3N4", help="Path to checkpoint dir")
@@ -80,9 +86,6 @@ def main():
     
     out_dir = ckpt_dir / "evaluation" / "implicit_model"
     out_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Generate random test geometries
-    torch.manual_seed(42)
     
     if args.use_val_data:
         dataset_geos = []
@@ -183,39 +186,48 @@ def main():
         profile_np = prof_tensor[0].numpy()
         
         # Plotting
-        fig, axes = plt.subplots(1, 4, figsize=(24, 4), layout="constrained")
+        fig, axes = plt.subplots(2, 2, figsize=(18, 12), layout="constrained")
         
         cmap = plt.cm.viridis
         c_amp = cmap(0.3)
         c_phase = cmap(0.9)
+        mat_color = MATERIAL_COLORS.get(mat_name, "steelblue")
         
-        axes[0].plot(fine_wls, rcwa_p, "k-", lw=2, label="Torcwa (Ground Truth)")
-        axes[0].plot(fine_wls, siren_p, "r--", lw=2, label="SIREN (Continuous)")
-        axes[0].scatter(orig_wls, rcwa_p_orig, color="k", s=15, alpha=0.5, label="Torcwa (161 pts)")
-        axes[0].set_title("P-Polarization")
-        axes[0].set_xlabel("Wavelength (nm)")
-        axes[0].set_ylabel("Absorptance")
-        axes[0].set_ylim(-0.05, 1.05)
-        axes[0].grid(True, alpha=0.3)
-        axes[0].legend()
+        # P-Polarization
+        ax_p = axes[0, 0]
+        ax_p.plot(fine_wls, rcwa_p, "k-", lw=2, label="Torcwa (Ground Truth)")
+        ax_p.plot(fine_wls, siren_p, "r--", lw=2, label="SIREN (Continuous)")
+        if test_targets is not None:
+            ax_p.scatter(orig_wls, rcwa_p_orig, color="k", edgecolor="k", s=30, alpha=0.8, zorder=5, label="Torcwa (161 pts)")
+        ax_p.set_title("P-Polarization")
+        ax_p.set_xlabel("Wavelength (nm)")
+        ax_p.set_ylabel("Absorptance")
+        ax_p.set_ylim(-0.05, 1.05)
+        ax_p.grid(True, alpha=0.3)
+        ax_p.legend()
         
-        axes[1].plot(fine_wls, rcwa_s, "k-", lw=2, label="Torcwa (Ground Truth)")
-        axes[1].plot(fine_wls, siren_s, "r--", lw=2, label="SIREN (Continuous)")
-        axes[1].scatter(orig_wls, rcwa_s_orig, color="k", s=15, alpha=0.5, label="Torcwa (161 pts)")
-        axes[1].set_title("S-Polarization")
-        axes[1].set_xlabel("Wavelength (nm)")
-        axes[1].set_ylim(-0.05, 1.05)
-        axes[1].grid(True, alpha=0.3)
+        # S-Polarization
+        ax_s = axes[0, 1]
+        ax_s.plot(fine_wls, rcwa_s, "k-", lw=2, label="Torcwa (Ground Truth)")
+        ax_s.plot(fine_wls, siren_s, "r--", lw=2, label="SIREN (Continuous)")
+        if test_targets is not None:
+            ax_s.scatter(orig_wls, rcwa_s_orig, color="k", edgecolor="k", s=30, alpha=0.8, zorder=5, label="Torcwa (161 pts)")
+        ax_s.set_title("S-Polarization")
+        ax_s.set_xlabel("Wavelength (nm)")
+        ax_s.set_ylim(-0.05, 1.05)
+        ax_s.grid(True, alpha=0.3)
         
+        # Structure Cross-Section
+        ax_struct = axes[1, 0]
         xs = np.linspace(0, rcwa_config_dict.get("grating_period", 1000), 128)
-        axes[2].plot(xs, profile_np, "k-", lw=2)
-        axes[2].fill_between(xs, 0, profile_np, color="steelblue", alpha=0.5)
-        axes[2].set_title("Structure Cross-Section")
-        axes[2].set_xlabel("x (nm)")
-        axes[2].set_ylabel("Height (nm)")
+        ax_struct.plot(xs, profile_np, "k-", lw=2)
+        ax_struct.fill_between(xs, 0, profile_np, color=mat_color, alpha=0.6)
+        ax_struct.set_title("Structure Cross-Section")
+        ax_struct.set_xlabel("x (nm)")
+        ax_struct.set_ylabel("Height (nm)")
         
         # Harmonics amplitudes & phases
-        ax_h = axes[3]
+        ax_h = axes[1, 1]
         px_np = px.numpy()
         amps_geo = px_np[:, 0]
         phases_geo = px_np[:, 1]
@@ -233,9 +245,24 @@ def main():
         ax_p2.tick_params(axis='y', labelcolor=c_phase, labelsize=12)
         ax_p2.set_ylim(-0.5, 2 * np.pi + 0.5)
         
+        # Calculate MAE
+        mae_fine = (np.abs(siren_p - rcwa_p).mean() + np.abs(siren_s - rcwa_s).mean()) / 2.0
+        mae_fine_str = f" | MAE (801pt): {mae_fine:.4f}"
+        
+        if test_targets is not None:
+            with torch.no_grad():
+                orig_wls_tensor = torch.from_numpy(orig_wls).float().to(device)
+                siren_coarse = model(geo, mat_id, wls=orig_wls_tensor)
+                s_c_p = siren_coarse[0, :, 0].cpu().numpy()
+                s_c_s = siren_coarse[0, :, 1].cpu().numpy()
+            mae_coarse = (np.abs(s_c_p - rcwa_p_orig).mean() + np.abs(s_c_s - rcwa_s_orig).mean()) / 2.0
+            mae_coarse_str = f" | MAE (161pt): {mae_coarse:.4f}"
+        else:
+            mae_coarse_str = ""
+            
         speedup = torcwa_time / siren_time if siren_time > 0 else 0
-        plt.suptitle(f"SIREN Implicit Generalization: Sample {i+1} ({mat_name})\n$h={h_val:.1f}$ nm, $\\theta={inc_ang:.1f}^\\circ$\nSIREN: {siren_time*1000:.1f}ms | Torcwa: {torcwa_time:.1f}s | Speedup: {speedup:.0f}x", fontsize=14)
-        plt.savefig(out_dir / f"siren_fine_grid_sample_{i+1}.png")
+        plt.suptitle(f"SIREN Implicit Generalization: Sample {i+1} ({mat_name})\n$h={h_val:.1f}$ nm, $\\theta={inc_ang:.1f}^\\circ${mae_coarse_str}{mae_fine_str}\nSIREN: {siren_time*1000:.1f}ms | Torcwa: {torcwa_time:.1f}s | Speedup: {speedup:.0f}x", fontsize=16)
+        plt.savefig(out_dir / f"siren_fine_grid_sample_{i+1}.png", dpi=300)
         plt.close(fig)
 
     print(f"Finished! Plots saved to {out_dir}")

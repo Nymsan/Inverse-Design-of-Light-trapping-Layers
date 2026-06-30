@@ -36,6 +36,12 @@ plt.rcParams.update({
     "savefig.dpi": 150,
 })
 
+MATERIAL_COLORS = {
+    "Si":    "#1f77b4",
+    "TiO2":  "#ff7f0e",
+    "Si3N4": "#2ca02c",
+}
+
 def parse_args():
     p = argparse.ArgumentParser(description="Evaluate Batched Surrogate Optimizer")
     p.add_argument("--ckpt_dir", default="Checkpoints/Si_TiO2_Si3N4", help="Path to checkpoint dir")
@@ -77,6 +83,9 @@ def get_folder_name(args) -> str:
         
     if getattr(args, "optimize_jsc", False):
         parts.append("jsc")
+        
+    if getattr(args, "eval_resolution", None) is not None:
+        parts.append(f"res{args.eval_resolution}")
         
     return "_".join(parts) if parts else "all_data"
 
@@ -229,7 +238,7 @@ def main():
         inc_ang = geo[-1].item()
         
     elif args.mode == "de":
-        res = opt.optimize_de(bands, pop_size=args.restarts, generations=args.steps, F=0.8, CR=0.9, allowed_materials=valid_mat_indices, top_k=args.top_k, override_n_wavelengths=search_n_wl)
+        res = opt.optimize_de(bands, pop_size=args.restarts, generations=args.steps, F=0.8, CR=0.9, allowed_materials=valid_mat_indices, top_k=args.top_k, optimize_jsc=args.optimize_jsc, override_n_wavelengths=search_n_wl)
         geo = res["best_geometry"]
         profile, h_tensor, inc_tensor = build_profile(geo.unsqueeze(0), n_harmonics_opt, nx=128)
         profile = profile[0]
@@ -337,6 +346,18 @@ def main():
         
         sim_np = np.concatenate([rcwa_p, rcwa_s])
         target_np = target_curve.cpu().numpy()
+        
+        if len(target_np) != len(sim_np):
+            # Interpolate the surrogate curve to match Torcwa's evaluation grid
+            n_target_wl = len(target_np) // 2
+            target_wls = np.linspace(300, 1100, n_target_wl)
+            target_p = target_np[:n_target_wl]
+            target_s = target_np[n_target_wl:]
+            
+            interp_target_p = np.interp(WAVELENGTHS, target_wls, target_p)
+            interp_target_s = np.interp(WAVELENGTHS, target_wls, target_s)
+            target_np = np.concatenate([interp_target_p, interp_target_s])
+            
         rcwa_mae = float(np.mean(np.abs(target_np - sim_np)))
         
         if bands:
@@ -462,6 +483,12 @@ def main():
         c_amp = cmap(0.3)
         c_phase = cmap(0.9)
         
+        surr_curve = r["curve"].cpu().numpy()
+        n_surr_wl = len(surr_curve) // 2
+        surr_wls = np.linspace(300, 1100, n_surr_wl)
+        surr_p = surr_curve[:n_surr_wl]
+        surr_s = surr_curve[n_surr_wl:]
+        
         # P-pol
         ax = ax_row[0]
         if bands:
@@ -470,7 +497,7 @@ def main():
         ax.plot(WAVELENGTHS, target_np[:len(WAVELENGTHS)], "k--", lw=3, label="Target")
         if bdt_p is not None:
             ax.plot(WAVELENGTHS, bdt_p, color=c_dataset, linestyle=":", lw=2, label="Best Dataset")
-        ax.plot(WAVELENGTHS, r["curve"][:len(WAVELENGTHS)].numpy(), linestyle="-", color=c_surr, lw=3, label="Surrogate")
+        ax.plot(surr_wls, surr_p, linestyle="-", color=c_surr, lw=3, label="Surrogate")
         ax.plot(WAVELENGTHS, rcwa_p, linestyle="-", color=c_physics, lw=2.5, label="Torcwa Physics")
         dataset_str = f" | Dataset {metric_name}={best_abs_for_mat:.3f}" if bdt_p is not None else ""
         ax.set_title(f"{mat_name} (P-Pol)\nTorcwa {metric_name}={rcwa_val:.2f}{unit} | Surr {metric_name}={r['loss']:.4f}{dataset_str}")
@@ -486,7 +513,7 @@ def main():
         ax.plot(WAVELENGTHS, target_np[len(WAVELENGTHS):], "k--", lw=3, label="Target")
         if bdt_s is not None:
             ax.plot(WAVELENGTHS, bdt_s, color=c_dataset, linestyle=":", lw=2, label="Best Dataset")
-        ax.plot(WAVELENGTHS, r["curve"][len(WAVELENGTHS):].numpy(), linestyle="-", color=c_surr, lw=3, label="Surrogate")
+        ax.plot(surr_wls, surr_s, linestyle="-", color=c_surr, lw=3, label="Surrogate")
         ax.plot(WAVELENGTHS, rcwa_s, linestyle="-", color=c_physics, lw=2.5, label="Torcwa Physics")
         dataset_str2 = f" | Dataset {metric_name}={best_abs_for_mat:.3f}" if bdt_s is not None else ""
         ax.set_title(f"{mat_name} (S-Pol)\nTorcwa {metric_name}={rcwa_val:.2f}{unit} | Surr {metric_name}={r['loss']:.4f}{dataset_str2}")
@@ -495,14 +522,10 @@ def main():
         
         # Structure cross-section
         ax = ax_row[2]
+        mat_color = MATERIAL_COLORS.get(mat_name, cmap(0.7))
         xs = np.linspace(0, rcwa_config_dict.get("grating_period", 1000), 128)
         ax.plot(xs, profile_np, "k-", lw=2)
-        ax.fill_between(xs, 0, profile_np, color=cmap(0.7), alpha=0.5)
-        if args.mode == "profile":
-            n_harm_recovered = (len(geo) - 2) // 2
-            rec_prof, _, _ = build_profile(geo.unsqueeze(0).cpu(), n_harm_recovered, nx=128)
-            ax.plot(xs, rec_prof[0].numpy(), color=cmap(0.9), linestyle="--", lw=2, label="FFT Recovered")
-            if idx == 0: ax.legend()
+        ax.fill_between(xs, 0, profile_np, color=mat_color, alpha=0.6)
         ax.set_title(f"Structure Cross-Section\nFilm Height={h_val:.0f}nm, Inc Ang={inc_ang:.1f}°",)
         ax.set_xlabel("x (nm)")
         ax.set_ylabel("Height (nm)")
