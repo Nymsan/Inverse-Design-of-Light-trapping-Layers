@@ -244,7 +244,8 @@ class BatchedSurrogateOptimizer:
 
 
     def optimize_de(self, bands: List[Tuple[float, float]], pop_size: int = 10000, generations: int = 300, 
-                    F: float = 0.8, CR: float = 0.9, allowed_materials: list[int] = None, top_k: int = 2, show_progress: bool = True, optimize_jsc: bool = False, override_n_wavelengths: Optional[int] = None) -> dict:
+                    F: float = 0.5, CR: float = 0.7, allowed_materials: List[int] = None, top_k: int = 2, 
+                    show_progress: bool = True, optimize_jsc: bool = False, override_n_wavelengths: Optional[int] = None) -> dict:
         self.forward_model.eval()
         _n_wl_kwargs = {"n_wavelengths": override_n_wavelengths} if override_n_wavelengths is not None else {}
         target, mask = self._get_target_and_mask(bands, **_n_wl_kwargs)

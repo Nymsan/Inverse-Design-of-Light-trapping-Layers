@@ -92,7 +92,7 @@ def plot_loss_curves(all_history: dict, save_path: str, train_info: str):
     if not all_history:
         return
     n_models = len(all_history)
-    fig, axes = plt.subplots(1, n_models, figsize=(6 * n_models, 6), squeeze=False, sharey=True, layout="constrained")
+    fig, axes = plt.subplots(1, n_models, figsize=(8 * n_models, 8), squeeze=False, sharey=True, layout="constrained")
     axes = axes[0]
 
     for ax, (name, hist) in zip(axes, all_history.items()):
@@ -123,7 +123,7 @@ def plot_forward_parity(models: dict[str, nn.Module], val_loader, save_path: str
     n_models = len(models)
     if n_models == 0:
         return
-    fig, axes = plt.subplots(1, n_models, figsize=(6 * n_models, 6.5), squeeze=False)
+    fig, axes = plt.subplots(1, n_models, figsize=(8 * n_models, 8.5), squeeze=False)
     axes = axes[0]
 
     for ax, (name, model) in zip(axes, models.items()):
@@ -190,7 +190,7 @@ def plot_forward_parity(models: dict[str, nn.Module], val_loader, save_path: str
         
         # Create single histogram plot
         save_dir = Path(save_path).parent
-        fig_hist, ax_hist = plt.subplots(figsize=(10, 6), layout="constrained")
+        fig_hist, ax_hist = plt.subplots(figsize=(14, 8), layout="constrained")
         
         mat_names = list(MATERIAL_LIBRARY.keys())
         colors = plt.cm.tab10.colors
@@ -273,10 +273,24 @@ def plot_spectrum_samples(models: dict[str, nn.Module], val_loader, save_path: s
     mat_names = list(MATERIAL_LIBRARY.keys())
     n_wl_half = n_wavelengths // 2
 
+    samples_data = []
+    for idx in selected_indices:
+        mat_idx = mat[idx].item()
+        mat_name = mat_names[mat_idx] if mat_idx < len(mat_names) else f"Mat_{mat_idx}"
+        samples_data.append({
+            "material": mat_name,
+            "geometry": geo[idx].tolist()
+        })
+    samples_json_path = save_path.replace(".png", "_geometries.json")
+    import json
+    with open(samples_json_path, "w") as f:
+        json.dump(samples_data, f, indent=4)
+    print(f"  Saved: {samples_json_path}")
+
     colors = plt.cm.viridis(np.linspace(0, 1, len(models)))
 
     for (name, model), color in zip(models.items(), colors):
-        fig, axes = plt.subplots(n_samples, 5, figsize=(25, 3 * n_samples), squeeze=False, layout="constrained")
+        fig, axes = plt.subplots(n_samples, 4, figsize=(32, 5 * n_samples), squeeze=False, layout="constrained")
         
         for i, idx in enumerate(selected_indices):
             pred = model(geo[idx:idx+1], mat[idx:idx+1])
@@ -320,34 +334,7 @@ def plot_spectrum_samples(models: dict[str, nn.Module], val_loader, save_path: s
                 if i == n_samples - 1:
                     ax_err.set_xlabel("Wavelength (nm)")
 
-            # Plot Parameters
-            ax_geo = axes[i, 4]
-            h_val = geo[idx, -2].item()
-            inc_val = geo[idx, -1].item()
-            
-            n_fourier = n_harmonics * 2
-            amps = geo[idx, 0:n_fourier:2].numpy()
-            phases = geo[idx, 1:n_fourier:2].numpy()
-            x_pos = np.arange(1, n_harmonics + 1)
-            
-            cmap = plt.get_cmap("viridis")
-            c_amp = cmap(0.3)
-            c_phase = cmap(0.9)
-            
-            ax_geo.bar(x_pos, amps, color=c_amp, edgecolor="black")
-            ax_geo.set_ylabel("Amplitude (nm)", color=c_amp)
-            ax_geo.tick_params(axis='y', labelcolor=c_amp, labelsize=9)
-            ax_geo.tick_params(axis='x', labelsize=9)
-            
-            ax_p2 = ax_geo.twinx()
-            ax_p2.plot(x_pos, phases, 'o', color=c_phase, markersize=5, markeredgecolor="black")
-            ax_p2.set_ylabel("Phase (rad)", color=c_phase)
-            ax_p2.tick_params(axis='y', labelcolor=c_phase, labelsize=9)
-            ax_p2.set_ylim(-0.5, 2 * np.pi + 0.5)
-            
-            ax_geo.set_title(f"h: {h_val:.0f}nm, inc: {inc_val:.0f}°")
-            if i == n_samples - 1:
-                ax_geo.set_xlabel("Harmonic index")
+                    ax_err.set_xlabel("Wavelength (nm)")
 
         fig.suptitle(f"Spectrum Samples ({filter_title})")
         model_save_path = save_path.replace(".png", f"_{name}.png")
