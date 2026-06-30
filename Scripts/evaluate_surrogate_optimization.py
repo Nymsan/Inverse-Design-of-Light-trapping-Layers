@@ -37,9 +37,9 @@ plt.rcParams.update({
 })
 
 MATERIAL_COLORS = {
-    "Si":    "#1f77b4",
-    "TiO2":  "#ff7f0e",
-    "Si3N4": "#2ca02c",
+    "Si": "tab:blue",
+    "TiO2": "tab:orange",
+    "Si3N4": "tab:green"
 }
 
 def parse_args():
@@ -427,39 +427,43 @@ def main():
             ds_wls = ds_p_orig = ds_s_orig = None
 
         if best_geo_for_mat is not None:
-            # Re-simulate the best dataset geometry at higher resolution
             geo_data = best_geo_for_mat
             h_data = geo_data[-2].item()
             inc_data = geo_data[-1].item()
             
-            ds_config = RCWAConfig(**rcwa_config_dict)
-            ds_config.h = float(h_data)
-            ds_config.inc_ang = (float(inc_data) + 1e-3) * np.pi / 180.0
-            ds_config.azi_ang = 1e-3 * np.pi / 180.0
-            if mat_name.endswith("_Ag"):
-                ds_config.grating_material = mat_name[:-3]
-                ds_config.reflector_type = 'Ag'
-            else:
-                ds_config.grating_material = mat_name
-                ds_config.reflector_type = 'pec'
+            if len(WAVELENGTHS) > n_dataset_wl:
+                # Re-simulate the best dataset geometry at higher resolution
+                ds_config = RCWAConfig(**rcwa_config_dict)
+                ds_config.h = float(h_data)
+                ds_config.inc_ang = (float(inc_data) + 1e-3) * np.pi / 180.0
+                ds_config.azi_ang = 1e-3 * np.pi / 180.0
+                if mat_name.endswith("_Ag"):
+                    ds_config.grating_material = mat_name[:-3]
+                    ds_config.reflector_type = 'Ag'
+                else:
+                    ds_config.grating_material = mat_name
+                    ds_config.reflector_type = 'pec'
+                    
+                if args.order_N is not None:
+                    ds_config.order_N = args.order_N
+                if args.height_per_layer is not None:
+                    ds_config.height_per_layer = args.height_per_layer
+    
+                n_harm_data = (len(geo_data) - 2) // 2
+                px_data = geo_data[:2*n_harm_data].view(-1, 2).cpu()
                 
-            if args.order_N is not None:
-                ds_config.order_N = args.order_N
-            if args.height_per_layer is not None:
-                ds_config.height_per_layer = args.height_per_layer
-
-            n_harm_data = (len(geo_data) - 2) // 2
-            px_data = geo_data[:2*n_harm_data].view(-1, 2).cpu()
-            
-            A_film_ds, _ = get_absorptance_curve(
-                params_x=px_data,
-                params_y=None,
-                wavelengths=torch.from_numpy(WAVELENGTHS).double(),
-                config=ds_config,
-                show_progress=False
-            )
-            bdt_p = A_film_ds[:, 0].cpu().numpy()
-            bdt_s = A_film_ds[:, 1].cpu().numpy()
+                A_film_ds, _ = get_absorptance_curve(
+                    params_x=px_data,
+                    params_y=None,
+                    wavelengths=torch.from_numpy(WAVELENGTHS).double(),
+                    config=ds_config,
+                    show_progress=False
+                )
+                bdt_p = A_film_ds[:, 0].cpu().numpy()
+                bdt_s = A_film_ds[:, 1].cpu().numpy()
+            else:
+                bdt_p = np.interp(WAVELENGTHS, ds_wls, ds_p_orig)
+                bdt_s = np.interp(WAVELENGTHS, ds_wls, ds_s_orig)
             
             # Recalculate dataset objective using the new higher resolution curve
             mask_ds = mask
@@ -522,7 +526,7 @@ def main():
         
         # Structure cross-section
         ax = ax_row[2]
-        mat_color = MATERIAL_COLORS.get(mat_name, cmap(0.7))
+        mat_color = MATERIAL_COLORS.get(mat_name, plt.cm.tab10(trained_mat_names.index(mat_name) % 10))
         xs = np.linspace(0, rcwa_config_dict.get("grating_period", 1000), 128)
         ax.plot(xs, profile_np, "k-", lw=2)
         ax.fill_between(xs, 0, profile_np, color=mat_color, alpha=0.6)
