@@ -20,7 +20,7 @@ from Utils.utils import sun_weights, get_jsc_scaling_factor
 
 from Utils.models import N_MATERIALS, build_profile, MATERIAL_LIBRARY, SIREN
 from Scripts.evaluate_dataset_baseline import get_dataset_baseline
-from Utils.surrogate_optimization import BatchedSurrogateOptimizer, recover_geometry_from_profile
+from Utils.surrogate_optimization import BatchedSurrogateOptimizer
 from Utils.utils import RCWAConfig, get_absorptance_curve
 from Utils.checkpoint import load_forward_model, get_best_forward_model
 
