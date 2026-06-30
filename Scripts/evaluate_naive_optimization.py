@@ -141,6 +141,7 @@ def compute_loss(raw_params, raw_h, h_pinned, h_bounds, material, objective, dev
         config=config,
         requires_grad=True,
     )
+    A_film = A_film.mean(dim=1)
 
     if objective == 'jsc':
         S = sun_weights(wls)                          # [W/m²/nm]

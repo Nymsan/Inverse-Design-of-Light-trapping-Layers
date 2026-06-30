@@ -96,7 +96,11 @@ class BatchedSurrogateOptimizer:
         
         # Dense pre-sampling
         n_dense_per_mat = n_dense_samples // n_allowed
-        chunk_size = 3000
+        
+        # Dynamically scale chunk size to prevent OOM on high resolution SIREN passes
+        # At 161 resolution, 3000 fits perfectly. Higher resolutions require smaller chunks.
+        current_res = override_n_wavelengths if override_n_wavelengths is not None else (getattr(self.forward_model, "seq_len", 161) * 2)
+        chunk_size = max(100, int(3000 * (161.0 / (current_res / 2.0))))
         
         best_geos_dense = []
         
@@ -238,112 +242,9 @@ class BatchedSurrogateOptimizer:
             "allowed_materials": allowed_materials
         }
 
-    def optimize_profile(self, bands: List[Tuple[float, float]], n_restarts: int = 10000, steps: int = 300, lr: float = 5.0, allowed_materials: list[int] = None, top_k: int = 2, show_progress: bool = True) -> dict:
-        self.forward_model.eval()
-        target, mask = self._get_target_and_mask(bands)
-        
-        if allowed_materials is None:
-            allowed_materials = list(range(self.n_materials))
-            
-        n_allowed = len(allowed_materials)
-        B = n_restarts * n_allowed
-        target = target.expand(B, -1)
-        mask = mask.expand(B, -1)
-        
-        # Profile roughly in nm (e.g. 0 to 500)
-        profile = torch.rand(B, self.nx, device=self.device) * 500.0
-        h = torch.rand(B, 1, device=self.device) * (self.h_max - self.h_min) + self.h_min
-        inc_ang = torch.rand(B, 1, device=self.device) * (self.inc_max - self.inc_min) + self.inc_min
-        
-        profile = nn.Parameter(profile)
-        h = nn.Parameter(h)
-        inc_ang = nn.Parameter(inc_ang)
-        
-        mat = torch.tensor(allowed_materials, device=self.device).repeat_interleave(n_restarts)
-        
-        # Note: lr is much higher because profile values are around ~0-1000 nm, while geo angles are ~0-2pi
-        optimizer = optim.Adam([profile, h, inc_ang], lr=lr)
-        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=steps)
-        
-        history = torch.zeros((steps, n_allowed), device=self.device)
-        pbar = tqdm(range(steps), desc="Optimizing Profile", disable=not show_progress)
-        for step in pbar:
-            optimizer.zero_grad()
-            pred = self.forward_model(profile=profile, h=h, inc_ang=inc_ang, material_id=mat)
-                
-            abs_vals = (pred.float() * mask).sum(dim=-1) / mask.sum(dim=-1)
-            loss = -abs_vals
-            loss_sum = loss.mean()
-            loss_sum.backward()
-            optimizer.step()
-            scheduler.step()
-            
-            with torch.no_grad():
-                # Enforce DC term = sum(A_n) constraint to match torcwa's geometry parameterization
-                P_fft = torch.fft.rfft(profile, dim=1)
-                amps = 2.0 * P_fft.abs() / self.nx
-                n_harmonics = self.nx // 2
-                A_n = amps[:, 1:n_harmonics+1]
-                target_mean = A_n.sum(dim=1, keepdim=True)
-                
-                current_mean = profile.mean(dim=1, keepdim=True)
-                profile.add_(target_mean - current_mean)
-                
-                profile.clamp_(min=0.0) # Physical constraint
-                h.clamp_(self.h_min, self.h_max)
-                inc_ang.clamp_(self.inc_min, self.inc_max)
-                
-                avg_abs = (pred.float() * mask).sum(dim=-1) / mask.sum(dim=-1)
-                abs_reshaped = avg_abs.view(n_allowed, n_restarts)
-                max_vals = abs_reshaped.max(dim=1).values
-                history[step] = max_vals
-                postfix_dict = {
-                    list(MATERIAL_LIBRARY.keys())[mat_idx]: f"{max_vals[i].item():.4f}" 
-                    for i, mat_idx in enumerate(allowed_materials)
-                }
-                pbar.set_postfix(postfix_dict)
-                
-        with torch.no_grad():
-            pred = self.forward_model(profile=profile, h=h, inc_ang=inc_ang, material_id=mat)
-            final_abs = (pred.float() * mask).sum(dim=-1) / mask.sum(dim=-1)
-            
-        final_abs_reshaped = final_abs.view(n_allowed, n_restarts)
-        top_vals, top_indices_local = final_abs_reshaped.topk(top_k, dim=1, largest=True)
-        
-        top_results = []
-        for i in range(n_allowed):
-            mat_idx = allowed_materials[i]
-            for k in range(top_k):
-                local_idx = top_indices_local[i, k].item()
-                global_idx = i * n_restarts + local_idx
-                top_results.append({
-                    "material_idx": mat_idx,
-                    "profile": profile[global_idx].detach().cpu(),
-                    "h": h[global_idx].detach().cpu(),
-                    "inc_ang": inc_ang[global_idx].detach().cpu(),
-                    "curve": pred[global_idx].detach().float().cpu(),
-                    "loss": final_abs[global_idx].item()
-                })
-                
-        best_global_idx = final_abs.argmax().item()
-        
-        return {
-            "best_loss": final_abs[best_global_idx].item(),
-            "best_profile": profile[best_global_idx].detach().cpu(),
-            "best_h": h[best_global_idx].detach().cpu(),
-            "best_inc_ang": inc_ang[best_global_idx].detach().cpu(),
-            "best_material": mat[best_global_idx].item(),
-            "best_curve": pred[best_global_idx].detach().float().cpu(),
-            "target": target[0].float().cpu(),
-            "mask": mask[0].float().cpu(),
-            "mode": "profile",
-            "history": history.cpu(),
-            "top_results": top_results,
-            "allowed_materials": allowed_materials
-        }
 
     def optimize_de(self, bands: List[Tuple[float, float]], pop_size: int = 10000, generations: int = 300, 
-                    F: float = 0.8, CR: float = 0.9, allowed_materials: list[int] = None, top_k: int = 2, show_progress: bool = True, override_n_wavelengths: Optional[int] = None) -> dict:
+                    F: float = 0.8, CR: float = 0.9, allowed_materials: list[int] = None, top_k: int = 2, show_progress: bool = True, optimize_jsc: bool = False, override_n_wavelengths: Optional[int] = None) -> dict:
         self.forward_model.eval()
         _n_wl_kwargs = {"n_wavelengths": override_n_wavelengths} if override_n_wavelengths is not None else {}
         target, mask = self._get_target_and_mask(bands, **_n_wl_kwargs)
@@ -362,13 +263,14 @@ class BatchedSurrogateOptimizer:
         with torch.no_grad():
             profile, h_t, inc_t = build_profile(pop, self.n_harmonics, self.nx)
             pred = self.forward_model(profile=profile, h=h_t, inc_ang=inc_t, material_id=mat)
-            fitness = (pred.float() * mask).sum(dim=-1) / mask.sum(dim=-1)
+            fitness = self._compute_metric(pred, mask, pop[:, -1], optimize_jsc=optimize_jsc)
             
             range_geo = self.geo_max - self.geo_min
             active_mask = (range_geo > 1e-5).float()
             
-            fitness = fitness
-            
+            p_norm = (pop - self.geo_min) / (range_geo + 1e-9)
+            penalty = 0.05 * torch.sum(active_mask * torch.pow((p_norm - 0.5) * 2.0, 10), dim=-1)
+            fitness = fitness - penalty           
         history = torch.zeros((generations, n_allowed), device=self.device)
         
         pbar = tqdm(range(generations), desc="Optimizing DE", disable=not show_progress, leave=True)
@@ -404,7 +306,7 @@ class BatchedSurrogateOptimizer:
             with torch.no_grad():
                 profile, h_t, inc_t = build_profile(trial, self.n_harmonics, self.nx)
                 trial_pred = self.forward_model(profile=profile, h=h_t, inc_ang=inc_t, material_id=mat)
-                trial_fitness = (trial_pred.float() * mask).sum(dim=-1) / mask.sum(dim=-1)
+                trial_fitness = self._compute_metric(trial_pred, mask, trial[:, -1], optimize_jsc=optimize_jsc)
                 
                 trial_p_norm = (trial - self.geo_min) / (range_geo + 1e-9)
                 trial_penalty = 0.05 * torch.sum(active_mask * torch.pow((trial_p_norm - 0.5) * 2.0, 10), dim=-1)
@@ -418,10 +320,7 @@ class BatchedSurrogateOptimizer:
                 fitness_reshaped = fitness.view(n_allowed, pop_size)
                 max_indices = fitness_reshaped.argmax(dim=1)
                 
-                # We need pure absorptance from the current population
-                # Note: fitness has the penalty permanently subtracted. We recalculate pure abs
-                # Wait, fitness is persistently penalized, so we must calculate pure abs directly from pred
-                pure_abs = (pred.float() * mask).sum(dim=-1) / mask.sum(dim=-1)
+                pure_abs = self._compute_metric(pred, mask, pop[:, -1], optimize_jsc=optimize_jsc)
                 pure_reshaped = pure_abs.view(n_allowed, pop_size)
                 
                 best_pure_abs = pure_reshaped[torch.arange(n_allowed), max_indices]
@@ -463,36 +362,3 @@ class BatchedSurrogateOptimizer:
             "top_results": top_results,
             "allowed_materials": allowed_materials
         }
-
-def recover_geometry_from_profile(profile_1d: torch.Tensor, h: torch.Tensor, inc_ang: torch.Tensor, nx: int = 128, n_harmonics: Optional[int] = None) -> torch.Tensor:
-    """
-    Given a spatial profile, recover harmonic geometry parameters via FFT.
-    If n_harmonics is None, recovers all spatial resolution harmonics (nx // 2).
-    Returns: geometry tensor of shape [n_harmonics * 2 + 2]
-    """
-    P_fft = torch.fft.rfft(profile_1d)
-    
-    amps = 2.0 * P_fft.abs() / nx
-    
-    if n_harmonics is None:
-        n_harmonics = nx // 2
-    else:
-        n_harmonics = min(n_harmonics, nx // 2)
-        
-    A_n = amps[1:n_harmonics+1]
-    phi_n = (-P_fft[1:n_harmonics+1].angle()) % (2 * torch.pi)
-    
-    # Sanity check: Ensure DC term matches the sum of AC amplitudes
-    dc_component = profile_1d.mean(dim=-1) if profile_1d.dim() > 1 else profile_1d.mean()
-    sum_A_n = A_n.sum(dim=-1) if A_n.dim() > 1 else A_n.sum()
-    
-    if not torch.allclose(dc_component, sum_A_n, atol=1e-3):
-        print(f"Warning: DC sanity check failed! profile.mean = {dc_component.mean().item():.5f}, sum(A_n) = {sum_A_n.mean().item():.5f}")
-        
-    geo = torch.zeros(n_harmonics * 2 + 2, device=profile_1d.device)
-    geo[0:n_harmonics*2:2] = A_n
-    geo[1:n_harmonics*2:2] = phi_n
-    geo[-2] = h.squeeze()
-    geo[-1] = inc_ang.squeeze()
-    
-    return geo

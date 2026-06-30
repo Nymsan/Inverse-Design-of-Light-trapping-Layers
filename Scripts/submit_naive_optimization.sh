@@ -33,8 +33,8 @@ uv run python Scripts/evaluate_naive_optimization.py \
     --material $MAT_NAME \
     --h_val 1000 3000 \
     --n_iters 500 \
-    --n_restarts 2 \
-    --seed 42 \
+    --n_restarts 1 \
+    --seed 1234 \
     --out_dir Results/naive_opt_bounded
 
 echo ""
