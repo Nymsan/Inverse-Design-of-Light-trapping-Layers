@@ -291,11 +291,45 @@ def plot_spectrum_samples(models: dict[str, nn.Module], val_loader, save_path: s
 
     for (name, model), color in zip(models.items(), colors):
         fig, axes = plt.subplots(n_samples, 4, figsize=(32, 5 * n_samples), squeeze=False, layout="constrained")
+        fig_avg, axes_avg = plt.subplots(n_samples, 2, figsize=(16, 5 * n_samples), squeeze=False, layout="constrained")
         
         for i, idx in enumerate(selected_indices):
             pred = model(geo[idx:idx+1], mat[idx:idx+1])
             mat_idx = mat[idx].item()
             mat_name = mat_names[mat_idx] if mat_idx < len(mat_names) else f"Mat_{mat_idx}"
+            inc_val = geo[idx, -1].item()
+            
+            # Avg-Pol Plotting
+            start_p, end_p = 0, n_wl_half
+            start_s, end_s = n_wl_half, 2*n_wl_half
+            target_avg = (target[idx, start_p:end_p] + target[idx, start_s:end_s]) / 2.0
+            pred_avg = (pred[0, start_p:end_p] + pred[0, start_s:end_s]) / 2.0
+            error_avg = target_avg - pred_avg
+            
+            # Avg-Pol Curve
+            ax_curve = axes_avg[i, 0]
+            ax_curve.plot(WAVELENGTHS, target_avg.numpy(), "k-", lw=2.5, label="Truth", alpha=0.5)
+            ax_curve.plot(WAVELENGTHS, pred_avg.numpy(), color=color, ls="--", lw=2, label=format_model_name(name))
+            ax_curve.set_xlim(300, 1100)
+            ax_curve.set_ylim([-0.05, 1.05])
+            ax_curve.set_ylabel(f"Absorptance ({mat_name})")
+            ax_curve.set_title(f"Avg-Pol (inc={inc_val:.1f}°)")
+            if i == 0:
+                ax_curve.legend(loc="upper right")
+            if i == n_samples - 1:
+                ax_curve.set_xlabel("Wavelength (nm)")
+                
+            # Avg-Pol Error
+            ax_err_avg = axes_avg[i, 1]
+            ax_err_avg.plot(WAVELENGTHS, error_avg.numpy(), "-", color=color, lw=1.5, label=format_model_name(name))
+            ax_err_avg.axhline(0, color='k', linestyle='--', lw=1.0)
+            ax_err_avg.set_xlim(300, 1100)
+            ax_err_avg.set_ylim(-global_max_err, global_max_err)
+            ax_err_avg.set_ylabel(f"Error ({mat_name})")
+            if i == 0:
+                ax_err_avg.set_title(f"Error (Avg-Pol)")
+            if i == n_samples - 1:
+                ax_err_avg.set_xlabel("Wavelength (nm)")
 
             for pol_idx, pol_label in enumerate(["p-pol", "s-pol"]):
                 ax = axes[i, pol_idx]
@@ -309,7 +343,6 @@ def plot_spectrum_samples(models: dict[str, nn.Module], val_loader, save_path: s
                 ax.set_xlim(300, 1100)
                 ax.set_ylim([-0.05, 1.05])
                 
-                inc_val = geo[idx, -1].item()
                 ax.set_ylabel(f"Absorptance ({mat_name})")
                 
                 # We want the title on every subplot to clearly state the incidence angle
@@ -334,13 +367,17 @@ def plot_spectrum_samples(models: dict[str, nn.Module], val_loader, save_path: s
                 if i == n_samples - 1:
                     ax_err.set_xlabel("Wavelength (nm)")
 
-                    ax_err.set_xlabel("Wavelength (nm)")
-
         fig.suptitle(f"Spectrum Samples ({filter_title})")
         model_save_path = save_path.replace(".png", f"_{name}.png")
-        plt.savefig(model_save_path)
-        plt.close()
+        fig.savefig(model_save_path)
+        plt.close(fig)
         print(f"  Saved: {model_save_path}")
+        
+        fig_avg.suptitle(f"Avg-Pol Spectrum Samples ({filter_title})")
+        avg_save_path = save_path.replace(".png", f"_avg_{name}.png")
+        fig_avg.savefig(avg_save_path)
+        plt.close(fig_avg)
+        print(f"  Saved: {avg_save_path}")
 
 
 @torch.no_grad()

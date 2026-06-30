@@ -1,14 +1,14 @@
 # Fdb version 4
-["bibtex main"] 1782824322.67736 "main.aux" "main.bbl" "main" 1782824339.5139 0
-  "./main-blx.bib" 1782824339.28784 343 7df4daaf12a96e5cb5559adaf253a91c ""
+["bibtex main"] 1782824322.67736 "main.aux" "main.bbl" "main" 1782825312.79877 0
+  "./main-blx.bib" 1782825312.43243 343 7df4daaf12a96e5cb5559adaf253a91c ""
   "./references.bib" 1782504867.00822 6721 8ec3da401495f2bf05d481b7d05108fa ""
   "/usr/share/texmf-dist/bibtex/bst/biblatex/biblatex.bst" 1775415801 65510 9a2a51799b543ff279b8ea2dd91ec499 ""
-  "main.aux" 1782824339.28084 56226 17c1fb44d5a632f8c9fd56551d7db4e3 "pdflatex"
+  "main.aux" 1782825312.42158 56226 17c1fb44d5a632f8c9fd56551d7db4e3 "pdflatex"
   (generated)
   "main.bbl"
   "main.blg"
   (rewritten before read)
-["pdflatex"] 1782824322.82066 "/home/an/Documents/Inverse-Design-of-Light-trapping-Layers/Report/main.tex" "main.pdf" "main" 1782824339.5141 0
+["pdflatex"] 1782825294.2366 "/home/an/Documents/Inverse-Design-of-Light-trapping-Layers/Report/main.tex" "main.pdf" "main" 1782825312.79904 0
   "../Checkpoints/Si_TiO2_Si3N4/evaluation/dataset_baseline/all_data/dataset_metric_histogram.png" 1782428649.84644 72192 e109c6f70c65a94993f6add612145a33 ""
   "../Checkpoints/Si_TiO2_Si3N4/evaluation/dataset_baseline/jsc/dataset_metric_histogram.png" 1782428653.65044 67901 b6c6c2b780c1eb2220995b4df00b07e1 ""
   "../Checkpoints/Si_TiO2_Si3N4/evaluation/forward/all_data/forward_loss_curves.png" 1782824177.31256 260542 6b585fb2f8db1556cffc9ed03d9c880e ""
@@ -19,8 +19,8 @@
   "../Checkpoints/Si_TiO2_Si3N4/evaluation/forward/all_data/histogram_forward_mlp.png" 1782824177.98691 113000 366f6864dc588d8c4c3b3be88cb22ff1 ""
   "../Checkpoints/Si_TiO2_Si3N4/evaluation/forward/all_data/histogram_siren.png" 1782824192.52168 111389 bbcbc9c2b64010695236486948c77f74 ""
   "../Checkpoints/Si_TiO2_Si3N4/evaluation/forward/all_data/histogram_skip_cnn.png" 1782824182.6696 113415 86334a871a9280e591d32fe64dd84ffa ""
-  "../Checkpoints/Si_TiO2_Si3N4/evaluation/surrogate_optimization/inc0.0_forward_mlp/optimization_history_geometry.png" 1782491215.55949 85760 1ca82b2109971d9d10313152638741be ""
-  "../Checkpoints/Si_TiO2_Si3N4/evaluation/surrogate_optimization/inc0.0_forward_mlp/surrogate_optimization_geometry.png" 1782492007.42595 1543693 b2316040fb8e7fc17cdd17912c76d321 ""
+  "../Checkpoints/Si_TiO2_Si3N4/evaluation/surrogate_optimization/inc0.0_forward_mlp/optimization_history_geometry.png" 1782824519.04426 74613 e30d66832a34abef327b5de05ba2bdd6 ""
+  "../Checkpoints/Si_TiO2_Si3N4/evaluation/surrogate_optimization/inc0.0_forward_mlp/surrogate_optimization_geometry.png" 1782825293.84129 1755002 2ba9442aaa565554b4e72bd184f4a44a ""
   "../Checkpoints/Si_TiO2_Si3N4/evaluation/surrogate_optimization/inc0.0_siren/optimization_history_geometry.png" 1782479004.97107 88369 af2d35607c29476fcbebc71a09bc16e8 ""
   "../Checkpoints/Si_TiO2_Si3N4/evaluation/surrogate_optimization/inc0.0_siren/surrogate_optimization_geometry.png" 1782436910.94186 1465431 6b0e0aafebfa5065de4e05bc0c361784 ""
   "../Checkpoints/Si_TiO2_Si3N4/evaluation/surrogate_optimization/inc0.0_skip_cnn/optimization_history_geometry.png" 1782822919.36147 83603 2240679bf43d307070009d6659510b0e ""
@@ -361,12 +361,12 @@
   "figures/fabry_perot_grid.pdf" 1782464249.74227 87956 d8c44a13fc9ac853965e5da7c4217faa ""
   "figures/jsc_integrand_am15g.pdf" 1782464249.74247 55305 6be0b9676dea7a45fee258e4b93a78c0 ""
   "figures/refractive_indices.pdf" 1782464249.74386 19242 0306ac7d41e55ef88d28b89992b8e208 ""
-  "main.aux" 1782824339.28084 56226 17c1fb44d5a632f8c9fd56551d7db4e3 "pdflatex"
+  "main.aux" 1782825312.42158 56226 17c1fb44d5a632f8c9fd56551d7db4e3 "pdflatex"
   "main.bbl" 1782824322.80971 19768 8d56534b1a2680437d227cf56c295e34 "bibtex main"
-  "main.out" 1782824339.28584 6676 09a8f7a8986947d38e8eab91d02c25b0 "pdflatex"
-  "main.run.xml" 1782824339.28937 2528 47d98899412914b94d26319bb09fe473 "pdflatex"
+  "main.out" 1782825312.43043 6676 09a8f7a8986947d38e8eab91d02c25b0 "pdflatex"
+  "main.run.xml" 1782825312.43444 2528 47d98899412914b94d26319bb09fe473 "pdflatex"
   "main.tex" 1782464249.78621 1091 9dd29739d1c8d4cbc68e9dac096e0233 ""
-  "main.toc" 1782824339.28937 3191 a0c33e277446f2fa826c02df0cde0da0 "pdflatex"
+  "main.toc" 1782825312.43444 3191 a0c33e277446f2fa826c02df0cde0da0 "pdflatex"
   "sections/01_introduction.tex" 1782509770.47579 12274 c480c0556b6bb71210a886a079a4f68c ""
   "sections/02_theory.tex" 1782509859.98428 37455 edcfecfc4c949a4ef98ff1afdd6e6477 ""
   "sections/03_methods.tex" 1782510276.81334 25635 3402364755c62921793f9d9811a255f0 ""
