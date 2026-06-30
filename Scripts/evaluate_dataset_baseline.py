@@ -24,6 +24,13 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from Utils.models import build_profile, MATERIAL_LIBRARY
 
+MATERIAL_COLORS = {
+    "Si": "tab:blue",
+    "TiO2": "tab:orange",
+    "Si3N4": "tab:green"
+}
+
+
 plt.rcParams.update({
     "font.size": 26,
     "axes.titlesize": 24,
@@ -237,7 +244,7 @@ def main():
     num_bins = max(1, int(np.round((grid_max - grid_min) / bin_width)))
     bin_edges = np.linspace(grid_min, grid_max, num_bins + 1)
     
-    fig_hist, ax_hist = plt.subplots(figsize=(9, 7))
+    fig_hist, ax_hist = plt.subplots(figsize=(12, 9))
     for mat_name, res in results.items():
         metric_vals = res["metric"]
         valid_idx = torch.where(metric_vals >= 0)[0]
@@ -291,7 +298,7 @@ def main():
         worst_indices = valid_idx[worst_local_indices]
         
         for plot_mode, indices in [("best", best_indices), ("worst", worst_indices)]:
-            fig, axes = plt.subplots(k, 4, figsize=(24, 5 * k), squeeze=False, layout="constrained")
+            fig, axes = plt.subplots(k, 4, figsize=(32, 7 * k), squeeze=False, layout="constrained")
             
             for i, idx in enumerate(indices):
                 target = targets[idx]
@@ -335,7 +342,8 @@ def main():
                 # Structure Cross Section
                 ax_xs = axes[i, 2]
                 ax_xs.plot(r_grid, prof, "k-", lw=2)
-                ax_xs.fill_between(r_grid, 0, prof, color="tab:blue", alpha=0.3)
+                mat_color = MATERIAL_COLORS.get(mat_name, plt.cm.tab10(stats["materials"].index(mat_name) % 10))
+                ax_xs.fill_between(r_grid, 0, prof, color=mat_color, alpha=0.3)
                 ax_xs.set_title(f"Structure (Film Height={h_nm:.0f}nm, Inc Ang={inc_ang:.1f}°)",)
                 ax_xs.set_ylim(0, max(120, grating_height * 1.2))
                 ax_xs.set_xlim(0, 1000)
