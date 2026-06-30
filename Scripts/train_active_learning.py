@@ -307,7 +307,7 @@ def main():
             bands = get_random_bands()
             bands_per_proposal.append(bands)
             if args.mode == "de":
-                opt_res = opt.optimize_de(bands, allowed_materials=valid_mat_indices, pop_size=args.restarts, generations=args.steps, F=0.8, CR=0.9, top_k=1, show_progress=True)
+                opt_res = opt.optimize_de(bands, allowed_materials=valid_mat_indices, pop_size=args.restarts, generations=args.steps, F=0.5, CR=0.7, top_k=1, show_progress=True)
             else:
                 opt_res = opt.optimize_geometry(bands, allowed_materials=valid_mat_indices, n_restarts=args.restarts, steps=args.steps, lr=0.1, top_k=1, show_progress=True)
             
