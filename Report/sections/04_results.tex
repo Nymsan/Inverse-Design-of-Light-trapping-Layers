@@ -185,14 +185,14 @@ I think not having the full spectrums, and therefore losing the ability to train
 \newpage
 \section{Surrogate Model Optimization}
 The surrogate optimization procedure is a straight forward idea. If the surrogate can accurately predict absorptance curves in the design space, we should take advtange of the batches capabilites. First, an enourmous amount of random samples, say $10^7$ are evaluated in large batches. The best performing $N$ of these samples are then optimized using the Adam optimizer of pytorch.
-Then torcwa is used for validation of the best found design, and hopefully the output exceeds the training dataset. The process is stochastic, so results vary from time to time. Figure \ref{fig:surrogateOptHist} shows the surrogate optimization history after random sampling of the \texttt{forward\_mlp} and figure \ref{fig:surrogateOptRes} shows the results.
+Then torcwa is used for validation of the best found design, and hopefully the output exceeds the training dataset. The process is stochastic, so results vary from time to time. Figure \ref{fig:surrogateOptHistory} shows the surrogate optimization history after random sampling of the \texttt{forward\_mlp} and figure \ref{fig:surrogateOptRes} shows the results.
 In the appendix, the same results are included for the two other forward models.
 
 \begin{figure}
     \centering
     \includegraphics[width=1\textwidth]{../Checkpoints/Si_TiO2_Si3N4/evaluation/surrogate_optimization/inc0.0_forward_mlp/optimization_history_geometry.png}
     \caption{The history of the surrogate optimization using \texttt{forward\_mlp}. Noteably, even though the surrogate doesnt think it will do better than the dataset max of TiO$_2$ and Si$_3$N$_4$, in the end, it still (slightly) outperforms the dataset.}
-    \label{fig:surrogateOptHist}
+    \label{fig:surrogateOptHistory}
 \end{figure}
 
 \begin{figure}
@@ -228,19 +228,22 @@ The results of the topology optimization are seen in table \ref{tab:opt_vs_lhs_v
 \label{tab:opt_vs_lhs_vs_surr}
 \begin{tabular}{@{}llcc@{}}
 \toprule
-\textbf{Material} & \textbf{Method} & \textbf{Absorptance} & \textbf{Height (nm)} \\
+\textbf{Material} & \textbf{Method} & \textbf{Film Absorptance} & \textbf{Height (nm)} \\
 \midrule
-Si & Topology Optimization & 0.29 & 1429 \\
- & Surrogate optimization & \textbf{0.368} & 2996  \\
- & LHS Best Datapoint & 0.367 & 2914 \\
+Si & Topology Optimization & 0.29 $\pm$ 0.01 & 1429 \\
+ & Surrogate Optimization & 0.368 $\pm$ 0.01 & 2996  \\
+ & LHS Best Datapoint & 0.367 $\pm$ 0.01 & 2914 \\
+ & Bare Silicon Baseline & \textbf{0.37} $\pm$ 0.01 & 3000  \\
 \midrule
-TiO$_2$ & Topology Optimization & 0.491 & 2997  \\
- & Surrogate optimization & \textbf{0.503} & 3000 \\
- & LHS Best Datapoint & 0.502 & 2994  \\
+TiO$_2$ & Topology Optimization & 0.491 $\pm$ 0.01 & 2997  \\
+ & Surrogate Optimization & \textbf{0.503} $\pm$ 0.01 & 3000 \\
+ & LHS Best Datapoint & 0.502 $\pm$ 0.01 & 2994  \\
+ & Bare Silicon Baseline & 0.37 $\pm$ 0.01 & 3000  \\
 \midrule
-Si$_3$N$_4$ & Topology Optimization & 0.493 & 2415  \\
- & Surrogate optimization & \textbf{0.535} & 3000 \\
- & LHS Best Datapoint & 0.532 & 2987  \\
+Si$_3$N$_4$ & Topology Optimization & 0.493 $\pm$ 0.01 & 2415  \\
+ & Surrogate Optimization & \textbf{0.535} $\pm$ 0.01 & 3000 \\
+ & LHS Best Datapoint & 0.532 $\pm$ 0.01 & 2987  \\
+ & Bare Silicon Baseline & 0.37 $\pm$ 0.01 & 3000  \\
 \bottomrule
 \end{tabular}
 \end{table}
