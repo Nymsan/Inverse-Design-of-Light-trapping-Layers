@@ -168,7 +168,7 @@ def main():
         print("\n=> ERROR: No forward models found in Checkpoints directory!")
         return
     
-    print(f"Loaded {Path(fwd_name).name} for surrogate optimization (test loss: {test_loss:.4f})")
+    print(f"Loaded {Path(fwd_name).name} for surrogate optimization (test loss: {test_loss:.3f})")
     
     # --- Resolution overrides ---
     is_siren = isinstance(model, SIREN)
@@ -209,10 +209,10 @@ def main():
     print(f"Bands: {bands if bands else 'Full Spectrum 300-1100nm'}")
     
     if args.inc_val is not None:
-        print(f"[*] Pinned Incident Angle to exactly {args.inc_val:.2f} degrees")
+        print(f"[*] Pinned Incident Angle to exactly {args.inc_val:.3f} degrees")
     else:
         actual_max_inc = args.max_inc_deg if args.max_inc_deg is not None else geo_max[-1].item()
-        print(f"Bounded Incident Angle search up to {actual_max_inc:.2f} degrees")
+        print(f"Bounded Incident Angle search up to {actual_max_inc:.3f} degrees")
     
     opt = BatchedSurrogateOptimizer(
         model, geo_min, geo_max, n_harmonics=n_harmonics_opt,
@@ -251,9 +251,9 @@ def main():
     target_curve = res["target"]
     mask = res["mask"]
     
-    print(f"Optimization finished! Best Surrogate Absorptance: {res['best_loss']:.4f}")
+    print(f"Optimization finished! Best Surrogate Absorptance: {res['best_loss']:.3f}")
     print(f"Selected Material: {mat_name}")
-    print(f"Height: {h_val:.2f} nm, Incident Angle: {inc_ang:.2f} deg")
+    print(f"Height: {h_val:.3f} nm, Incident Angle: {inc_ang:.3f} deg")
     
     # Plotting
     folder_name = get_folder_name(args)
@@ -274,7 +274,7 @@ def main():
         best_dataset_geo = {m: r["geos"][r["metric"].argmax()].clone() for m, r in baseline_res.items()}
         
         for m, score in best_dataset_abs.items():
-            print(f"Dataset Best {m}: {score:.4f}")
+            print(f"Dataset Best {m}: {score:.3f}")
     except Exception as e:
         print(f"Could not load dataset baseline: {e}")
         baseline_res = None
@@ -410,7 +410,7 @@ def main():
         cmap = plt.cm.viridis
         
         rank = (idx % args.top_k) + 1
-        print(f"  -> Rank {rank} [{mat_name}]: Torcwa {metric_name} = {rcwa_val:.4f}{unit} (Surr {metric_name} = {r['loss']:.4f})")
+        print(f"  -> Rank {rank} [{mat_name}]: Torcwa {metric_name} = {rcwa_val:.3f}{unit} (Surr {metric_name} = {r['loss']:.3f})")
         
         ax_row = axes[idx]
         
@@ -504,7 +504,7 @@ def main():
         ax.plot(surr_wls, surr_p, linestyle="-", color=c_surr, lw=3, alpha=0.8, label="Surrogate")
         ax.plot(WAVELENGTHS, rcwa_p, linestyle="-", color=c_physics, lw=2.5, alpha=0.8, label="Torcwa Physics")
         dataset_str = f" | Dataset {metric_name}={best_abs_for_mat:.3f}" if bdt_p is not None else ""
-        ax.set_title(f"{mat_name} (P-Pol)\nTorcwa {metric_name}={rcwa_val:.2f}{unit} | Surr {metric_name}={r['loss']:.4f}{dataset_str}")
+        ax.set_title(f"{mat_name} (P-Pol)\nTorcwa {metric_name}={rcwa_val:.3f}{unit} | Surr {metric_name}={r['loss']:.3f}{dataset_str}")
         ax.set_ylim(-0.05, 1.05)
         if idx == 0: ax.legend()
         ax.tick_params(axis='both', which='major', labelsize=16)
@@ -520,7 +520,7 @@ def main():
         ax.plot(surr_wls, surr_s, linestyle="-", color=c_surr, lw=3, alpha=0.8, label="Surrogate")
         ax.plot(WAVELENGTHS, rcwa_s, linestyle="-", color=c_physics, lw=2.5, alpha=0.8, label="Torcwa Physics")
         dataset_str2 = f" | Dataset {metric_name}={best_abs_for_mat:.3f}" if bdt_s is not None else ""
-        ax.set_title(f"{mat_name} (S-Pol)\nTorcwa {metric_name}={rcwa_val:.2f}{unit} | Surr {metric_name}={r['loss']:.4f}{dataset_str2}")
+        ax.set_title(f"{mat_name} (S-Pol)\nTorcwa {metric_name}={rcwa_val:.3f}{unit} | Surr {metric_name}={r['loss']:.3f}{dataset_str2}")
         ax.set_ylim(-0.05, 1.05)
         ax.tick_params(axis='both', which='major', labelsize=16)
         
