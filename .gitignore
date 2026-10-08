@@ -13,3 +13,6 @@ Data/*
 # HPC Logs
 logs/
 Scripts/logs/
+Report/main.pdf
+Report/MSc Thesis*.pdf
+*.pt
